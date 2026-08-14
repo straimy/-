@@ -4,14 +4,14 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - 'gunner-arena-forge-1.20.1-0.6.0-test49-SOURCE.zip'
+      - 'gunner-arena-forge-1.20.1-0.6.0-test50-BUILDFIX-SOURCE.zip'
       - '.github/workflows/gunner-arena-final-build.yml'
 
 permissions:
   contents: read
 
 env:
-  SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test49-SOURCE.zip
+  SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test50-BUILDFIX-SOURCE.zip
 
 jobs:
   build:
@@ -89,7 +89,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ./gradlew --no-daemon clean build --stacktrace
+          ./gradlew --no-daemon clean build --stacktrace --warning-mode all 2>&1 | tee ../forge-core-build.log
 
       - name: Bootstrap Client UI wrapper
         working-directory: ga-build
@@ -108,7 +108,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ./gradlew --no-daemon clean build --stacktrace
+          ./gradlew --no-daemon clean build --stacktrace --warning-mode all 2>&1 | tee ../../client-ui-build.log --warning-mode all 2>&1 | tee ../forge-core-build.log
 
       - name: Build resource pack
         working-directory: ga-build
@@ -188,5 +188,7 @@ jobs:
           path: |
             ga-build/build/reports/**
             ga-build/client-ui/build/reports/**
+            forge-core-build.log
+            client-ui-build.log
           if-no-files-found: ignore
           retention-days: 7
