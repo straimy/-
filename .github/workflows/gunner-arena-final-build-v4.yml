@@ -66,8 +66,12 @@ jobs:
           p=Path('/tmp/client-smoke-step.sh'); s=p.read_text()
           anchor='cd cs; chmod +x gradlew\n'
           if anchor not in s: raise SystemExit('client smoke anchor missing')
-          hook="""cat >> build.gradle <<'GRADLE'\ntasks.configureEach { t ->\n    if (t.name == 'runClient') {\n        t.doFirst {\n            file('build/resources/main').mkdirs()\n            file('build/classes/java/main').mkdirs()\n        }\n    }\n}\nGRADLE\n"""
-          s=s.replace(anchor, anchor+hook,1)
+          # The built JARs are production/reobfuscated artifacts. A ForgeGradle
+          # userdev runtime uses official mappings, so loading those JARs straight
+          # from run/mods produces false NoSuchMethodError failures (SRG names).
+          # Feed the exact production JARs through fg.deobf before runClient.
+          prep="""mkdir -p cs/libs\nfor j in cs/run/mods/*.jar; do\n  if jar tf \"$j\" | grep -q '^arena/GunnerArenaMod.class$'; then\n    cp \"$j\" cs/libs/gunnerarena-core-0.6.0.jar\n  elif jar tf \"$j\" | grep -q '^arena/client/net/ArenaClientNetwork.class$'; then\n    cp \"$j\" cs/libs/gunnerarena-ui-0.6.0.jar\n  fi\ndone\ntest -f cs/libs/gunnerarena-core-0.6.0.jar\ntest -f cs/libs/gunnerarena-ui-0.6.0.jar\nrm -f cs/run/mods/*.jar\ncat >> cs/build.gradle <<'GRADLE'\nrepositories { flatDir { dirs 'libs' } }\ndependencies {\n    runtimeOnly fg.deobf('local:gunnerarena-core:0.6.0')\n    runtimeOnly fg.deobf('local:gunnerarena-ui:0.6.0')\n}\ntasks.configureEach { t ->\n    if (t.name == 'runClient') {\n        t.doFirst {\n            file('build/resources/main').mkdirs()\n            file('build/classes/java/main').mkdirs()\n        }\n    }\n}\nGRADLE\n"""
+          s=s.replace(anchor, prep+anchor,1)
           p.write_text(s)
           PY
           bash /tmp/client-smoke-step.sh
@@ -96,5 +100,6 @@ jobs:
             client-smoke.log
             client-smoke-latest.log
             cs/run/logs/**
+            cs/run/crash-reports/**
           if-no-files-found: ignore
           retention-days: 7
