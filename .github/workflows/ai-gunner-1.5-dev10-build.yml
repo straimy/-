@@ -8,6 +8,12 @@ on:
     paths:
       - 'ai-gunner-1.5/dev10-source.part-*.b64'
       - '.github/workflows/ai-gunner-1.5-dev10-build.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'ai-gunner-1.5/dev10-source.part-*.b64'
+      - '.github/workflows/ai-gunner-1.5-dev10-build.yml'
 
 jobs:
   build:
