@@ -56,6 +56,31 @@ jobs:
           unzip -q "$SOURCE_ZIP" -d ga-build
           chmod +x ga-build/*.sh 2>/dev/null || true
 
+      - name: Apply Forge 47.4.10 compile compatibility fixes
+        working-directory: ga-build
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PYFIX'
+          from pathlib import Path
+
+          p = Path('src/main/java/arena/hazard/ActiveHazard.java')
+          s = p.read_text()
+          s = s.replace('    private final HazardSpec spec;\n    private final long createdTick;', '    private final String dimension;\n    private final HazardSpec spec;\n    private final long createdTick;')
+          s = s.replace('    public ActiveHazard(HazardSpec spec, long createdTick) {\n        this(UUID.randomUUID(), spec, createdTick, createdTick + spec.lifetimeTicks());\n    }\n\n    public ActiveHazard(UUID id, HazardSpec spec, long createdTick, long expiresTick) {\n        this.id = id;\n        this.spec = spec;', '    public ActiveHazard(String dimension, HazardSpec spec, long createdTick) {\n        this(UUID.randomUUID(), dimension, spec, createdTick, createdTick + spec.lifetimeTicks());\n    }\n\n    public ActiveHazard(UUID id, String dimension, HazardSpec spec, long createdTick, long expiresTick) {\n        this.id = id;\n        this.dimension = java.util.Objects.requireNonNull(dimension, "dimension");\n        this.spec = spec;')
+          s = s.replace('    public UUID id() { return id; }\n    public HazardSpec spec()', '    public UUID id() { return id; }\n    public String dimension() { return dimension; }\n    public HazardSpec spec()')
+          p.write_text(s)
+
+          p = Path('src/main/java/arena/hazard/HazardManager.java')
+          p.write_text(p.read_text().replace('ActiveHazard hazard = new ActiveHazard(spec, nowTick);', 'ActiveHazard hazard = new ActiveHazard(dimension, spec, nowTick);'))
+
+          p = Path('src/main/java/arena/forge/net/ArenaNetwork.java')
+          p.write_text(p.read_text().replace('PacketDistributor.PLAYER.with(player)', 'PacketDistributor.PLAYER.with(() -> player)'))
+
+          p = Path('verify-source.sh')
+          p.write_text(p.read_text().replace("grep -q 'PacketDistributor.PLAYER.with(player)' src/main/java/arena/forge/net/ArenaNetwork.java", "grep -Fq 'PacketDistributor.PLAYER.with(() -> player)' src/main/java/arena/forge/net/ArenaNetwork.java"))
+          PYFIX
+
       - name: Run source verification
         working-directory: ga-build
         shell: bash
