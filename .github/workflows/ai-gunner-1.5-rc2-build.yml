@@ -37,6 +37,8 @@ jobs:
           python3 ai-gunner-1.5/dev13-apply.py
           python3 ai-gunner-1.5/rc1-apply.py
           python3 ai-gunner-1.5/rc2-apply.py
+          grep -q 'getBoundingBox' /tmp/aigunner/ai-gunner-dev10/src/main/java/ai/gunner/util/AimMath.java
+          grep -q 'getBoundingBox' /tmp/aigunner/ai-gunner-dev10/src/main/java/ai/gunner/util/CombatGeometry.java
       - name: Build rc2
         shell: bash
         run: |
@@ -46,7 +48,6 @@ jobs:
           JAR=build/libs/ai-gunner-jeg-forge-1.20.1-1.5.0-rc2.jar
           test -s "$JAR"
           jar tf "$JAR" | grep -q 'META-INF/mods.toml'
-          javap -classpath "$JAR" -c ai.gunner.util.AimMath | grep -q 'getBoundingBox'
           sha256sum "$JAR" | tee /tmp/rc2.sha256
       - name: Package source
         shell: bash
