@@ -1,0 +1,196 @@
+name: Gunner Arena FINAL Forge Build v2
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/gunner-arena-final-build-v2.yml'
+      - 'gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip'
+      - 'GunnerArena-ResourcePack-1.20.1-v1.zip'
+
+env:
+  SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+  FINAL_RP: GunnerArena-ResourcePack-1.20.1-v1.zip
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Verify release inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "$SOURCE_ZIP"
+          test -f "$FINAL_RP"
+          test "$(stat -c%s "$FINAL_RP")" -gt 1000000
+          unzip -tq "$FINAL_RP"
+          unzip -p "$FINAL_RP" pack.mcmeta | grep -q 'pack_format'
+          rm -rf ga-build && mkdir ga-build
+          unzip -q "$SOURCE_ZIP" -d ga-build
+          chmod +x ga-build/*.sh 2>/dev/null || true
+
+      - name: Apply proven Forge compile fixes
+        working-directory: ga-build
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/main/java/arena/hazard/ActiveHazard.java'); s=p.read_text()
+          s=s.replace('    private final HazardSpec spec;\n    private final long createdTick;', '    private final String dimension;\n    private final HazardSpec spec;\n    private final long createdTick;')
+          s=s.replace('    public ActiveHazard(HazardSpec spec, long createdTick) {\n        this(UUID.randomUUID(), spec, createdTick, createdTick + spec.lifetimeTicks());\n    }\n\n    public ActiveHazard(UUID id, HazardSpec spec, long createdTick, long expiresTick) {\n        this.id = id;\n        this.spec = spec;', '    public ActiveHazard(String dimension, HazardSpec spec, long createdTick) {\n        this(UUID.randomUUID(), dimension, spec, createdTick, createdTick + spec.lifetimeTicks());\n    }\n\n    public ActiveHazard(UUID id, String dimension, HazardSpec spec, long createdTick, long expiresTick) {\n        this.id = id;\n        this.dimension = java.util.Objects.requireNonNull(dimension, "dimension");\n        this.spec = spec;')
+          s=s.replace('    public UUID id() { return id; }\n    public HazardSpec spec()', '    public UUID id() { return id; }\n    public String dimension() { return dimension; }\n    public HazardSpec spec()'); p.write_text(s)
+          p=Path('src/main/java/arena/hazard/HazardManager.java'); p.write_text(p.read_text().replace('ActiveHazard hazard = new ActiveHazard(spec, nowTick);','ActiveHazard hazard = new ActiveHazard(dimension, spec, nowTick);'))
+          p=Path('src/main/java/arena/forge/net/ArenaNetwork.java'); p.write_text(p.read_text().replace('PacketDistributor.PLAYER.with(player)','PacketDistributor.PLAYER.with(() -> player)'))
+          p=Path('src/main/java/arena/forge/GunnerCommands.java'); s=p.read_text().replace('        int desired = runtime.bots().desired(real);\n','        final int realCount = real;\n        int desired = runtime.bots().desired(realCount);\n').replace('+ " real=" + real + " desired=" + desired','+ " real=" + realCount + " desired=" + desired'); p.write_text(s)
+          p=Path('client-ui/src/main/java/arena/client/ui/ArenaButton.java'); s=p.read_text().replace('import net.minecraft.client.gui.components.AbstractButton;\n','import net.minecraft.client.gui.components.AbstractButton;\nimport net.minecraft.client.gui.narration.NarrationElementOutput;\n').replace('    @Override public void onPress() { onPress.onPress(this); }\n','    @Override public void onPress() { onPress.onPress(this); }\n\n    @Override protected void updateWidgetNarration(NarrationElementOutput output) { this.defaultButtonNarrationText(output); }\n'); p.write_text(s)
+          p=Path('client-ui/src/main/java/arena/client/ui/AbstractArenaScreen.java'); p.write_text(p.read_text().replace('    protected final void installNavigation() { ArenaNavigation.install(this, route); }\n','    protected final void installNavigation() { ArenaNavigation.install(this, route); }\n    final ArenaButton addArenaButton(ArenaButton button) { return addRenderableWidget(button); }\n'))
+          p=Path('client-ui/src/main/java/arena/client/ui/ArenaNavigation.java'); p.write_text(p.read_text().replace('        screen.addRenderableWidget(button);','        screen.addArenaButton(button);'))
+          p=Path('verify-source.sh'); p.write_text(p.read_text().replace("grep -q 'PacketDistributor.PLAYER.with(player)' src/main/java/arena/forge/net/ArenaNetwork.java", "grep -Fq 'PacketDistributor.PLAYER.with(() -> player)' src/main/java/arena/forge/net/ArenaNetwork.java"))
+          PY
+          ./verify-source.sh
+
+      - name: Make Core sole owner of gunnerarena ui channel
+        working-directory: ga-build
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/main/java/arena/forge/net/ArenaNetwork.java'); s=p.read_text()
+          s=s.replace('import java.util.concurrent.ConcurrentHashMap;\nimport java.util.function.Supplier;', 'import java.util.concurrent.ConcurrentHashMap;\nimport java.util.function.Consumer;\nimport java.util.function.Supplier;')
+          s=s.replace('    private static boolean registered;\n\n    private ArenaNetwork() {}', '''    private static boolean registered;\n    private static volatile ClientSink clientSink;\n    public interface ClientSink {\n        void onSnapshot(ArenaSnapshot snapshot);\n        void onCatalog(List<CatalogEntry> entries);\n        void onBuyResult(boolean ok, String code, String message, int credits);\n        void onOpenUi(UiTarget target);\n        void onSkillTree(int level, int skillPoints, String specialization, List<SkillEntry> entries);\n    }\n    public static void installClientSink(ClientSink sink) { clientSink = sink; }\n    private static void dispatchClient(Consumer<ClientSink> action) { ClientSink sink=clientSink; if (sink != null) action.accept(sink); }\n\n    private ArenaNetwork() {}''')
+          for n in ('SnapshotPacket','CatalogPacket','BuyResultPacket','OpenUiPacket','SkillTreePacket'):
+              s=s.replace(n+'::handleServerNoop',n+'::handleClient')
+          s=s.replace('        static void handleServerNoop(OpenUiPacket ignored, Supplier<NetworkEvent.Context> supplier) { supplier.get().setPacketHandled(true); }','        static void handleClient(OpenUiPacket packet, Supplier<NetworkEvent.Context> supplier) { NetworkEvent.Context ctx=supplier.get(); ctx.enqueueWork(() -> dispatchClient(x -> x.onOpenUi(packet.target))); ctx.setPacketHandled(true); }')
+          s=s.replace('        static void handleServerNoop(SkillTreePacket ignored, Supplier<NetworkEvent.Context> supplier) { supplier.get().setPacketHandled(true); }','        static void handleClient(SkillTreePacket packet, Supplier<NetworkEvent.Context> supplier) { NetworkEvent.Context ctx=supplier.get(); ctx.enqueueWork(() -> dispatchClient(x -> x.onSkillTree(packet.level, packet.skillPoints, packet.specialization, packet.entries))); ctx.setPacketHandled(true); }')
+          s=s.replace('        static void handleServerNoop(SnapshotPacket ignored, Supplier<NetworkEvent.Context> supplier) { supplier.get().setPacketHandled(true); }','        static void handleClient(SnapshotPacket packet, Supplier<NetworkEvent.Context> supplier) { NetworkEvent.Context ctx=supplier.get(); ctx.enqueueWork(() -> dispatchClient(x -> x.onSnapshot(packet.snapshot))); ctx.setPacketHandled(true); }')
+          s=s.replace('        static void handleServerNoop(CatalogPacket ignored, Supplier<NetworkEvent.Context> supplier) { supplier.get().setPacketHandled(true); }','        static void handleClient(CatalogPacket packet, Supplier<NetworkEvent.Context> supplier) { NetworkEvent.Context ctx=supplier.get(); ctx.enqueueWork(() -> dispatchClient(x -> x.onCatalog(packet.entries))); ctx.setPacketHandled(true); }')
+          s=s.replace('        static void handleServerNoop(BuyResultPacket ignored, Supplier<NetworkEvent.Context> supplier) { supplier.get().setPacketHandled(true); }','        static void handleClient(BuyResultPacket packet, Supplier<NetworkEvent.Context> supplier) { NetworkEvent.Context ctx=supplier.get(); ctx.enqueueWork(() -> dispatchClient(x -> x.onBuyResult(packet.ok, packet.code, packet.message, packet.credits))); ctx.setPacketHandled(true); }')
+          p.write_text(s)
+
+          Path('client-ui/src/main/java/arena/client/net/ArenaClientNetwork.java').write_text('''package arena.client.net;\nimport arena.forge.net.ArenaNetwork;\nimport arena.net.ArenaSnapshot;\nimport java.util.List;\npublic final class ArenaClientNetwork {\n private static boolean registered; private ArenaClientNetwork() {}\n public static synchronized void register(){ if(registered)return; ArenaNetwork.installClientSink(new ArenaNetwork.ClientSink(){\n  public void onSnapshot(ArenaSnapshot s){ClientSnapshotStore.accept(new ArenaClientSnapshot(s.authenticated(),s.initialized(),s.playerName(),s.roundState(),s.roundNumber(),s.roundRemainingTicks(),s.roundCredits(),s.coins(),s.crystals(),s.level(),s.xp(),s.skillPoints(),s.kills(),s.deaths(),s.assists(),s.damageDealt(),s.shotsFired(),s.shotsHit(),s.bestKillStreak(),s.roundsPlayed(),s.roundsWon(),s.playTimeSeconds(),s.roundKills(),s.roundDeaths(),s.roundAssists(),s.roundDamage()));}\n  public void onCatalog(List<ArenaNetwork.CatalogEntry> e){ClientShopStore.acceptCatalog(e.stream().map(x->new ArenaClientShopItem(x.id(),x.displayName(),x.category(),x.slot(),x.price(),x.ammoItem(),x.magazineSize(),x.startingReserve(),x.fireModes(),x.scope(),x.available(),x.quarantined())).toList());}\n  public void onBuyResult(boolean ok,String code,String message,int credits){ClientShopStore.acceptResult(ok,message);requestSnapshot();}\n  public void onOpenUi(ArenaNetwork.UiTarget t){arena.client.ui.ClientUiOpener.open(t==null?0:t.ordinal());}\n  public void onSkillTree(int l,int sp,String spec,List<ArenaNetwork.SkillEntry> e){ClientSkillTreeStore.accept(l,sp,spec,e.stream().map(x->new ArenaClientSkillEntry(x.id(),x.name(),x.branch(),x.cost(),x.minLevel(),x.prerequisites(),x.major(),x.active(),x.unlocked(),x.available(),x.reason())).toList());}\n }); registered=true; }\n public static void requestSnapshot(){ArenaNetwork.CHANNEL.sendToServer(new ArenaNetwork.SnapshotRequest());}\n public static void requestCatalog(){ArenaNetwork.CHANNEL.sendToServer(new ArenaNetwork.CatalogRequest());}\n public static void requestReload(){ArenaNetwork.CHANNEL.sendToServer(new ArenaNetwork.WeaponActionRequest(ArenaNetwork.WeaponAction.RELOAD));}\n public static void requestCycleFireMode(){ArenaNetwork.CHANNEL.sendToServer(new ArenaNetwork.WeaponActionRequest(ArenaNetwork.WeaponAction.CYCLE_FIREMODE));}\n public static void requestSkillTree(){ArenaNetwork.CHANNEL.sendToServer(new ArenaNetwork.SkillTreeRequest());}\n public static void unlockSkill(String id){if(id!=null&&!id.isBlank()&&id.length()<=64)ArenaNetwork.CHANNEL.sendToServer(new ArenaNetwork.SkillUnlockRequest(id.trim()));}\n public static void buy(String id){if(id!=null&&!id.isBlank()&&id.length()<=128)ArenaNetwork.CHANNEL.sendToServer(new ArenaNetwork.BuyRequest(id.trim()));}\n}\n''')
+          p=Path('client-ui/build.gradle'); p.write_text(p.read_text().replace('dependencies { minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}" }','dependencies {\n minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"\n implementation files(\'libs/gunnerarena-core.jar\')\n}'))
+          p=Path('client-ui/src/main/resources/META-INF/mods.toml'); p.write_text(p.read_text()+'''\n[[dependencies.gunnerarena_ui]]\nmodId="gunnerarena"\nmandatory=true\nversionRange="[0.6.0,)"\nordering="AFTER"\nside="CLIENT"\n''')
+          assert Path('src/main/java/arena/forge/net/ArenaNetwork.java').read_text().count('newSimpleChannel(')==1
+          assert 'newSimpleChannel' not in Path('client-ui/src/main/java/arena/client/net/ArenaClientNetwork.java').read_text()
+          PY
+
+      - name: Bootstrap ForgeGradle and build Core
+        working-directory: ga-build
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/mdk /tmp/mdk.zip
+          curl -fL --retry 3 -o /tmp/mdk.zip https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-mdk.zip
+          mkdir /tmp/mdk && unzip -q /tmp/mdk.zip 'gradlew' 'gradlew.bat' 'gradle/*' -d /tmp/mdk
+          cp /tmp/mdk/gradlew .; cp /tmp/mdk/gradlew.bat .; cp -a /tmp/mdk/gradle .; chmod +x gradlew
+          ./gradlew --no-daemon clean build --stacktrace 2>&1 | tee ../forge-core-build.log
+
+      - name: Build UI against real Core JAR
+        working-directory: ga-build
+        shell: bash
+        run: |
+          set -euo pipefail
+          CORE="$(find build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          mkdir -p client-ui/libs; cp "$CORE" client-ui/libs/gunnerarena-core.jar
+          cp gradlew client-ui/gradlew; cp gradlew.bat client-ui/gradlew.bat; rm -rf client-ui/gradle; cp -a gradle client-ui/gradle; chmod +x client-ui/gradlew
+          (cd client-ui && ./gradlew --no-daemon clean build --stacktrace) 2>&1 | tee ../client-ui-build.log
+
+      - name: Audit and collect exact release content
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf final-artifacts; mkdir -p final-artifacts/server/mods final-artifacts/client/mods final-artifacts/client/resourcepacks
+          CORE="$(find ga-build/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          UI="$(find ga-build/client-ui/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          jar tf "$CORE" | grep -q '^arena/bot/BotBrain.class$'
+          jar tf "$CORE" | grep -q '^arena/bot/BotDirector.class$'
+          jar tf "$CORE" | grep -q '^arena/bot/BotTokenService.class$'
+          ! unzip -p "$UI" META-INF/mods.toml | grep -Fq '${mod_id}'
+          unzip -p "$UI" META-INF/mods.toml | grep -Fq '[[dependencies.gunnerarena_ui]]'
+          unzip -p "$UI" META-INF/mods.toml | grep -Fq 'modId="gunnerarena"'
+          cp "$CORE" final-artifacts/server/mods/; cp "$CORE" "$UI" final-artifacts/client/mods/; cp "$FINAL_RP" final-artifacts/client/resourcepacks/
+          printf 'AI_GUNNER_1_5_CORE=present\nAI_GUNNER_EXTERNAL_CLIENT=not_bundled\nFINAL_RP=%s\n' "$FINAL_RP" > final-artifacts/CONTENT-AUDIT.txt
+
+      - name: Dedicated server smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf ds forge-installer.jar; mkdir ds
+          curl -fL --retry 3 -o forge-installer.jar https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-installer.jar
+          (cd ds && java -jar ../forge-installer.jar --installServer)
+          mkdir -p ds/mods; cp final-artifacts/server/mods/*.jar ds/mods/; echo eula=true > ds/eula.txt
+          cd ds; chmod +x run.sh; ./run.sh nogui > ../dedicated-server-console.log 2>&1 & P=$!
+          R=0; for _ in $(seq 1 180); do [ -f logs/latest.log ] && grep -Fq 'Done (' logs/latest.log && { R=1; break; }; kill -0 $P 2>/dev/null || break; sleep 1; done
+          [ "$R" = 1 ]; grep -Fqi '{gunnerarena}' logs/debug.log; kill $P 2>/dev/null || true; wait $P 2>/dev/null || true; cp logs/latest.log ../dedicated-server-latest.log; cd ..
+
+      - name: Real client smoke Core plus UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v xvfb-run >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y xvfb; }
+          rm -rf cs client-smoke.log; mkdir cs; unzip -q /tmp/mdk.zip -d cs
+          cat > cs/build.gradle <<'EOF'
+          plugins { id 'net.minecraftforge.gradle' version '[6.0,6.2)' }
+          java.toolchain.languageVersion = JavaLanguageVersion.of(17)
+          minecraft { mappings channel:'official', version:'1.20.1'; runs { client { workingDirectory project.file('run'); property 'forge.logging.console.level','info' } } }
+          repositories { mavenCentral() }
+          dependencies { minecraft 'net.minecraftforge:forge:1.20.1-47.4.10' }
+          EOF
+          cat > cs/settings.gradle <<'EOF'
+          pluginManagement { repositories { gradlePluginPortal(); maven { url='https://maven.minecraftforge.net/' } } }
+          rootProject.name='ga-client-smoke'
+          EOF
+          mkdir -p cs/run/mods; cp final-artifacts/client/mods/*.jar cs/run/mods/
+          cd cs; chmod +x gradlew; xvfb-run -a ./gradlew --no-daemon runClient --stacktrace > ../client-smoke.log 2>&1 & P=$!
+          R=0; for _ in $(seq 1 240); do L=run/logs/latest.log; if [ -f "$L" ] && grep -Fq 'Reloading ResourceManager:' "$L" && grep -Fq 'gunnerarena' "$L" && grep -Fq 'gunnerarena_ui' "$L"; then R=1; break; fi; kill -0 $P 2>/dev/null || break; sleep 1; done
+          if [ -f run/logs/latest.log ] && grep -Eqi 'duplicate channel|ModLoadingException|Failed to create mod instance|Exception in thread "Render thread"|Invalid bare key' run/logs/latest.log; then cat run/logs/latest.log; exit 11; fi
+          [ "$R" = 1 ] || { cat ../client-smoke.log; cat run/logs/latest.log 2>/dev/null || true; exit 12; }
+          kill $P 2>/dev/null || true; wait $P 2>/dev/null || true; cp run/logs/latest.log ../client-smoke-latest.log; cd ..
+
+      - name: Assemble FULL
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp dedicated-server-latest.log final-artifacts/DEDICATED-SERVER-SMOKE.log
+          cp client-smoke-latest.log final-artifacts/CLIENT-SMOKE.log
+          cat > final-artifacts/INSTALL.txt <<'EOF'
+          Gunner Arena — Minecraft 1.20.1 / Forge 47.4.10 / Java 17.
+          Core is the sole owner of gunnerarena:ui. Client UI attaches handlers through Core.
+          AI Gunner 1.5 decision/autofill core is included in Core JAR; a separate external Minecraft AI client runtime is not present in this repository and is not claimed as bundled.
+          EOF
+          (cd final-artifacts && find . -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum) > final-artifacts/SHA256SUMS.txt
+          (cd final-artifacts && zip -qr ../KVICloud-GunnerArena-FULL.zip .)
+          unzip -tq KVICloud-GunnerArena-FULL.zip
+          sha256sum KVICloud-GunnerArena-FULL.zip
+
+      - name: Upload FULL
+        uses: actions/upload-artifact@v4
+        with:
+          name: KVICloud-GunnerArena-FULL-v2
+          path: KVICloud-GunnerArena-FULL.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload failure reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunnerArena-v2-failure-reports
+          path: |
+            forge-core-build.log
+            client-ui-build.log
+            dedicated-server-console.log
+            ds/logs/**
+            client-smoke.log
+            cs/run/logs/**
+          if-no-files-found: ignore
+          retention-days: 7
