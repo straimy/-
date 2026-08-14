@@ -83,6 +83,20 @@ jobs:
           s = s.replace('+ " real=" + real + " desired=" + desired', '+ " real=" + realCount + " desired=" + desired')
           p.write_text(s)
 
+          p = Path('client-ui/src/main/java/arena/client/ui/ArenaButton.java')
+          s = p.read_text()
+          s = s.replace('import net.minecraft.client.gui.components.AbstractButton;\n', 'import net.minecraft.client.gui.components.AbstractButton;\nimport net.minecraft.client.gui.narration.NarrationElementOutput;\n')
+          s = s.replace('    @Override public void onPress() { onPress.onPress(this); }\n', '    @Override public void onPress() { onPress.onPress(this); }\n\n    @Override\n    protected void updateWidgetNarration(NarrationElementOutput output) {\n        this.defaultButtonNarrationText(output);\n    }\n')
+          p.write_text(s)
+
+          p = Path('client-ui/src/main/java/arena/client/ui/AbstractArenaScreen.java')
+          s = p.read_text()
+          s = s.replace('    protected final void installNavigation() { ArenaNavigation.install(this, route); }\n', '    protected final void installNavigation() { ArenaNavigation.install(this, route); }\n\n    final ArenaButton addArenaButton(ArenaButton button) {\n        return addRenderableWidget(button);\n    }\n')
+          p.write_text(s)
+
+          p = Path('client-ui/src/main/java/arena/client/ui/ArenaNavigation.java')
+          p.write_text(p.read_text().replace('        screen.addRenderableWidget(button);', '        screen.addArenaButton(button);'))
+
           p = Path('verify-source.sh')
           p.write_text(p.read_text().replace("grep -q 'PacketDistributor.PLAYER.with(player)' src/main/java/arena/forge/net/ArenaNetwork.java", "grep -Fq 'PacketDistributor.PLAYER.with(() -> player)' src/main/java/arena/forge/net/ArenaNetwork.java"))
           PYFIX
