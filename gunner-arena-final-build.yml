@@ -1,0 +1,193 @@
+name: Gunner Arena FINAL Forge Build
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'gunner-arena-forge-1.20.1-0.6.0-test49-SOURCE.zip'
+      - '.github/workflows/gunner-arena-final-build.yml'
+
+permissions:
+  contents: read
+
+env:
+  SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test49-SOURCE.zip
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Verify Java 17
+        shell: bash
+        run: |
+          set -euo pipefail
+          java -version
+          javac -version
+          JAVA_MAJOR="$(java -XshowSettings:properties -version 2>&1 | awk -F'= ' '/^[[:space:]]*java.version = /{print $2; exit}' | cut -d. -f1)"
+          test "$JAVA_MAJOR" = "17" || { echo "::error::Java 17 required, got $JAVA_MAJOR"; exit 2; }
+
+      - name: Require source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "$SOURCE_ZIP" || {
+            echo "::error::Missing $SOURCE_ZIP in repository root"
+            exit 3
+          }
+          sha256sum "$SOURCE_ZIP"
+
+      - name: Unpack source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf ga-build
+          mkdir ga-build
+          unzip -q "$SOURCE_ZIP" -d ga-build
+          chmod +x ga-build/*.sh 2>/dev/null || true
+
+      - name: Run source verification
+        working-directory: ga-build
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -x ./verify-source.sh || { echo "::error::verify-source.sh missing"; exit 4; }
+          ./verify-source.sh
+
+      - name: Bootstrap official Forge 47.4.10 Gradle wrapper
+        working-directory: ga-build
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -x ./gradlew ] || [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
+            rm -rf /tmp/forge-mdk /tmp/forge-mdk.zip
+            curl -fL --retry 3 --retry-delay 2 \
+              -o /tmp/forge-mdk.zip \
+              https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-mdk.zip
+            echo '31133abd261aa4d23672d1820db06ccec80326ad  /tmp/forge-mdk.zip' | sha1sum -c -
+            mkdir -p /tmp/forge-mdk
+            unzip -q /tmp/forge-mdk.zip 'gradlew' 'gradlew.bat' 'gradle/*' -d /tmp/forge-mdk
+            cp /tmp/forge-mdk/gradlew .
+            cp /tmp/forge-mdk/gradlew.bat .
+            cp -a /tmp/forge-mdk/gradle .
+            chmod +x gradlew
+          fi
+          ./gradlew --version
+
+      - name: Build Forge Core
+        working-directory: ga-build
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon clean build --stacktrace
+
+      - name: Bootstrap Client UI wrapper
+        working-directory: ga-build
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d client-ui || { echo "::error::client-ui module missing"; exit 5; }
+          cp gradlew client-ui/gradlew
+          cp gradlew.bat client-ui/gradlew.bat
+          rm -rf client-ui/gradle
+          cp -a gradle client-ui/gradle
+          chmod +x client-ui/gradlew
+
+      - name: Build Client UI
+        working-directory: ga-build/client-ui
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon clean build --stacktrace
+
+      - name: Build resource pack
+        working-directory: ga-build
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -x ./build-resource-pack.sh ]; then
+            ./build-resource-pack.sh
+          fi
+
+      - name: Collect and verify artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf final-artifacts
+          mkdir -p final-artifacts/server/mods final-artifacts/client/mods final-artifacts/client/resourcepacks
+
+          CORE_JAR="$(find ga-build/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | sort | head -n1)"
+          UI_JAR="$(find ga-build/client-ui/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | sort | head -n1)"
+
+          test -n "$CORE_JAR" || { echo '::error::Core JAR not found'; exit 6; }
+          test -n "$UI_JAR" || { echo '::error::UI JAR not found'; exit 7; }
+
+          echo "Core: $CORE_JAR"
+          echo "UI:   $UI_JAR"
+
+          jar tf "$CORE_JAR" | grep -q '^META-INF/mods.toml$'
+          jar tf "$CORE_JAR" | grep -q '^arena/GunnerArenaMod.class$'
+          jar tf "$UI_JAR" | grep -q '^META-INF/mods.toml$'
+
+          cp "$CORE_JAR" final-artifacts/server/mods/
+          cp "$CORE_JAR" final-artifacts/client/mods/
+          cp "$UI_JAR" final-artifacts/client/mods/
+
+          RP="$(find ga-build/dist -maxdepth 1 -type f -name 'KVICloud-GunnerArena-RP-*.zip' | sort | head -n1 || true)"
+          if [ -n "$RP" ]; then
+            cp "$RP" final-artifacts/client/resourcepacks/
+          fi
+
+          cp ga-build/INTEGRATION-MANIFEST.properties final-artifacts/ 2>/dev/null || true
+          cp ga-build/FULL-INTEGRATION-TEST48.md final-artifacts/ 2>/dev/null || true
+          cp ga-build/STAGE1-BLOCKER-TEST49.md final-artifacts/ 2>/dev/null || true
+
+          cat > final-artifacts/INSTALL.txt <<'EOF'
+          KVICloud / Gunner Arena Forge 1.20.1
+
+          SERVER:
+          - install Java 17
+          - put server/mods/*.jar into the server mods folder
+
+          CLIENT:
+          - Forge 1.20.1 / 47.4.10
+          - put client/mods/*.jar into .minecraft/mods
+          - put client/resourcepacks/*.zip into .minecraft/resourcepacks
+
+          IMPORTANT:
+          This Actions artifact proves Forge compilation only.
+          Dedicated-server runtime/smoke testing still has to pass before calling the build production-ready.
+          EOF
+
+          (cd final-artifacts && find . -type f -print0 | sort -z | xargs -0 sha256sum) > final-artifacts/SHA256SUMS.txt
+          find final-artifacts -maxdepth 4 -type f -print | sort
+
+      - name: Upload compiled build
+        uses: actions/upload-artifact@v4
+        with:
+          name: KVICloud-GunnerArena-FINAL-build
+          path: final-artifacts/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Gradle reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunnerArena-build-failure-reports
+          path: |
+            ga-build/build/reports/**
+            ga-build/client-ui/build/reports/**
+          if-no-files-found: ignore
+          retention-days: 7
