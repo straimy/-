@@ -1,0 +1,61 @@
+name: AI Gunner 1.5 CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/ai-gunner-1.5-ci.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout AI Gunner build branch
+        uses: actions/checkout@v4
+        with:
+          ref: ai-gunner-1.5-build
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 8.8
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.8'
+
+      - name: Restore AI Gunner dev10 source
+        shell: bash
+        run: |
+          cat ai-gunner-1.5/dev10-source.part-*.b64 | base64 --decode > /tmp/dev10-source.zip
+          unzip -t /tmp/dev10-source.zip
+          rm -rf /tmp/aigunner
+          mkdir -p /tmp/aigunner
+          unzip -q /tmp/dev10-source.zip -d /tmp/aigunner
+          test -f /tmp/aigunner/ai-gunner-dev10/build.gradle
+          test -f /tmp/aigunner/ai-gunner-dev10/gradle.properties
+
+      - name: Build Forge mod
+        working-directory: /tmp/aigunner/ai-gunner-dev10
+        run: gradle build --stacktrace --no-daemon
+
+      - name: Verify built JAR
+        shell: bash
+        run: |
+          ls -lah /tmp/aigunner/ai-gunner-dev10/build/libs
+          JAR="$(find /tmp/aigunner/ai-gunner-dev10/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*sources*' | head -n1)"
+          test -n "$JAR"
+          unzip -l "$JAR" | grep -q 'META-INF/mods.toml'
+          unzip -p "$JAR" META-INF/mods.toml | grep -q 'modId="ai_gunner"'
+          echo "Built and verified: $JAR"
+
+      - name: Upload AI Gunner JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-gunner-jeg-forge-1.20.1-1.5.0-dev10
+          path: /tmp/aigunner/ai-gunner-dev10/build/libs/*.jar
+          if-no-files-found: error
