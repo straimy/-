@@ -1,0 +1,74 @@
+name: AI Gunner 1.5 Client Launch Smoke v3
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/ai-gunner-1.5-client-smoke-v3.yml'
+
+jobs:
+  launch-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout AI Gunner branch
+        uses: actions/checkout@v4
+        with:
+          ref: ai-gunner-1.5-build
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Gradle 8.8
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.8'
+      - name: Restore dev10 source
+        shell: bash
+        run: |
+          cat ai-gunner-1.5/dev10-source.part-*.b64 | base64 --decode > /tmp/dev10-source.zip
+          rm -rf /tmp/aigunner && mkdir -p /tmp/aigunner
+          unzip -q /tmp/dev10-source.zip -d /tmp/aigunner
+          mkdir -p /tmp/aigunner/ai-gunner-dev10/run-client/mods
+      - name: Fetch JEG runtime dependencies
+        shell: bash
+        run: |
+          set -euxo pipefail
+          MODS=/tmp/aigunner/ai-gunner-dev10/run-client/mods
+          curl -fL --retry 3 -o "$MODS/JustEnoughGuns-0.13.2-1.20.1.jar" 'https://www.cursemaven.com/curse/maven/just-enough-guns-820727/6808139/just-enough-guns-820727-6808139.jar'
+          curl -fL --retry 3 -o "$MODS/framework-forge-1.20.1-0.7.12.jar" 'https://www.cursemaven.com/curse/maven/framework-549225/5911986/framework-549225-5911986.jar'
+          curl -fL --retry 3 -o "$MODS/geckolib-forge-1.20.1-4.4.4.jar" 'https://api.modrinth.com/maven/maven/modrinth/8BmcQJ2H/vv4Q0406/8BmcQJ2H-vv4Q0406.jar'
+          base64 --decode ai-gunner-1.5/deps/instant-respawn-1.20.1.d.b64 > "$MODS/Instant-Respawn-1.20.1.d.jar"
+          jar tf "$MODS/Instant-Respawn-1.20.1.d.jar" >/dev/null
+      - name: Install Xvfb
+        run: sudo apt-get update -qq && sudo apt-get install -y xvfb
+      - name: Launch Forge client without Baritone production jar
+        shell: bash
+        working-directory: /tmp/aigunner/ai-gunner-dev10
+        run: |
+          set +e
+          timeout --signal=TERM 150s xvfb-run -a gradle runClient --no-daemon --stacktrace > /tmp/client-console.log 2>&1
+          CODE=$?
+          set -e
+          cp -f run-client/logs/latest.log /tmp/latest.log 2>/dev/null || true
+          echo "runClient exit code: $CODE"
+          grep -nE 'FATAL|ERROR|Exception|AI Gunner|Just Enough Guns|JEG|Framework|GeckoLib' /tmp/latest.log 2>/dev/null | tail -n 100 || true
+          if grep -Eqi 'ModLoadingException|Missing or unsupported mandatory dependencies|NoClassDefFoundError|Exception in thread "Render thread"|The game crashed whilst|Mixin apply failed' /tmp/client-console.log /tmp/latest.log 2>/dev/null; then
+            echo 'Fatal launch signature found'; exit 1
+          fi
+          if grep -Eqi 'Backend library: LWJGL|Sound engine started|OpenAL initialized|Reloading ResourceManager|Created: .*textures-atlas|Setting user:' /tmp/client-console.log /tmp/latest.log 2>/dev/null; then
+            echo 'Forge client reached runtime initialization without fatal mod-loading crash.'
+          else
+            echo 'Could not prove client runtime initialization.'; exit 1
+          fi
+          if [ "$CODE" -ne 0 ] && [ "$CODE" -ne 124 ]; then exit "$CODE"; fi
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-gunner-dev10-client-smoke-v3-logs
+          path: |
+            /tmp/client-console.log
+            /tmp/latest.log
+          if-no-files-found: ignore
