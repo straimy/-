@@ -77,6 +77,12 @@ jobs:
           p = Path('src/main/java/arena/forge/net/ArenaNetwork.java')
           p.write_text(p.read_text().replace('PacketDistributor.PLAYER.with(player)', 'PacketDistributor.PLAYER.with(() -> player)'))
 
+          p = Path('src/main/java/arena/forge/GunnerCommands.java')
+          s = p.read_text()
+          s = s.replace('        int desired = runtime.bots().desired(real);\n', '        final int realCount = real;\n        int desired = runtime.bots().desired(realCount);\n')
+          s = s.replace('+ " real=" + real + " desired=" + desired', '+ " real=" + realCount + " desired=" + desired')
+          p.write_text(s)
+
           p = Path('verify-source.sh')
           p.write_text(p.read_text().replace("grep -q 'PacketDistributor.PLAYER.with(player)' src/main/java/arena/forge/net/ArenaNetwork.java", "grep -Fq 'PacketDistributor.PLAYER.with(() -> player)' src/main/java/arena/forge/net/ArenaNetwork.java"))
           PYFIX
