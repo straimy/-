@@ -1,0 +1,106 @@
+name: AI Gunner 1.5 Production Forge Smoke v7
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/ai-gunner-1.5-production-smoke-v7.yml'
+
+jobs:
+  production-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      LIBGL_ALWAYS_SOFTWARE: '1'
+      MESA_GL_VERSION_OVERRIDE: '4.5'
+    steps:
+      - name: Checkout AI Gunner branch
+        uses: actions/checkout@v4
+        with:
+          ref: ai-gunner-1.5-build
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Gradle 8.8
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.8'
+      - name: Restore, patch and build AI Gunner dev13
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cat ai-gunner-1.5/dev10-source.part-*.b64 | base64 --decode > /tmp/dev10-source.zip
+          rm -rf /tmp/aigunner /tmp/prodmc
+          mkdir -p /tmp/aigunner /tmp/prodmc/mods
+          unzip -q /tmp/dev10-source.zip -d /tmp/aigunner
+          python3 ai-gunner-1.5/dev11-apply.py
+          python3 ai-gunner-1.5/dev12-apply.py
+          python3 ai-gunner-1.5/dev13-apply.py
+          cd /tmp/aigunner/ai-gunner-dev10
+          gradle build --no-daemon
+          cp build/libs/ai-gunner-jeg-forge-1.20.1-1.5.0-dev13.jar /tmp/prodmc/mods/
+      - name: Install production launcher tooling
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git clone --depth=1 https://github.com/F33RNI/micro-minecraft-launcher.git /tmp/mml
+          python3 -m pip install --user -r /tmp/mml/requirements.txt
+          python3 -m pip install --user /tmp/mml
+          python3 -m mml --version
+      - name: Fetch production runtime mods
+        shell: bash
+        run: |
+          set -euxo pipefail
+          MODS=/tmp/prodmc/mods
+          curl -fL --retry 3 -o /tmp/forge-1.20.1-47.4.10-installer.jar 'https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-installer.jar'
+          curl -fL --retry 3 -o "$MODS/JustEnoughGuns-0.13.2-1.20.1.jar" 'https://www.cursemaven.com/curse/maven/just-enough-guns-820727/6808139/just-enough-guns-820727-6808139.jar'
+          curl -fL --retry 3 -o "$MODS/framework-forge-1.20.1-0.7.12.jar" 'https://www.cursemaven.com/curse/maven/framework-549225/5911986/framework-549225-5911986.jar'
+          curl -fL --retry 3 -o "$MODS/geckolib-forge-1.20.1-4.4.4.jar" 'https://api.modrinth.com/maven/maven/modrinth/8BmcQJ2H/vv4Q0406/8BmcQJ2H-vv4Q0406.jar'
+          curl -fL --retry 3 -o "$MODS/baritone-standalone-forge-1.10.3.jar" 'https://github.com/cabaletta/baritone/releases/download/v1.10.3/baritone-standalone-forge-1.10.3.jar'
+          base64 --decode ai-gunner-1.5/deps/instant-respawn-1.20.1.d.b64 > "$MODS/Instant-Respawn-1.20.1.d.jar"
+          for f in /tmp/forge-1.20.1-47.4.10-installer.jar "$MODS"/*.jar; do test -s "$f"; done
+      - name: Install virtual graphics stack
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y xvfb mesa-utils libgl1-mesa-dri libglx-mesa0
+          xvfb-run -a -s '-screen 0 1280x720x24 +extension GLX +render -noreset' glxinfo -B || true
+      - name: Install exact Forge and launch production client
+        shell: bash
+        run: |
+          set +e
+          timeout --signal=TERM 240s xvfb-run -a -s '-screen 0 1280x720x24 +extension GLX +render -noreset' python3 -m mml \
+            -d /tmp/prodmc \
+            -u SmokeBot \
+            --java-path "$JAVA_HOME/bin/java" \
+            --write-profiles \
+            --run-before "$JAVA_HOME/bin/java -jar /tmp/forge-1.20.1-47.4.10-installer.jar --installClient /tmp/prodmc" \
+            -j='-Xms512M -Xmx2G' \
+            -g='--width 854 --height 480' \
+            --verbose \
+            '1.20.1-forge-47.4.10' > /tmp/production-client.log 2>&1
+          CODE=$?
+          set -e
+          echo "production launcher exit code: $CODE"
+          find /tmp/prodmc -path '*/logs/latest.log' -print -exec cp -f '{}' /tmp/latest-production.log \; 2>/dev/null || true
+          tail -n 300 /tmp/latest-production.log || true
+          if grep -Eqi 'ModLoadingException|Missing or unsupported mandatory dependencies|NoClassDefFoundError|ClassNotFoundException|Mixin apply failed|Exception in thread "Render thread"|The game crashed whilst' /tmp/production-client.log /tmp/latest-production.log 2>/dev/null; then
+            echo 'Fatal production launch signature found'; exit 1
+          fi
+          if grep -Eqi 'Sound engine started|OpenAL initialized|Reloading ResourceManager|Created: .*textures-atlas|Setting user:' /tmp/production-client.log /tmp/latest-production.log 2>/dev/null; then
+            echo 'Production Forge client passed early window and reached game runtime.'
+          else
+            echo 'Did not prove game runtime beyond Forge early window.'; exit 1
+          fi
+          if [ "$CODE" -ne 0 ] && [ "$CODE" -ne 124 ]; then exit "$CODE"; fi
+      - name: Upload production smoke logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-gunner-dev13-production-smoke-v7-logs
+          path: |
+            /tmp/production-client.log
+            /tmp/latest-production.log
+          if-no-files-found: ignore
