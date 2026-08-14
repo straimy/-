@@ -66,12 +66,12 @@ jobs:
           p=Path('/tmp/client-smoke-step.sh'); s=p.read_text()
           anchor='cd cs; chmod +x gradlew\n'
           if anchor not in s: raise SystemExit('client smoke anchor missing')
-          # The built JARs are production/reobfuscated artifacts. A ForgeGradle
-          # userdev runtime uses official mappings, so loading those JARs straight
-          # from run/mods produces false NoSuchMethodError failures (SRG names).
-          # Feed the exact production JARs through fg.deobf before runClient.
           prep="""mkdir -p cs/libs\nfor j in cs/run/mods/*.jar; do\n  if jar tf \"$j\" | grep -q '^arena/GunnerArenaMod.class$'; then\n    cp \"$j\" cs/libs/gunnerarena-core-0.6.0.jar\n  elif jar tf \"$j\" | grep -q '^arena/client/net/ArenaClientNetwork.class$'; then\n    cp \"$j\" cs/libs/gunnerarena-ui-0.6.0.jar\n  fi\ndone\ntest -f cs/libs/gunnerarena-core-0.6.0.jar\ntest -f cs/libs/gunnerarena-ui-0.6.0.jar\nrm -f cs/run/mods/*.jar\ncat >> cs/build.gradle <<'GRADLE'\nrepositories { flatDir { dirs 'libs' } }\ndependencies {\n    runtimeOnly fg.deobf('local:gunnerarena-core:0.6.0')\n    runtimeOnly fg.deobf('local:gunnerarena-ui:0.6.0')\n}\ntasks.configureEach { t ->\n    if (t.name == 'runClient') {\n        t.doFirst {\n            file('build/resources/main').mkdirs()\n            file('build/classes/java/main').mkdirs()\n        }\n    }\n}\nGRADLE\n"""
           s=s.replace(anchor, prep+anchor,1)
+          old="""if [ -f \"$L\" ] && grep -Fq 'Reloading ResourceManager:' \"$L\" && grep -Fq 'gunnerarena' \"$L\" && grep -Fq 'gunnerarena_ui' \"$L\"; then R=1; break; fi"""
+          new="""if [ -f \"$L\" ] && [ -f run/logs/debug.log ] && grep -Fq 'Reloading ResourceManager:' \"$L\" && grep -Fq 'with {gunnerarena} mods' run/logs/debug.log && grep -Fq 'with {gunnerarena_ui} mods' run/logs/debug.log; then R=1; break; fi"""
+          if old not in s: raise SystemExit('client smoke success condition missing')
+          s=s.replace(old,new,1)
           p.write_text(s)
           PY
           bash /tmp/client-smoke-step.sh
