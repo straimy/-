@@ -1,0 +1,102 @@
+name: AI Gunner 1.5 Client Launch Smoke
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/ai-gunner-1.5-client-smoke.yml'
+
+jobs:
+  launch-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout AI Gunner build branch
+        uses: actions/checkout@v4
+        with:
+          ref: ai-gunner-1.5-build
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 8.8
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.8'
+
+      - name: Restore dev10 source
+        shell: bash
+        run: |
+          cat ai-gunner-1.5/dev10-source.part-*.b64 | base64 --decode > /tmp/dev10-source.zip
+          rm -rf /tmp/aigunner
+          mkdir -p /tmp/aigunner
+          unzip -q /tmp/dev10-source.zip -d /tmp/aigunner
+          mkdir -p /tmp/aigunner/ai-gunner-dev10/run-client/mods
+
+      - name: Fetch public runtime dependencies
+        shell: bash
+        run: |
+          set -euxo pipefail
+          MODS=/tmp/aigunner/ai-gunner-dev10/run-client/mods
+          curl -fL --retry 3 -o "$MODS/JustEnoughGuns-0.13.2-1.20.1.jar" \
+            'https://www.cursemaven.com/curse/maven/just-enough-guns-820727/6808139/just-enough-guns-820727-6808139.jar'
+          curl -fL --retry 3 -o "$MODS/framework-forge-1.20.1-0.7.12.jar" \
+            'https://www.cursemaven.com/curse/maven/framework-549225/5911986/framework-549225-5911986.jar'
+          curl -fL --retry 3 -o "$MODS/geckolib-forge-1.20.1-4.4.4.jar" \
+            'https://api.modrinth.com/maven/maven/modrinth/8BmcQJ2H/vv4Q0406/8BmcQJ2H-vv4Q0406.jar'
+          curl -fL --retry 3 -o "$MODS/baritone-standalone-forge-1.10.3.jar" \
+            'https://github.com/cabaletta/baritone/releases/download/v1.10.3/baritone-standalone-forge-1.10.3.jar'
+          test -s "$MODS/JustEnoughGuns-0.13.2-1.20.1.jar"
+          test -s "$MODS/framework-forge-1.20.1-0.7.12.jar"
+          test -s "$MODS/geckolib-forge-1.20.1-4.4.4.jar"
+          test -s "$MODS/baritone-standalone-forge-1.10.3.jar"
+
+      - name: Restore user's Instant Respawn
+        shell: bash
+        env:
+          INSTANT_RESPAWN_B64: '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'
+        run: |
+          MODS=/tmp/aigunner/ai-gunner-dev10/run-client/mods
+          printf '%s' "$INSTANT_RESPAWN_B64" | base64 --decode > "$MODS/Instant-Respawn-1.20.1.d.jar"
+          unzip -t "$MODS/Instant-Respawn-1.20.1.d.jar"
+
+      - name: Install virtual display
+        run: sudo apt-get update -qq && sudo apt-get install -y xvfb
+
+      - name: Launch Forge client under Xvfb
+        shell: bash
+        working-directory: /tmp/aigunner/ai-gunner-dev10
+        run: |
+          set +e
+          timeout --signal=TERM 150s xvfb-run -a gradle runClient --no-daemon --stacktrace > /tmp/client-console.log 2>&1
+          CODE=$?
+          set -e
+          cp -f run-client/logs/latest.log /tmp/latest.log 2>/dev/null || true
+          echo "runClient exit code: $CODE"
+          tail -n 200 /tmp/client-console.log || true
+          if grep -Eqi 'ModLoadingException|Missing or unsupported mandatory dependencies|NoClassDefFoundError|ClassNotFoundException|Mixin.*(ERROR|failed)|Exception in thread "Render thread"|The game crashed whilst' /tmp/client-console.log /tmp/latest.log 2>/dev/null; then
+            echo 'Fatal launch signature found'
+            exit 1
+          fi
+          if grep -Eqi 'Setting user:|Backend library: LWJGL|Sound engine started|Created: .*textures-atlas|OpenAL initialized|Reloading ResourceManager' /tmp/client-console.log /tmp/latest.log 2>/dev/null; then
+            echo 'Forge client reached runtime initialization without fatal mod-loading crash.'
+          else
+            echo 'Could not prove client runtime initialization.'
+            exit 1
+          fi
+          if [ "$CODE" -ne 0 ] && [ "$CODE" -ne 124 ]; then
+            exit "$CODE"
+          fi
+
+      - name: Upload launch logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-gunner-dev10-client-smoke-logs
+          path: |
+            /tmp/client-console.log
+            /tmp/latest.log
+          if-no-files-found: ignore
