@@ -234,9 +234,9 @@ jobs:
             exit 8
           fi
 
-          grep -qi 'gunnerarena' logs/latest.log || {
-            echo '::error::Dedicated server reached Done but Gunner Arena was not observed in Forge log'
-            cat logs/latest.log
+          grep -Fqi 'Found valid mod file' logs/debug.log && grep -Fqi '{gunnerarena}' logs/debug.log || {
+            echo '::error::Dedicated server reached Done but Gunner Arena was not observed as a valid loaded Forge mod'
+            cat logs/debug.log || true
             exit 9
           }
 
