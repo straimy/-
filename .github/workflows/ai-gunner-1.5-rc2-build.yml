@@ -39,6 +39,7 @@ jobs:
           python3 ai-gunner-1.5/rc2-apply.py
           grep -q 'getBoundingBox' /tmp/aigunner/ai-gunner-dev10/src/main/java/ai/gunner/util/AimMath.java
           grep -q 'getBoundingBox' /tmp/aigunner/ai-gunner-dev10/src/main/java/ai/gunner/util/CombatGeometry.java
+          grep -q '0.58' /tmp/aigunner/ai-gunner-dev10/src/main/java/ai/gunner/util/AimMath.java
       - name: Build rc2
         shell: bash
         run: |
