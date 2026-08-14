@@ -197,11 +197,71 @@ jobs:
           cp ga-build/FULL-INTEGRATION-TEST48.md final-artifacts/ 2>/dev/null || true
           cp ga-build/STAGE1-BLOCKER-TEST49.md final-artifacts/ 2>/dev/null || true
 
+      - name: Dedicated Forge server smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf dedicated-smoke forge-installer.jar dedicated-server-console.log
+          mkdir -p dedicated-smoke
+          curl -fL --retry 3 --retry-delay 2 \
+            -o forge-installer.jar \
+            https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-installer.jar
+          (cd dedicated-smoke && java -jar ../forge-installer.jar --installServer)
+          mkdir -p dedicated-smoke/mods
+          cp final-artifacts/server/mods/*.jar dedicated-smoke/mods/
+          echo 'eula=true' > dedicated-smoke/eula.txt
+          chmod +x dedicated-smoke/run.sh
+
+          cd dedicated-smoke
+          ./run.sh nogui > ../dedicated-server-console.log 2>&1 &
+          SERVER_PID=$!
+          READY=0
+          for _ in $(seq 1 180); do
+            if [ -f logs/latest.log ] && grep -Fq 'Done (' logs/latest.log; then
+              READY=1
+              break
+            fi
+            if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+
+          if [ "$READY" -ne 1 ]; then
+            echo '::error::Dedicated Forge server did not reach Done state'
+            cat ../dedicated-server-console.log || true
+            cat logs/latest.log || true
+            exit 8
+          fi
+
+          grep -qi 'gunnerarena' logs/latest.log || {
+            echo '::error::Dedicated server reached Done but Gunner Arena was not observed in Forge log'
+            cat logs/latest.log
+            exit 9
+          }
+
+          if grep -Eqi 'Failed to load mod|ModLoadingException|Exception in thread "main"|Failed to start the minecraft server' logs/latest.log; then
+            echo '::error::Fatal mod/server loading error detected after startup'
+            cat logs/latest.log
+            exit 10
+          fi
+
+          kill "$SERVER_PID" 2>/dev/null || true
+          wait "$SERVER_PID" 2>/dev/null || true
+          cp logs/latest.log ../dedicated-server-latest.log
+          cd ..
+          echo 'DEDICATED_SERVER_SMOKE_OK'
+
+      - name: Assemble FULL release
+        shell: bash
+        run: |
+          set -euo pipefail
           cat > final-artifacts/INSTALL.txt <<'EOF'
           KVICloud / Gunner Arena Forge 1.20.1
 
           SERVER:
-          - install Java 17
+          - Java 17
+          - Forge 1.20.1 / 47.4.10
           - put server/mods/*.jar into the server mods folder
 
           CLIENT:
@@ -209,23 +269,28 @@ jobs:
           - put client/mods/*.jar into .minecraft/mods
           - put client/resourcepacks/*.zip into .minecraft/resourcepacks
 
-          IMPORTANT:
-          This Actions artifact proves Forge compilation only.
-          Dedicated-server runtime/smoke testing still has to pass before calling the build production-ready.
+          BUILD STATUS:
+          - Forge Core compiled
+          - Client UI compiled
+          - Resource Pack assembled
+          - Dedicated Forge 47.4.10 server reached Done with Gunner Arena Core loaded
           EOF
-
-          (cd final-artifacts && find . -type f -print0 | sort -z | xargs -0 sha256sum) > final-artifacts/SHA256SUMS.txt
+          cp dedicated-server-latest.log final-artifacts/DEDICATED-SERVER-SMOKE.log
+          (cd final-artifacts && find . -type f ! -name 'SHA256SUMS.txt' -print0 | sort -z | xargs -0 sha256sum) > final-artifacts/SHA256SUMS.txt
+          rm -f KVICloud-GunnerArena-FULL.zip
+          (cd final-artifacts && zip -qr ../KVICloud-GunnerArena-FULL.zip .)
+          sha256sum KVICloud-GunnerArena-FULL.zip
           find final-artifacts -maxdepth 4 -type f -print | sort
 
-      - name: Upload compiled build
+      - name: Upload FULL build
         uses: actions/upload-artifact@v4
         with:
-          name: KVICloud-GunnerArena-FINAL-build
-          path: final-artifacts/
+          name: KVICloud-GunnerArena-FULL
+          path: KVICloud-GunnerArena-FULL.zip
           if-no-files-found: error
           retention-days: 14
 
-      - name: Upload Gradle reports on failure
+      - name: Upload Gradle/runtime reports on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
@@ -235,5 +300,7 @@ jobs:
             ga-build/client-ui/build/reports/**
             forge-core-build.log
             client-ui-build.log
+            dedicated-server-console.log
+            dedicated-smoke/logs/**
           if-no-files-found: ignore
           retention-days: 7
