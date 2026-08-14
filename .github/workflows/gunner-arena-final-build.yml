@@ -4,14 +4,14 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - 'gunner-arena-forge-1.20.1-0.6.0-test50-BUILDFIX-SOURCE.zip'
+      - 'gunner-arena-forge-1.20.1-0.6.0-test51-VERIFYFIX-SOURCE.zip'
       - '.github/workflows/gunner-arena-final-build.yml'
 
 permissions:
   contents: read
 
 env:
-  SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test50-BUILDFIX-SOURCE.zip
+  SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test51-VERIFYFIX-SOURCE.zip
 
 jobs:
   build:
