@@ -66,7 +66,7 @@ jobs:
           p=Path('/tmp/client-smoke-step.sh'); s=p.read_text()
           anchor='cd cs; chmod +x gradlew\n'
           if anchor not in s: raise SystemExit('client smoke anchor missing')
-          hook="""cat >> build.gradle <<'GRADLE'\ntasks.named('runClient').configure {\n    doFirst {\n        file('build/resources/main').mkdirs()\n        file('build/classes/java/main').mkdirs()\n    }\n}\nGRADLE\n"""
+          hook="""cat >> build.gradle <<'GRADLE'\ntasks.configureEach { t ->\n    if (t.name == 'runClient') {\n        t.doFirst {\n            file('build/resources/main').mkdirs()\n            file('build/classes/java/main').mkdirs()\n        }\n    }\n}\nGRADLE\n"""
           s=s.replace(anchor, anchor+hook,1)
           p.write_text(s)
           PY
