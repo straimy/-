@@ -1,0 +1,95 @@
+name: Gunner Arena FINAL Forge Build v4
+
+on:
+  push:
+    paths:
+      - '.github/workflows/gunner-arena-final-build-v4.yml'
+      - 'gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip'
+      - 'GunnerArena-ResourcePack-1.20.1-v1.zip'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Execute verified v3 pipeline with fixed client harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/extract_step.py <<'PY'
+          import sys
+          from pathlib import Path
+          wanted=sys.argv[1]
+          lines=Path('.github/workflows/gunner-arena-final-build-v3.yml').read_text().splitlines()
+          start=None
+          for i,l in enumerate(lines):
+              if l.strip()==f'- name: {wanted}':
+                  start=i; break
+          if start is None: raise SystemExit(f'step not found: {wanted}')
+          run=None
+          for i in range(start+1,len(lines)):
+              if lines[i].startswith('      - name:'): break
+              if lines[i].strip()=='run: |': run=i+1; break
+          if run is None: raise SystemExit(f'run block not found: {wanted}')
+          out=[]
+          for i in range(run,len(lines)):
+              l=lines[i]
+              if l.startswith('      - name:'): break
+              out.append(l[10:] if l.startswith('          ') else l)
+          print('\n'.join(out).rstrip())
+          PY
+
+          run_root(){ python3 /tmp/extract_step.py "$1" > /tmp/step.sh; bash /tmp/step.sh; }
+          run_ga(){ python3 /tmp/extract_step.py "$1" > /tmp/step.sh; (cd ga-build && bash /tmp/step.sh); }
+
+          run_root 'Verify inputs and unpack source'
+          run_ga 'Apply Forge 47.4.10 and Core/UI integration fixes'
+          run_ga 'Bootstrap ForgeGradle and build Core'
+          run_ga 'Build UI against real Core JAR'
+          run_root 'Audit release payload'
+          run_root 'Dedicated server smoke'
+
+          python3 /tmp/extract_step.py 'Real client smoke with Core and UI JAR' > /tmp/client-smoke-step.sh
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/client-smoke-step.sh'); s=p.read_text()
+          anchor='cd cs; chmod +x gradlew\n'
+          if anchor not in s: raise SystemExit('client smoke anchor missing')
+          s=s.replace(anchor, anchor+'mkdir -p build/resources/main build/classes/java/main\n',1)
+          p.write_text(s)
+          PY
+          bash /tmp/client-smoke-step.sh
+
+          run_root 'Assemble provisional FULL after smoke'
+
+      - name: Upload FULL
+        uses: actions/upload-artifact@v4
+        with:
+          name: KVICloud-GunnerArena-FULL-v4
+          path: KVICloud-GunnerArena-FULL.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload failure reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunnerArena-v4-failure-reports
+          path: |
+            forge-core-build.log
+            client-ui-build.log
+            dedicated-server-console.log
+            dedicated-server-latest.log
+            ds/logs/**
+            client-smoke.log
+            client-smoke-latest.log
+            cs/run/logs/**
+          if-no-files-found: ignore
+          retention-days: 7
