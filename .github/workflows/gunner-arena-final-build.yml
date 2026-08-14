@@ -4,14 +4,14 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - 'gunner-arena-forge-1.20.1-0.6.0-test51-VERIFYFIX-SOURCE.zip'
+      - 'gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip'
       - '.github/workflows/gunner-arena-final-build.yml'
 
 permissions:
   contents: read
 
 env:
-  SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test51-VERIFYFIX-SOURCE.zip
+  SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
 
 jobs:
   build:
@@ -108,7 +108,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ./gradlew --no-daemon clean build --stacktrace --warning-mode all 2>&1 | tee ../../client-ui-build.log --warning-mode all 2>&1 | tee ../forge-core-build.log
+          ./gradlew --no-daemon clean build --stacktrace --warning-mode all 2>&1 | tee ../../client-ui-build.log
 
       - name: Build resource pack
         working-directory: ga-build
