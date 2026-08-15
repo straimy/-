@@ -13,6 +13,7 @@ on:
 
 env:
   SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+  FINAL_RP: GunnerArena-ResourcePack-1.20.1-v1.zip
 
 jobs:
   final:
