@@ -43,8 +43,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          find test54 -maxdepth 3 -type f -print
-          find v4-artifact -maxdepth 4 -type f -print
           CORE="$(find test54 -type f -name 'gunnerarena-0.6.0-test54-gameplayfix.jar' | head -n1)"
           test -n "$CORE"
           jar tf "$CORE" | grep -q '^arena/GunnerArenaMod.class$'
@@ -99,6 +97,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          curl -fL --retry 3 -o /tmp/mdk.zip https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-mdk.zip
+          unzip -tq /tmp/mdk.zip
           python3 /tmp/extract_step.py 'Real client smoke with Core and UI JAR' >/tmp/client-smoke.sh
           python3 - <<'PY'
           from pathlib import Path
