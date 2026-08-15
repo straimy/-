@@ -165,7 +165,7 @@ public final class MinimalGameplayFixes {
     private static int createTntSpawn(CommandSourceStack source) {
         ServerPlayer player; try { player = source.getPlayerOrException(); } catch (Exception ex) { source.sendFailure(Component.literal("[GA] /setspawntnt нужно выполнять игроком.")); return 0; }
         ArmorStand marker = EntityType.ARMOR_STAND.create(player.serverLevel()); if (marker == null) return 0;
-        marker.moveTo(player.getX(), player.getY(), player.getZ(), 0.0F, 0.0F); marker.setInvisible(true); marker.setNoGravity(true); marker.setInvulnerable(true); marker.setMarker(true); marker.addTag(TNT_SPAWN_TAG); marker.setCustomName(Component.literal("GA TNT SPAWN")); player.serverLevel().addFreshEntity(marker);
+        marker.moveTo(player.getX(), player.getY(), player.getZ(), 0.0F, 0.0F); marker.setInvisible(true); marker.setNoGravity(true); marker.setInvulnerable(true); marker.addTag(TNT_SPAWN_TAG); marker.setCustomName(Component.literal("GA TNT SPAWN")); player.serverLevel().addFreshEntity(marker);
         source.sendSuccess(() -> Component.literal("[GA] TNT spawn добавлен • цикл 60 сек • карта не ломается"), false); return 1;
     }
 
