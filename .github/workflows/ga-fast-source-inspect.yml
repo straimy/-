@@ -9,19 +9,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Inspect Gunner Arena loadout and reload sources
+      - name: Build compact ammo/loadout inspection
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf /tmp/ga
-          mkdir /tmp/ga
+          rm -rf /tmp/ga inspection
+          mkdir -p /tmp/ga inspection
           unzip -q gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip -d /tmp/ga
-          echo '=== FILES ==='
-          find /tmp/ga -type f -name '*.java' | sort
-          echo '=== LOADOUT / ROUND / RELOAD MATCHES ==='
-          grep -RniE 'prepareForRound|clearCombatSlots|resetForNewRound|requestReload|reload|magazine|reserve|ammo|revolver|loadout|giveWeapon|equip' /tmp/ga --include='*.java' | head -n 1200 || true
-          echo '=== RELEVANT SOURCE FILES ==='
-          for f in $(grep -RliE 'prepareForRound|clearCombatSlots|requestReload|reload|magazine|reserve|revolver' /tmp/ga --include='*.java' | head -n 40); do
-            echo "----- $f -----"
-            sed -n '1,360p' "$f"
+          OUT=inspection/ammo-loadout-inspection.txt
+          : > "$OUT"
+          for pat in 'requestPlay' 'prepareForRound' 'clearCombatSlots' 'resetForNewRound' 'requestReload' 'reload' 'magazine' 'reserve' 'revolver'; do
+            echo "===== $pat =====" >> "$OUT"
+            grep -Rni -C 24 "$pat" /tmp/ga --include='*.java' >> "$OUT" || true
+            echo >> "$OUT"
           done
+          echo '===== RELEVANT FILENAMES =====' >> "$OUT"
+          grep -RliE 'requestPlay|prepareForRound|clearCombatSlots|resetForNewRound|requestReload|reload|magazine|reserve|revolver' /tmp/ga --include='*.java' | sort >> "$OUT" || true
+          wc -l "$OUT"
+      - name: Upload compact inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: ga-ammo-loadout-inspection
+          path: inspection/ammo-loadout-inspection.txt
+          if-no-files-found: error
+          retention-days: 3
