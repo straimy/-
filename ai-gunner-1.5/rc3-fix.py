@@ -25,12 +25,15 @@ if 'GunnerArenaAdapter.tick();' not in s:
                   '        if (ammoRefresh > 0) ammoRefresh--;\n        GunnerArenaAdapter.tick();\n')
 # Normalize any old field references left by silent replacements.
 s = s.replace('ammoPickup', 'ammoTarget')
+# 1.20.1 Level has two getEntities overloads, so null is ambiguous. Exclude the local player explicitly.
+s = s.replace('mc.level.getEntities(null, self.getBoundingBox().inflate(AIConfig.AMMO_PICKUP_SEARCH_RANGE),',
+              'mc.level.getEntities(self, self.getBoundingBox().inflate(AIConfig.AMMO_PICKUP_SEARCH_RANGE),')
 p.write_text(s)
 
 # Hard assertions so CI fails before Gradle if rc3 is incomplete.
 checks = {
     'AIConfig.java': ['POST_RESPAWN_PLAY_DELAY_TICKS'],
-    'CombatBrain.java': ['GunnerArenaAdapter', 'private Entity ammoTarget', 'findAmmoDestination', 'item_spawner', 'needsPlayAfterRespawn'],
+    'CombatBrain.java': ['GunnerArenaAdapter', 'private Entity ammoTarget', 'findAmmoDestination', 'item_spawner', 'needsPlayAfterRespawn', 'mc.level.getEntities(self,'],
     '../integration/GunnerArenaAdapter.java': ['ArenaNetwork$BuyRequest', 'jeg:semi_auto_pistol', 'jeg:custom_smg'],
 }
 for rel, needles in checks.items():
