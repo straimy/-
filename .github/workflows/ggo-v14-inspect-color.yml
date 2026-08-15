@@ -1,0 +1,30 @@
+name: GGO v14 inspect JEG color hooks
+on:
+  push:
+    paths: ['.github/workflows/ggo-v14-inspect-color.yml']
+  workflow_dispatch:
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect JEG color NBT
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p inspection
+          curl -fL --retry 3 -o /tmp/jeg.jar 'https://mediafilez.forgecdn.net/files/6808/139/JustEnoughGuns-0.13.2-1.20.1.jar'
+          OUT=inspection/color.txt
+          for C in ttv.migami.jeg.item.IColored ttv.migami.jeg.client.GunItemStackRenderer ttv.migami.jeg.client.render.gun.animated.AnimatedGunRenderer ttv.migami.jeg.common.Gun ttv.migami.jeg.item.attachment.IAttachment\$Type; do
+            echo "=== $C ===" >> "$OUT"
+            javap -classpath /tmp/jeg.jar -p -c -s "$C" >> "$OUT" 2>&1 || true
+          done
+          echo '=== classes referencing Cosmetics/Color/Paint ===' >> "$OUT"
+          for C in $(jar tf /tmp/jeg.jar | grep '\.class$' | sed 's#/#.#g;s#.class$##' | grep -Ei 'render.*gun|GunItem|Attachment' | head -n 60); do
+            javap -classpath /tmp/jeg.jar -p -c "$C" 2>/dev/null | grep -Ei -B4 -A8 'Cosmetics|Color|Paint|Dye|GunColor' && echo "--- $C ---" || true
+          done >> "$OUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ggo-v14-color-hooks
+          path: inspection/color.txt
+          retention-days: 2
