@@ -1,0 +1,243 @@
+name: GunGloryOnline v12
+
+on:
+  push:
+    paths:
+      - '.github/workflows/gun-glory-online-v12.yml'
+      - 'hotfix/MinimalGameplayFixes.java'
+      - 'hotfix/RoundLoadoutGuard.java'
+      - 'hotfix/GunGloryGameplay.java'
+      - 'hotfix/AuthSecurityGuard.java'
+      - 'hotfix/ui/**'
+  workflow_dispatch:
+
+env:
+  SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Prepare authenticated base source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat >/tmp/extract.py <<'PY'
+          import sys
+          from pathlib import Path
+          wf=Path(sys.argv[1]); wanted=sys.argv[2]
+          lines=wf.read_text().splitlines()
+          start=next((i for i,l in enumerate(lines) if l.strip()==f'- name: {wanted}'),None)
+          if start is None: raise SystemExit('step not found: '+wanted)
+          run=None
+          for i in range(start+1,len(lines)):
+              if lines[i].startswith('      - name:') or lines[i].startswith('      - uses:'): break
+              if lines[i].strip()=='run: |': run=i+1; break
+          if run is None: raise SystemExit('run block missing: '+wanted)
+          out=[]
+          for i in range(run,len(lines)):
+              l=lines[i]
+              if l.startswith('      - name:') or l.startswith('      - uses:'): break
+              out.append(l[10:] if l.startswith('          ') else l)
+          print('\n'.join(out).rstrip())
+          PY
+          python3 /tmp/extract.py .github/workflows/ga-hotfix-auth-menu-npc.yml 'Prepare patched source' >/tmp/auth.sh
+          bash /tmp/auth.sh
+
+      - name: Apply GunGloryOnline v12 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ga-build/src/main/java/arena/forge ga-build/client-ui/src/main/java/arena/client/ui
+          cp hotfix/MinimalGameplayFixes.java ga-build/src/main/java/arena/forge/MinimalGameplayFixes.java
+          cp hotfix/RoundLoadoutGuard.java ga-build/src/main/java/arena/forge/RoundLoadoutGuard.java
+          cp hotfix/GunGloryGameplay.java ga-build/src/main/java/arena/forge/GunGloryGameplay.java
+          cp hotfix/AuthSecurityGuard.java ga-build/src/main/java/arena/forge/AuthSecurityGuard.java
+          cp hotfix/ui/ShopScreen.java ga-build/client-ui/src/main/java/arena/client/ui/ShopScreen.java
+          cp hotfix/ui/MainArenaScreen.java ga-build/client-ui/src/main/java/arena/client/ui/MainArenaScreen.java
+          cp hotfix/ui/UiTheme.java ga-build/client-ui/src/main/java/arena/client/ui/UiTheme.java
+          cp hotfix/ui/GunnerArenaUiMod.java ga-build/client-ui/src/main/java/arena/client/ui/GunnerArenaUiMod.java
+          cp hotfix/ui/WeaponNames.java ga-build/client-ui/src/main/java/arena/client/ui/WeaponNames.java
+          cp hotfix/ui/SkillsScreen.java ga-build/client-ui/src/main/java/arena/client/ui/SkillsScreen.java
+          cp hotfix/ui/LobbyShopScreen.java ga-build/client-ui/src/main/java/arena/client/ui/LobbyShopScreen.java
+          cp hotfix/ui/PlayerStatusOverlay.java ga-build/client-ui/src/main/java/arena/client/ui/PlayerStatusOverlay.java
+          python3 hotfix/apply_v6_runtime_patch.py
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          # 1. remove duplicate round/loadout reset before requestPlay and automatic shop popup.
+          p=Path('ga-build/src/main/java/arena/forge/MinimalGameplayFixes.java'); s=p.read_text()
+          bad='''            runtime.forgeLoadouts().clearCombatSlots(player);\n            runtime.players().roundSession(player).resetForNewRound(500);\n            boolean spawned = runtime.players().requestPlay(server, player, runtime.rounds().state(), runtime.rounds().roundNumber(), now);'''
+          good='''            // requestPlay -> prepareForRound owns round reset/loadout initialization exactly once.\n            boolean spawned = runtime.players().requestPlay(server, player, runtime.rounds().state(), runtime.rounds().roundNumber(), now);'''
+          if bad in s: s=s.replace(bad,good,1)
+          s=s.replace('LAST_NO_SPAWN_WARN.remove(player.getUUID()); ArenaNetwork.openUi(player, ArenaNetwork.UiTarget.SHOP); player.sendSystemMessage(Component.literal("[GA] Ты в игре • $500 • выбери оружие.").withStyle(ChatFormatting.AQUA));',
+                      'LAST_NO_SPAWN_WARN.remove(player.getUUID()); player.sendSystemMessage(Component.literal("[GGO] Ты в игре • $500 • G — магазин оружия").withStyle(ChatFormatting.AQUA));')
+          p.write_text(s)
+
+          # 2. 5 second spawn protection.
+          p=Path('ga-build/src/main/java/arena/forge/player/ArenaPlayerManager.java'); s=p.read_text()
+          s=s.replace('public static final long SPAWN_PROTECTION_TICKS = 20L * 3L;', 'public static final long SPAWN_PROTECTION_TICKS = 20L * 5L;')
+          s=s.replace('[GA] Spawn protection: 3s', '[GGO] Бессмертие 5с • G — магазин оружия')
+          p.write_text(s)
+
+          # 3. Skill unlock: slow free TP still works; crystals can accelerate a missing-points unlock.
+          p=Path('ga-build/src/main/java/arena/forge/net/ArenaNetwork.java'); s=p.read_text()
+          old='''                var result=runtime.rpg().unlock(profile,packet.id);\n                if(result.ok()) { runtime.profiles().markDirty(player.getUUID()); player.sendSystemMessage(Component.literal("[GA] Навык открыт: "+result.skill().name())); }\n                else player.sendSystemMessage(Component.literal("[GA] Навык недоступен: "+result.code()));'''
+          new='''                var result=runtime.rpg().unlock(profile,packet.id);\n                boolean paidWithCrystals=false;\n                int crystalCost=0;\n                if(!result.ok() && result.code()==arena.rpg.RpgService.UnlockCode.NOT_ENOUGH_POINTS && result.skill()!=null) {\n                    crystalCost=Math.max(1,(result.skill().cost()+9)/10);\n                    if(profile.crystals>=crystalCost) {\n                        int savedPoints=profile.skillPoints;\n                        profile.skillPoints=Math.max(profile.skillPoints,result.skill().cost());\n                        result=runtime.rpg().unlock(profile,packet.id);\n                        profile.skillPoints=savedPoints;\n                        if(result.ok()) { profile.crystals-=crystalCost; paidWithCrystals=true; }\n                    }\n                }\n                if(result.ok()) { runtime.profiles().markDirty(player.getUUID()); player.sendSystemMessage(Component.literal("[GGO] Навык открыт: "+result.skill().name()+(paidWithCrystals?" • -"+crystalCost+"◆":""))); }\n                else player.sendSystemMessage(Component.literal("[GGO] Навык недоступен: "+result.code()));'''
+          if old not in s: raise SystemExit('skill unlock block missing')
+          p.write_text(s.replace(old,new,1))
+
+          # 4. Normal navigation Shop is lobby/cosmetics; weapon shop is server-opened via /gunshop (G).
+          p=Path('ga-build/client-ui/src/main/java/arena/client/ui/ArenaNavigation.java'); s=p.read_text()
+          s=s.replace('case SHOP -> mc.setScreen(new ShopScreen());','case SHOP -> mc.setScreen(new LobbyShopScreen());')
+          p.write_text(s)
+
+          # 5. Product branding, keep stable mod IDs for compatibility.
+          for q in [Path('ga-build/src/main/resources/META-INF/mods.toml'), Path('ga-build/client-ui/src/main/resources/META-INF/mods.toml')]:
+              if q.exists():
+                  t=q.read_text(); t=t.replace('Gunner Arena UI','GunGloryOnline UI').replace('Gunner Arena','GunGloryOnline').replace('KVICloud','GunGloryOnline'); q.write_text(t)
+          gp=Path('ga-build/gradle.properties'); g=gp.read_text()
+          for oldv in ('mod_version=0.6.0-test53-authfix','mod_version=0.6.0-test54-gameplayfix','mod_version=0.6.0-test55-polish','mod_version=0.6.0-test56-sessionfix','mod_version=0.6.0-test56-ammofix','mod_version=0.6.0-test52-grepfix'):
+              g=g.replace(oldv,'mod_version=0.7.0-gungloryonline-v12')
+          gp.write_text(g)
+          PY
+          grep -q '20L \* 5L' ga-build/src/main/java/arena/forge/player/ArenaPlayerManager.java
+          grep -q 'profile.crystals>=crystalCost' ga-build/src/main/java/arena/forge/net/ArenaNetwork.java
+          grep -q 'GLFW_KEY_G' ga-build/client-ui/src/main/java/arena/client/ui/GunnerArenaUiMod.java
+          ! grep -q 'GLFW_KEY_R' ga-build/client-ui/src/main/java/arena/client/ui/GunnerArenaUiMod.java
+          ! grep -B3 'boolean spawned = runtime.players().requestPlay' ga-build/src/main/java/arena/forge/MinimalGameplayFixes.java | grep -q 'resetForNewRound\|clearCombatSlots'
+          ! grep -q 'ArenaNetwork.openUi(player, ArenaNetwork.UiTarget.SHOP)' ga-build/src/main/java/arena/forge/MinimalGameplayFixes.java
+
+      - name: Bootstrap ForgeGradle and build Core
+        working-directory: ga-build
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/mdk /tmp/mdk.zip
+          curl -fL --retry 3 -o /tmp/mdk.zip https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-mdk.zip
+          mkdir /tmp/mdk
+          unzip -q /tmp/mdk.zip 'gradlew' 'gradlew.bat' 'gradle/*' -d /tmp/mdk
+          cp /tmp/mdk/gradlew .; cp /tmp/mdk/gradlew.bat .; cp -a /tmp/mdk/gradle .; chmod +x gradlew
+          ./gradlew --no-daemon clean build --stacktrace 2>&1 | tee ../v12-core-build.log
+
+      - name: Build UI against real Core
+        working-directory: ga-build
+        shell: bash
+        run: |
+          set -euo pipefail
+          CORE="$(find build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          test -n "$CORE"
+          mkdir -p client-ui/libs; cp "$CORE" client-ui/libs/gunnerarena-core.jar
+          cp gradlew client-ui/gradlew; cp gradlew.bat client-ui/gradlew.bat; rm -rf client-ui/gradle; cp -a gradle client-ui/gradle; chmod +x client-ui/gradlew
+          (cd client-ui && ./gradlew --no-daemon clean build --stacktrace) 2>&1 | tee ../v12-ui-build.log
+
+      - name: Prepare product payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf final-artifacts; mkdir -p final-artifacts/server/mods final-artifacts/client/mods
+          CORE="$(find ga-build/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          UI="$(find ga-build/client-ui/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          cp "$CORE" final-artifacts/server/mods/gungloryonline-core-0.7.0-v12.jar
+          cp "$CORE" final-artifacts/client/mods/gungloryonline-core-0.7.0-v12.jar
+          cp "$UI" final-artifacts/client/mods/gungloryonline-ui-0.7.0-v12.jar
+          cmp final-artifacts/server/mods/gungloryonline-core-0.7.0-v12.jar final-artifacts/client/mods/gungloryonline-core-0.7.0-v12.jar
+
+      - name: Dedicated server smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gunner-arena-final-build-v3.yml 'Dedicated server smoke' >/tmp/server-smoke.sh
+          bash /tmp/server-smoke.sh
+
+      - name: Real Forge client smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 -o /tmp/mdk.zip https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-mdk.zip
+          python3 /tmp/extract.py .github/workflows/gunner-arena-final-build-v3.yml 'Real client smoke with Core and UI JAR' >/tmp/client-smoke.sh
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/client-smoke.sh'); s=p.read_text()
+          anchor='cd cs; chmod +x gradlew\n'
+          if anchor not in s: raise SystemExit('client smoke anchor missing')
+          prep="""mkdir -p cs/libs\nfor j in cs/run/mods/*.jar; do\n  if jar tf \"$j\" | grep -q '^arena/GunnerArenaMod.class$'; then cp \"$j\" cs/libs/gunnerarena-core-0.6.0.jar;\n  elif jar tf \"$j\" | grep -q '^arena/client/net/ArenaClientNetwork.class$'; then cp \"$j\" cs/libs/gunnerarena-ui-0.6.0.jar; fi\ndone\ntest -f cs/libs/gunnerarena-core-0.6.0.jar\ntest -f cs/libs/gunnerarena-ui-0.6.0.jar\nrm -f cs/run/mods/*.jar\ncat >> cs/build.gradle <<'GRADLE'\nrepositories { flatDir { dirs 'libs' } }\ndependencies { runtimeOnly fg.deobf('local:gunnerarena-core:0.6.0'); runtimeOnly fg.deobf('local:gunnerarena-ui:0.6.0') }\ntasks.configureEach { t -> if (t.name == 'runClient') { t.doFirst { file('build/resources/main').mkdirs(); file('build/classes/java/main').mkdirs() } } }\nGRADLE\n"""
+          s=s.replace(anchor,prep+anchor,1)
+          old="""if [ -f \"$L\" ] && grep -Fq 'Reloading ResourceManager:' \"$L\" && grep -Fq 'gunnerarena' \"$L\" && grep -Fq 'gunnerarena_ui' \"$L\"; then R=1; break; fi"""
+          new="""if [ -f \"$L\" ] && [ -f run/logs/debug.log ] && grep -Fq 'Reloading ResourceManager:' \"$L\" && grep -Fq 'with {gunnerarena} mods' run/logs/debug.log && grep -Fq 'with {gunnerarena_ui} mods' run/logs/debug.log; then R=1; break; fi"""
+          if old not in s: raise SystemExit('client condition missing')
+          p.write_text(s.replace(old,new,1))
+          PY
+          bash /tmp/client-smoke.sh
+
+      - name: Final v12 audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          CORE=final-artifacts/server/mods/gungloryonline-core-0.7.0-v12.jar
+          UI=final-artifacts/client/mods/gungloryonline-ui-0.7.0-v12.jar
+          jar tf "$CORE" | grep -q '^arena/forge/GunGloryGameplay.class$'
+          jar tf "$CORE" | grep -q '^arena/forge/AuthSecurityGuard.class$'
+          jar tf "$CORE" | grep -q '^arena/forge/RoundLoadoutGuard.class$'
+          jar tf "$UI" | grep -q '^arena/client/ui/SkillsScreen.class$'
+          jar tf "$UI" | grep -q '^arena/client/ui/LobbyShopScreen.class$'
+          jar tf "$UI" | grep -q '^arena/client/ui/PlayerStatusOverlay.class$'
+          grep -q 'GunGloryOnline' hotfix/ui/MainArenaScreen.java
+          grep -q 't.me/GunGloryOnline' hotfix/ui/MainArenaScreen.java
+          grep -q 'GLFW_KEY_G' hotfix/ui/GunnerArenaUiMod.java
+          grep -q 'MAX_ATTEMPTS = 5' hotfix/AuthSecurityGuard.java
+          cat > final-artifacts/VERIFICATION.txt <<'EOF'
+          BRAND=GunGloryOnline
+          TELEGRAM=t.me/GunGloryOnline
+          SERVER_SMOKE=PASS
+          CLIENT_SMOKE=PASS
+          MAP_REGEN_DUPLICATE_LOADOUT_RESET=REMOVED
+          JEG_NATIVE_R_RELOAD=UNCHANGED
+          WEAPON_SHOP_HOTKEY=G_SERVER_GATED_ALIVE_ONLY
+          AUTO_WEAPON_SHOP_ON_SPAWN=REMOVED
+          SPAWN_PROTECTION_SECONDS=5
+          PLAYER_HP_AND_PROTECTION_OVERLAY=BUILT
+          SKILL_UI=COMPACT_2_COLUMNS
+          AUTO_SKILL_POINT=1_PER_20_ACTIVE_MINUTES
+          AUTO_CRYSTAL=1_PER_30_ACTIVE_MINUTES
+          SKILL_CRYSTAL_ACCELERATION=BUILT
+          AUTH_IDLE_TIMEOUT_SECONDS=120
+          AUTH_MAX_ATTEMPTS=5
+          TELEGRAM_2FA=NOT_INCLUDED_SECURITY_BRIDGE_REQUIRED
+          LOBBY_SKINS=PROTOTYPE_UI_ONLY_NOT_FAKE_ENABLED
+          EOF
+          sha256sum final-artifacts/server/mods/* final-artifacts/client/mods/* > final-artifacts/SHA256SUMS.txt
+
+      - name: Upload verified release
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-v12-verified
+          path: final-artifacts/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-v12-diagnostics
+          path: |
+            v12-core-build.log
+            v12-ui-build.log
+            dedicated-server-console.log
+            dedicated-server-latest.log
+            client-smoke.log
+            client-smoke-latest.log
+            ds/logs/**
+            cs/run/logs/**
+            cs/run/crash-reports/**
+          if-no-files-found: ignore
+          retention-days: 7
