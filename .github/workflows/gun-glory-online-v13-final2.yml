@@ -1,0 +1,160 @@
+name: GunGloryOnline v13 FINAL2
+on:
+  push:
+    paths: ['.github/workflows/gun-glory-online-v13-final2.yml']
+  workflow_dispatch:
+env:
+  SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+  FINAL_RP: GunnerArena-ResourcePack-1.20.1-v1.zip
+jobs:
+  final:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with: {distribution: temurin, java-version: '17'}
+      - name: Prepare proven v12 base
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat >/tmp/extract.py <<'PY'
+          import sys
+          from pathlib import Path
+          wf=Path(sys.argv[1]); wanted=sys.argv[2]; lines=wf.read_text().splitlines()
+          start=next(i for i,l in enumerate(lines) if l.strip()==f'- name: {wanted}')
+          run=next(i+1 for i in range(start+1,len(lines)) if lines[i].strip()=='run: |')
+          out=[]
+          for i in range(run,len(lines)):
+              l=lines[i]
+              if l.startswith('      - name:') or l.startswith('      - uses:'): break
+              out.append(l[10:] if l.startswith('          ') else l)
+          print('\n'.join(out).rstrip())
+          PY
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v12.yml 'Prepare authenticated base source' >/tmp/v12-prep.sh
+          bash /tmp/v12-prep.sh
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v12.yml 'Apply GunGloryOnline v12 patch' >/tmp/v12-apply.sh
+          bash /tmp/v12-apply.sh
+      - name: Apply v13 patch directly
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp hotfix/CompassMenuFix.java ga-build/src/main/java/arena/forge/CompassMenuFix.java
+          cp hotfix/CosmeticCommands.java ga-build/src/main/java/arena/forge/CosmeticCommands.java
+          cp hotfix/ui/UiLayout.java ga-build/client-ui/src/main/java/arena/client/ui/UiLayout.java
+          cp hotfix/ui/GunnerArenaUiMod.java ga-build/client-ui/src/main/java/arena/client/ui/GunnerArenaUiMod.java
+          cp hotfix/ui/SkillsScreen.java ga-build/client-ui/src/main/java/arena/client/ui/SkillsScreen.java
+          cp hotfix/ui/LobbyShopScreen.java ga-build/client-ui/src/main/java/arena/client/ui/LobbyShopScreen.java
+          cp hotfix/ui/JegMetaLoaderMixin.java ga-build/client-ui/src/main/java/arena/client/ui/JegMetaLoaderMixin.java
+          cp hotfix/ui/gungloryonline.mixins.json ga-build/client-ui/src/main/resources/gungloryonline.mixins.json
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          pp=next(Path('ga-build/src/main/java').rglob('PlayerProfile.java')); s=pp.read_text()
+          if 'equippedSkin' not in s:
+              a='public String specialization = "NONE";'
+              s=s.replace(a,a+'\n    public java.util.Set<String> cosmetics = new java.util.LinkedHashSet<>();\n    public String equippedSkin = "NONE";',1); pp.write_text(s)
+          ps=next(Path('ga-build/src/main/java').rglob('ProfileStorage.java')); s=ps.read_text()
+          if 'equippedSkin' not in s:
+              la='profile.specialization = p.getProperty("specialization", "NONE");'
+              sa='p.setProperty("specialization", profile.specialization == null ? "NONE" : profile.specialization);'
+              s=s.replace(la,la+'\n        profile.equippedSkin = p.getProperty("equippedSkin", "NONE");\n        String ownedCosmetics = p.getProperty("cosmetics", "");\n        if (!ownedCosmetics.isBlank()) for (String c : ownedCosmetics.split(",")) if (!c.isBlank()) profile.cosmetics.add(c.trim());',1)
+              s=s.replace(sa,sa+'\n        p.setProperty("equippedSkin", profile.equippedSkin == null ? "NONE" : profile.equippedSkin);\n        p.setProperty("cosmetics", String.join(",", profile.cosmetics));',1); ps.write_text(s)
+          mt=Path('ga-build/client-ui/src/main/resources/META-INF/mods.toml'); s=mt.read_text()
+          if 'gungloryonline.mixins.json' not in s: mt.write_text(s+'\n[[mixins]]\nconfig="gungloryonline.mixins.json"\n')
+          gp=Path('ga-build/gradle.properties'); gp.write_text(re.sub(r'mod_version=0\.7\.0-gungloryonline-v12','mod_version=0.7.1-gungloryonline-v13',gp.read_text()))
+          PY
+      - name: Build Core
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v12.yml 'Bootstrap ForgeGradle and build Core' >/tmp/core.sh
+          (cd ga-build && bash /tmp/core.sh)
+      - name: Build UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v12.yml 'Build UI against real Core' >/tmp/ui.sh
+          (cd ga-build && bash /tmp/ui.sh)
+      - name: Prepare payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf final-artifacts; mkdir -p final-artifacts/server/mods final-artifacts/client/mods
+          CORE="$(find ga-build/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          UI="$(find ga-build/client-ui/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          cp "$CORE" final-artifacts/server/mods/gungloryonline-core-0.7.1-v13.jar
+          cp "$CORE" final-artifacts/client/mods/gungloryonline-core-0.7.1-v13.jar
+          cp "$UI" final-artifacts/client/mods/gungloryonline-ui-0.7.1-v13.jar
+          cmp final-artifacts/server/mods/gungloryonline-core-0.7.1-v13.jar final-artifacts/client/mods/gungloryonline-core-0.7.1-v13.jar
+          jar tf "$CORE" | grep -q '^arena/forge/CompassMenuFix.class$'
+          jar tf "$CORE" | grep -q '^arena/forge/CosmeticCommands.class$'
+          jar tf "$UI" | grep -q '^arena/client/ui/JegMetaLoaderMixin.class$'
+          jar tf "$UI" | grep -q '^gungloryonline.mixins.json$'
+      - name: Dedicated server smoke direct
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf ds forge-installer.jar; mkdir ds
+          curl -fL --retry 3 -o forge-installer.jar https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-installer.jar
+          java -jar forge-installer.jar --installServer ds >/tmp/forge-install.log 2>&1
+          echo 'eula=true' > ds/eula.txt; mkdir -p ds/mods
+          cp final-artifacts/server/mods/gungloryonline-core-0.7.1-v13.jar ds/mods/
+          (cd ds && timeout 100s java -Xms512M -Xmx1G @libraries/net/minecraftforge/forge/1.20.1-47.4.10/unix_args.txt nogui) > dedicated-server-console.log 2>&1 || CODE=$?
+          test -f ds/logs/latest.log; grep -Fq 'Done (' ds/logs/latest.log
+          ! grep -Eq 'Exception in server tick loop|Failed to start the minecraft server|Duplicate key gunnerarena:ui' ds/logs/latest.log
+      - name: Real Forge client smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v12.yml 'Real Forge client smoke' >/tmp/client.sh
+          bash /tmp/client.sh
+      - name: Final audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          CORE=final-artifacts/server/mods/gungloryonline-core-0.7.1-v13.jar; UI=final-artifacts/client/mods/gungloryonline-ui-0.7.1-v13.jar
+          grep -q 'List.copyOf(registry.getValues())' hotfix/ui/JegMetaLoaderMixin.java
+          grep -q 'GLFW_KEY_M' hotfix/ui/GunnerArenaUiMod.java
+          grep -q 'GLFW_KEY_G' hotfix/ui/GunnerArenaUiMod.java
+          grep -q 'skinbuy' hotfix/CosmeticCommands.java
+          grep -q 'ПРОКАЧАТЬ' hotfix/ui/SkillsScreen.java
+          unzip -p "$UI" META-INF/mods.toml | grep -q 'gungloryonline.mixins.json'
+          cat > final-artifacts/VERIFICATION.txt <<'EOF'
+          GUNGLORYONLINE_V13=PASS
+          CORE_BUILD=PASS
+          UI_BUILD=PASS
+          SERVER_SMOKE=PASS
+          CLIENT_SMOKE=PASS
+          RESPONSIVE_LAYOUT=BUILT
+          SPAWN_MENU_KEY=M
+          ARENA_WEAPON_SHOP_KEY=G
+          SPAWN_COMPASS_FIX=BUILT
+          PERMANENT_CRYSTAL_COSMETICS=BUILT
+          SKILL_UPGRADE_BUTTON=BUILT
+          JEG_DISCONNECT_CME_GUARD=BUILT_TARGETED_MIXIN
+          NOTE=Live disconnect with the user's custom JEG remains the final real-world validation.
+          EOF
+          cat > final-artifacts/REMOVE-OLD-JARS.txt <<'EOF'
+          Delete ALL previous GunnerArena/GunGloryOnline Core and UI jars before installing v13.
+          Specifically remove gunnerarena-0.6.0-test54-gameplayfix.jar and gunnerarena_ui-0.6.0-test54-compatible.jar if present.
+          Client: exactly one v13 Core + one v13 UI. Server: exactly one v13 Core.
+          EOF
+          sha256sum final-artifacts/server/mods/* final-artifacts/client/mods/* > final-artifacts/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-v13-verified
+          path: final-artifacts/**
+          if-no-files-found: error
+          retention-days: 30
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-v13-final2-diagnostics
+          path: |
+            dedicated-server-console.log
+            ds/logs/**
+            cs/run/logs/**
+            cs/run/crash-reports/**
+          if-no-files-found: ignore
+          retention-days: 7
