@@ -8,18 +8,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Inspect JEG MetaLoader and UI layout
+      - name: Inspect JEG MetaLoader paintjobs and UI layout
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p inspection
-          JEG="$(find . -maxdepth 2 -type f -name '*JEG*changes*.jar' | head -n1 || true)"
-          if [ -z "$JEG" ]; then
-            curl -fL --retry 3 -o /tmp/jeg.jar 'https://mediafilez.forgecdn.net/files/6808/139/JustEnoughGuns-0.13.2-1.20.1.jar'
-            JEG=/tmp/jeg.jar
-          fi
+          curl -fL --retry 3 -o /tmp/jeg.jar 'https://mediafilez.forgecdn.net/files/6808/139/JustEnoughGuns-0.13.2-1.20.1.jar'
+          JEG=/tmp/jeg.jar
           echo "JEG=$JEG" > inspection/v13.txt
           javap -classpath "$JEG" -p -c -s ttv.migami.jeg.client.MetaLoader >> inspection/v13.txt 2>&1 || true
+          echo '=== PAINT CLASSES ===' >> inspection/v13.txt
+          jar tf "$JEG" | grep -Ei 'paint|skin|dye' | head -n 150 >> inspection/v13.txt || true
+          for C in $(jar tf "$JEG" | grep -Ei 'paint.*class$|Paint.*class$' | sed 's#/#.#g;s#.class$##' | head -n 15); do
+            echo "--- $C ---" >> inspection/v13.txt
+            javap -classpath "$JEG" -p -s "$C" >> inspection/v13.txt 2>&1 || true
+          done
           unzip -q -o gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip -d /tmp/ga
           echo '=== UILAYOUT ===' >> inspection/v13.txt
           sed -n '1,320p' /tmp/ga/client-ui/src/main/java/arena/client/ui/UiLayout.java >> inspection/v13.txt || true
