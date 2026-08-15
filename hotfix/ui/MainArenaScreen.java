@@ -7,7 +7,7 @@ import net.minecraft.network.chat.Component;
 
 public final class MainArenaScreen extends AbstractArenaScreen {
     private ArenaButton playButton;
-    public MainArenaScreen() { super(Component.literal("KVICloud • Gunner Arena"), UiRoute.MAIN); }
+    public MainArenaScreen() { super(Component.literal("GunGloryOnline"), UiRoute.MAIN); }
 
     @Override
     protected void init() {
@@ -25,7 +25,7 @@ public final class MainArenaScreen extends AbstractArenaScreen {
         playButton.active = playAllowed;
         addRenderableWidget(playButton);
         UiLayout layout = UiLayout.of(width, height);
-        addRenderableWidget(new ArenaButton(layout.primaryButton(1), Component.literal("◈  МАГАЗИН"), b -> Minecraft.getInstance().setScreen(new ShopScreen())));
+        addRenderableWidget(new ArenaButton(layout.primaryButton(1), Component.literal("◈  ЛОББИ-МАГАЗИН"), b -> Minecraft.getInstance().setScreen(new ShopScreen())));
         addRenderableWidget(new ArenaButton(layout.primaryButton(2), Component.literal("◇  ПРОФИЛЬ"), b -> Minecraft.getInstance().setScreen(new ProfileScreen())));
     }
 
@@ -38,9 +38,10 @@ public final class MainArenaScreen extends AbstractArenaScreen {
     public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
         drawBackdrop(g);
         UiLayout layout = UiLayout.of(width, height);
-        g.drawCenteredString(font, Component.literal("✦ KVICloud ✦"), layout.centerX(), layout.titleY(), UiTheme.PINK);
-        g.drawCenteredString(font, Component.literal("GUNNER ARENA"), layout.centerX(), layout.titleY() + 18, UiTheme.ACCENT);
+        g.drawCenteredString(font, Component.literal("✦ GunGloryOnline ✦"), layout.centerX(), layout.titleY(), UiTheme.PINK);
+        g.drawCenteredString(font, Component.literal("GUN GLORY ONLINE"), layout.centerX(), layout.titleY() + 18, UiTheme.ACCENT);
         g.drawCenteredString(font, Component.literal("PvP • оружие • прогресс"), layout.centerX(), layout.titleY() + 34, UiTheme.MUTED);
+        g.drawCenteredString(font, Component.literal("t.me/GunGloryOnline"), layout.centerX(), layout.titleY() + 48, UiTheme.BLUE);
         var snapshot = ClientSnapshotStore.get();
         boolean fresh = ClientSnapshotStore.fresh(System.currentTimeMillis());
         String status = fresh && snapshot.authenticated() && snapshot.initialized()
