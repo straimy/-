@@ -8,6 +8,7 @@ on:
 
 env:
   SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+  FINAL_RP: GunnerArena-ResourcePack-1.20.1-v1.zip
 
 jobs:
   build:
@@ -55,12 +56,10 @@ jobs:
           from pathlib import Path
           p=Path('gradle.properties')
           p.write_text(p.read_text().replace('mod_version=0.6.0-test53-authfix','mod_version=0.6.0-test54-gameplayfix'))
-
           p=Path('src/main/java/arena/forge/ArenaRuntime.java')
           s=p.read_text()
           s=s.replace('event.getTarget().getTags().contains("gunnerarena_menu_npc")', '(event.getTarget().getTags().contains("gunnerarena_menu_npc") || event.getTarget().getTags().contains("gunner_arena_npc_hitbox"))')
           p.write_text(s)
-
           p=Path('src/main/java/arena/forge/GunnerCommands.java')
           s=p.read_text().replace('src.hasPermission(2)', 'isArenaAdmin(src)').replace('source.hasPermission(2)', 'isArenaAdmin(source)')
           anchor='    private static ServerPlayer requirePlayer(CommandSourceStack source) {'
