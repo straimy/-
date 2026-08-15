@@ -1,0 +1,113 @@
+name: GA HOTFIX auth menu npc
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/ga-hotfix-auth-menu-npc.yml'
+env:
+  SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Prepare patched source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat >/tmp/extract_step.py <<'PY'
+          import sys
+          from pathlib import Path
+          wanted=sys.argv[1]
+          lines=Path('.github/workflows/gunner-arena-final-build-v3.yml').read_text().splitlines()
+          start=next((i for i,l in enumerate(lines) if l.strip()==f'- name: {wanted}'),None)
+          if start is None: raise SystemExit('step not found: '+wanted)
+          run=None
+          for i in range(start+1,len(lines)):
+              if lines[i].startswith('      - name:'): break
+              if lines[i].strip()=='run: |': run=i+1; break
+          if run is None: raise SystemExit('run block missing')
+          out=[]
+          for i in range(run,len(lines)):
+              l=lines[i]
+              if l.startswith('      - name:'): break
+              out.append(l[10:] if l.startswith('          ') else l)
+          print('\n'.join(out).rstrip())
+          PY
+          python3 /tmp/extract_step.py 'Verify inputs and unpack source' >/tmp/step.sh
+          bash /tmp/step.sh
+          python3 /tmp/extract_step.py 'Apply Forge 47.4.10 and Core/UI integration fixes' >/tmp/step.sh
+          (cd ga-build && bash /tmp/step.sh)
+          cd ga-build
+          python3 - <<'PY'
+          from pathlib import Path
+
+          # Version bump for an unambiguous server/client replacement.
+          p=Path('gradle.properties'); s=p.read_text(); s=s.replace('mod_version=0.6.0-test52-grepfix','mod_version=0.6.0-test53-authfix'); p.write_text(s)
+
+          # SAuth 2.0.0 + 2.1+ bridge.
+          p=Path('src/main/java/arena/forge/AuthGate.java'); s=p.read_text()
+          s=s.replace('import net.minecraft.ChatFormatting;\n', 'import net.minecraft.ChatFormatting;\nimport net.minecraftforge.fml.ModList;\nimport java.lang.reflect.Field;\n')
+          s=s.replace('    private final Set<UUID> initialized = new HashSet<>();\n\n    public boolean isAuthenticated(ServerPlayer player) {\n        return player.getTags().contains(AUTH_TAG);\n    }', '''    private final Set<UUID> initialized = new HashSet<>();\n    private volatile boolean legacyResolved;\n    private volatile Object legacySAuth;\n    private volatile Field legacyNotLoggedPlayers;\n\n    public boolean isAuthenticated(ServerPlayer player) {\n        if (player.getTags().contains(AUTH_TAG)) return true; // SAuth 2.1+\n        resolveLegacySAuth();\n        if (legacySAuth == null || legacyNotLoggedPlayers == null) return false;\n        try {\n            Object value = legacyNotLoggedPlayers.get(legacySAuth);\n            return value instanceof Set<?> set && !set.contains(player.getUUID());\n        } catch (ReflectiveOperationException | RuntimeException ignored) {\n            return false;\n        }\n    }\n\n    private synchronized void resolveLegacySAuth() {\n        if (legacyResolved) return;\n        legacyResolved = true;\n        try {\n            var container = ModList.get().getModContainerById("serverreg");\n            if (container.isEmpty()) return;\n            Object mod = container.get().getMod();\n            Field field = mod.getClass().getDeclaredField("notLoggedPlayers");\n            field.setAccessible(true);\n            legacySAuth = mod;\n            legacyNotLoggedPlayers = field;\n        } catch (ReflectiveOperationException | RuntimeException ignored) {\n            legacySAuth = null;\n            legacyNotLoggedPlayers = null;\n        }\n    }''')
+          p.write_text(s)
+
+          # Compass menu + menu NPC interaction.
+          p=Path('src/main/java/arena/forge/ArenaRuntime.java'); s=p.read_text()
+          s=s.replace('import net.minecraft.world.item.ItemStack;\n', 'import net.minecraft.world.item.ItemStack;\nimport net.minecraft.world.item.Items;\n')
+          old='''        if (!(event.getEntity() instanceof ServerPlayer player)) return;\n        if (!auth.isAuthenticated(player)) { event.setCanceled(true); return; }\n        if (isQuarantined(event.getItemStack())) {'''
+          new='''        if (!(event.getEntity() instanceof ServerPlayer player)) return;\n        if (!auth.isAuthenticated(player)) { event.setCanceled(true); return; }\n        if (isMenuCompass(event.getItemStack())) {\n            event.setCanceled(true);\n            ArenaNetwork.openUi(player, ArenaNetwork.UiTarget.MAIN);\n            return;\n        }\n        if (isQuarantined(event.getItemStack())) {'''
+          if old not in s: raise SystemExit('right click anchor missing')
+          s=s.replace(old,new,1)
+          old='''    public void onEntityInteract(PlayerInteractEvent.EntityInteract event) {\n        if (event.getEntity() instanceof ServerPlayer player && (!auth.isAuthenticated(player) || safeRegions.isSafe(player))) event.setCanceled(true);\n    }'''
+          new='''    public void onEntityInteract(PlayerInteractEvent.EntityInteract event) {\n        if (!(event.getEntity() instanceof ServerPlayer player)) return;\n        if (event.getTarget().getTags().contains("gunnerarena_menu_npc")) {\n            event.setCanceled(true);\n            if (auth.isAuthenticated(player)) ArenaNetwork.openUi(player, ArenaNetwork.UiTarget.MAIN);\n            else auth.deny(player);\n            return;\n        }\n        if (!auth.isAuthenticated(player) || safeRegions.isSafe(player)) event.setCanceled(true);\n    }'''
+          if old not in s: raise SystemExit('entity interact anchor missing')
+          s=s.replace(old,new,1)
+          s=s.replace('''                player.sendSystemMessage(Component.literal("[GA] Авторизация подтверждена. Можно играть.").withStyle(ChatFormatting.GREEN));\n            }\n            if (serverTick % 20L == 0L) purgeQuarantined(player);''','''                player.sendSystemMessage(Component.literal("[GA] Авторизация подтверждена. Можно играть.").withStyle(ChatFormatting.GREEN));\n                ensureMenuCompass(player);\n            }\n            if (serverTick % 20L == 0L) { ensureMenuCompass(player); purgeQuarantined(player); }''',1)
+          anchor='    public AuthGate auth() { return auth; }'
+          helpers='''    private static final String MENU_COMPASS_TAG = "gunnerarena_menu_compass";\n\n    private static boolean isMenuCompass(ItemStack stack) {\n        return stack != null && stack.is(Items.COMPASS) && stack.hasTag() && stack.getTag().getBoolean(MENU_COMPASS_TAG);\n    }\n\n    private static void ensureMenuCompass(ServerPlayer player) {\n        for (int i = 0; i < player.getInventory().getContainerSize(); i++) {\n            if (isMenuCompass(player.getInventory().getItem(i))) return;\n        }\n        ItemStack compass = new ItemStack(Items.COMPASS);\n        compass.getOrCreateTag().putBoolean(MENU_COMPASS_TAG, true);\n        compass.setHoverName(Component.literal("Меню Gunner Arena").withStyle(ChatFormatting.AQUA));\n        player.getInventory().add(compass);\n    }\n\n'''
+          if anchor not in s: raise SystemExit('runtime accessor anchor missing')
+          s=s.replace(anchor,helpers+anchor,1)
+          p.write_text(s)
+
+          # /setnpc <name>: stationary invulnerable menu NPC with a player-head skin marker.
+          p=Path('src/main/java/arena/forge/GunnerCommands.java'); s=p.read_text()
+          reg='''        dispatcher.register(Commands.literal("menu").requires(src -> runtime.auth().commandSourceAllowed(src)).executes(ctx -> openUi(ctx.getSource(), ArenaNetwork.UiTarget.MAIN)));'''
+          add='''        dispatcher.register(Commands.literal("setnpc").requires(src -> runtime.auth().commandSourceAllowed(src) && src.hasPermission(2))\n            .then(Commands.argument("name", StringArgumentType.greedyString()).executes(ctx -> setNpc(ctx.getSource(), StringArgumentType.getString(ctx, "name")))));\n\n'''+reg
+          if reg not in s: raise SystemExit('menu registration anchor missing')
+          s=s.replace(reg,add,1)
+          method='''    private static int openUi(CommandSourceStack source, ArenaNetwork.UiTarget target) {'''
+          npc='''    private static int setNpc(CommandSourceStack source, String name) {\n        ServerPlayer player = requirePlayer(source);\n        if (player == null) return 0;\n        String display = name == null ? "" : name.trim();\n        if (display.isEmpty()) { source.sendFailure(Component.literal("[GA] Используй /setnpc <имя>")); return 0; }\n        var npc = net.minecraft.world.entity.EntityType.ARMOR_STAND.create(player.serverLevel());\n        if (npc == null) { source.sendFailure(Component.literal("[GA] Не удалось создать NPC")); return 0; }\n        npc.moveTo(player.getX(), player.getY(), player.getZ(), player.getYRot(), 0.0F);\n        npc.setCustomName(Component.literal(display));\n        npc.setCustomNameVisible(true);\n        npc.setInvulnerable(true);\n        npc.setNoGravity(true);\n        npc.setShowArms(true);\n        npc.setNoBasePlate(true);\n        npc.addTag("gunnerarena_menu_npc");\n        ItemStack head = new ItemStack(net.minecraft.world.item.Items.PLAYER_HEAD);\n        head.getOrCreateTag().putString("SkullOwner", display);\n        npc.setItemSlot(net.minecraft.world.entity.EquipmentSlot.HEAD, head);\n        player.serverLevel().addFreshEntity(npc);\n        ok(source, "NPC меню создан: " + display);\n        return 1;\n    }\n\n'''
+          if method not in s: raise SystemExit('openUi method anchor missing')
+          s=s.replace(method,npc+method,1)
+          s=s.replace('import net.minecraft.server.level.ServerPlayer;\n','import net.minecraft.server.level.ServerPlayer;\nimport net.minecraft.world.item.ItemStack;\n',1)
+          p.write_text(s)
+          PY
+      - name: Build Core only
+        working-directory: ga-build
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/forge-mdk /tmp/forge-mdk.zip
+          curl -fL --retry 3 -o /tmp/forge-mdk.zip https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-mdk.zip
+          mkdir -p /tmp/forge-mdk
+          unzip -q /tmp/forge-mdk.zip 'gradlew' 'gradlew.bat' 'gradle/*' -d /tmp/forge-mdk
+          cp /tmp/forge-mdk/gradlew .; cp /tmp/forge-mdk/gradlew.bat .; cp -a /tmp/forge-mdk/gradle .; chmod +x gradlew
+          ./gradlew --no-daemon clean build --stacktrace
+          JAR="$(find build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          test -n "$JAR"
+          jar tf "$JAR" | grep -q '^arena/GunnerArenaMod.class$'
+          mkdir -p ../hotfix-out
+          cp "$JAR" ../hotfix-out/gunnerarena-0.6.0-test53-authfix.jar
+          sha256sum ../hotfix-out/gunnerarena-0.6.0-test53-authfix.jar > ../hotfix-out/SHA256SUMS.txt
+      - name: Upload hotfix Core
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunnerArena-Core-test53-authfix
+          path: hotfix-out/*
+          if-no-files-found: error
+          retention-days: 14
