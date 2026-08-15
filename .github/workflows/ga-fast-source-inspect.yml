@@ -9,22 +9,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Inspect SAuth 2.0.0 and Gunner auth bridge
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Inspect SAuth 2.0.0 bytecode
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf /tmp/ga /tmp/sauth && mkdir /tmp/ga /tmp/sauth
-          unzip -q gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip -d /tmp/ga
           curl -fL --retry 3 -o /tmp/sauth.jar 'https://cdn.modrinth.com/data/tyAKpqKg/versions/p5bijuHC/SAuth-2.0.0.jar'
-          echo '=== SAuth jar entries ==='
-          jar tf /tmp/sauth.jar | grep -Ei 'auth|login|register|player|server' | head -n 200 || true
-          echo '=== SAuth strings ==='
-          strings /tmp/sauth.jar | grep -Ei 'authenticated|logged|login|register|tag|scoreboard|serverreg|users.json' | head -n 200 || true
-          cd /tmp/sauth
-          jar xf /tmp/sauth.jar
-          echo '=== SAuth class constant strings ==='
-          for c in $(find . -name '*.class' | head -n 100); do
-            strings "$c" | grep -Ei 'authenticated|logged|login|register|tag|scoreboard|serverreg|users.json' && echo "-- $c" || true
-          done
-          echo '=== Gunner AuthGate ==='
-          sed -n '1,120p' /tmp/ga/src/main/java/arena/forge/AuthGate.java
+          javap -classpath /tmp/sauth.jar -private -c com.example.examplemod.ServerRegistrationMod | sed -n '1,360p'
