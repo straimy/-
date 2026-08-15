@@ -183,7 +183,7 @@ public final class MinimalGameplayFixes {
         npc.setInvisible(true);
         npc.setNoGravity(true);
         npc.setInvulnerable(true);
-        npc.setMarker(false);
+        // Default ArmorStand marker state is false, so it keeps a real clickable hitbox.
         npc.addTag("gunnerarena_menu_npc");
         npc.addTag("gunner_arena_npc_hitbox");
         ItemStack head = new ItemStack(Items.PLAYER_HEAD);
