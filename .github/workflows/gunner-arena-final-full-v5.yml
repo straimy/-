@@ -1,0 +1,162 @@
+name: Gunner Arena FINAL FULL v5
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/gunner-arena-final-full-v5.yml'
+      - '.github/workflows/ga-hotfix-auth-menu-npc.yml'
+      - '.github/workflows/ga-hotfix-gameplay-minimal.yml'
+      - 'hotfix/MinimalGameplayFixes.java'
+
+env:
+  SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+  FINAL_RP: GunnerArena-ResourcePack-1.20.1-v1.zip
+
+jobs:
+  verify-final:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Build final test54 Core with auth NPC gameplay fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat >/tmp/extract_step.py <<'PY'
+          import sys
+          from pathlib import Path
+          workflow=Path(sys.argv[1])
+          wanted=sys.argv[2]
+          lines=workflow.read_text().splitlines()
+          start=next((i for i,l in enumerate(lines) if l.strip()==f'- name: {wanted}'),None)
+          if start is None: raise SystemExit('step not found: '+wanted)
+          run=None
+          for i in range(start+1,len(lines)):
+              if lines[i].startswith('      - name:'): break
+              if lines[i].strip()=='run: |': run=i+1; break
+          if run is None: raise SystemExit('run block missing: '+wanted)
+          out=[]
+          for i in range(run,len(lines)):
+              l=lines[i]
+              if l.startswith('      - name:'): break
+              out.append(l[10:] if l.startswith('          ') else l)
+          print('\n'.join(out).rstrip())
+          PY
+          run_step(){ python3 /tmp/extract_step.py "$1" "$2" >/tmp/step.sh; bash /tmp/step.sh; }
+          run_step .github/workflows/ga-hotfix-gameplay-minimal.yml 'Reuse verified auth hotfix preparation'
+          python3 /tmp/extract_step.py .github/workflows/ga-hotfix-gameplay-minimal.yml 'Apply test54 gameplay patch' >/tmp/step.sh
+          (cd ga-build && bash /tmp/step.sh)
+          python3 /tmp/extract_step.py .github/workflows/ga-hotfix-gameplay-minimal.yml 'Build Core test54' >/tmp/step.sh
+          (cd ga-build && bash /tmp/step.sh)
+
+          CORE="$(find ga-build/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          test -n "$CORE"
+          jar tf "$CORE" | grep -q '^arena/GunnerArenaMod.class$'
+          jar tf "$CORE" | grep -q '^arena/forge/MinimalGameplayFixes.class$'
+          unzip -p "$CORE" META-INF/mods.toml | grep -Fq 'gunnerarena'
+
+      - name: Build UI against exact final test54 Core
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd ga-build
+          CORE="$(find build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          mkdir -p client-ui/libs
+          cp "$CORE" client-ui/libs/gunnerarena-core.jar
+          cp gradlew client-ui/gradlew
+          cp gradlew.bat client-ui/gradlew.bat
+          rm -rf client-ui/gradle
+          cp -a gradle client-ui/gradle
+          chmod +x client-ui/gradlew
+          (cd client-ui && ./gradlew --no-daemon clean build --stacktrace) 2>&1 | tee ../client-ui-final-build.log
+          UI="$(find client-ui/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          test -n "$UI"
+          jar tf "$UI" | grep -q '^arena/client/net/ArenaClientNetwork.class$'
+          ! jar tf "$UI" | grep -q '^arena/forge/net/ArenaNetwork.class$'
+          unzip -p "$UI" META-INF/mods.toml | grep -Fq 'modId="gunnerarena"'
+
+      - name: Assemble exact smoke payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf final-artifacts
+          mkdir -p final-artifacts/server/mods final-artifacts/client/mods final-artifacts/client/resourcepacks
+          CORE="$(find ga-build/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          UI="$(find ga-build/client-ui/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          cp "$CORE" final-artifacts/server/mods/gunnerarena-0.6.0-test54-gameplayfix.jar
+          cp "$CORE" final-artifacts/client/mods/gunnerarena-0.6.0-test54-gameplayfix.jar
+          cp "$UI" final-artifacts/client/mods/gunnerarena_ui-0.6.0-test54-compatible.jar
+          cmp final-artifacts/server/mods/gunnerarena-0.6.0-test54-gameplayfix.jar final-artifacts/client/mods/gunnerarena-0.6.0-test54-gameplayfix.jar
+          test "$(find final-artifacts/client/mods -type f -name '*.jar' | wc -l)" -eq 2
+          sha256sum final-artifacts/server/mods/*.jar final-artifacts/client/mods/*.jar > final-artifacts/SHA256SUMS.txt
+
+      - name: Dedicated server smoke final Core
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract_step.py .github/workflows/gunner-arena-final-build-v3.yml 'Dedicated server smoke' >/tmp/server-smoke.sh
+          bash /tmp/server-smoke.sh
+
+      - name: Real client smoke final Core plus UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract_step.py .github/workflows/gunner-arena-final-build-v3.yml 'Real client smoke with Core and UI JAR' >/tmp/client-smoke.sh
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/client-smoke.sh'); s=p.read_text()
+          anchor='cd cs; chmod +x gradlew\n'
+          if anchor not in s: raise SystemExit('client smoke anchor missing')
+          prep="""mkdir -p cs/libs\nfor j in cs/run/mods/*.jar; do\n  if jar tf \"$j\" | grep -q '^arena/GunnerArenaMod.class$'; then\n    cp \"$j\" cs/libs/gunnerarena-core-0.6.0.jar\n  elif jar tf \"$j\" | grep -q '^arena/client/net/ArenaClientNetwork.class$'; then\n    cp \"$j\" cs/libs/gunnerarena-ui-0.6.0.jar\n  fi\ndone\ntest -f cs/libs/gunnerarena-core-0.6.0.jar\ntest -f cs/libs/gunnerarena-ui-0.6.0.jar\nrm -f cs/run/mods/*.jar\ncat >> cs/build.gradle <<'GRADLE'\nrepositories { flatDir { dirs 'libs' } }\ndependencies {\n    runtimeOnly fg.deobf('local:gunnerarena-core:0.6.0')\n    runtimeOnly fg.deobf('local:gunnerarena-ui:0.6.0')\n}\ntasks.configureEach { t ->\n    if (t.name == 'runClient') {\n        t.doFirst {\n            file('build/resources/main').mkdirs()\n            file('build/classes/java/main').mkdirs()\n        }\n    }\n}\nGRADLE\n"""
+          s=s.replace(anchor,prep+anchor,1)
+          old="""if [ -f \"$L\" ] && grep -Fq 'Reloading ResourceManager:' \"$L\" && grep -Fq 'gunnerarena' \"$L\" && grep -Fq 'gunnerarena_ui' \"$L\"; then R=1; break; fi"""
+          new="""if [ -f \"$L\" ] && [ -f run/logs/debug.log ] && grep -Fq 'Reloading ResourceManager:' \"$L\" && grep -Fq 'with {gunnerarena} mods' run/logs/debug.log && grep -Fq 'with {gunnerarena_ui} mods' run/logs/debug.log; then R=1; break; fi"""
+          if old not in s: raise SystemExit('client smoke success condition missing')
+          s=s.replace(old,new,1)
+          p.write_text(s)
+          PY
+          bash /tmp/client-smoke.sh
+
+      - name: Verify final payload invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          CORE=final-artifacts/server/mods/gunnerarena-0.6.0-test54-gameplayfix.jar
+          UI=final-artifacts/client/mods/gunnerarena_ui-0.6.0-test54-compatible.jar
+          cmp "$CORE" final-artifacts/client/mods/gunnerarena-0.6.0-test54-gameplayfix.jar
+          test "$(jar tf "$CORE" | grep -c '^arena/forge/net/ArenaNetwork.class$')" -eq 1
+          ! jar tf "$UI" | grep -q '^arena/forge/net/ArenaNetwork.class$'
+          jar tf "$CORE" | grep -q '^arena/forge/MinimalGameplayFixes.class$'
+          printf 'CORE_SERVER_SMOKE=PASS\nCORE_UI_CLIENT_SMOKE=PASS\nDUPLICATE_CHANNEL_AUDIT=PASS\nAUTH_NPC_GAMEPLAY_PATCH=test54\n' > final-artifacts/VERIFICATION.txt
+
+      - name: Upload verified final Core UI payload
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunnerArena-test54-final-verified
+          path: final-artifacts/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunnerArena-v5-diagnostics
+          path: |
+            test54-build.log
+            client-ui-final-build.log
+            dedicated-server-console.log
+            dedicated-server-latest.log
+            client-smoke.log
+            client-smoke-latest.log
+            ds/logs/**
+            cs/run/logs/**
+            cs/run/crash-reports/**
+          if-no-files-found: ignore
+          retention-days: 7
