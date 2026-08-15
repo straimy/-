@@ -9,27 +9,31 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build compact ammo/loadout inspection
+      - name: Inspect skills shop spawn protection and player labels
         shell: bash
         run: |
           set -euo pipefail
           rm -rf /tmp/ga inspection
           mkdir -p /tmp/ga inspection
           unzip -q gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip -d /tmp/ga
-          OUT=inspection/ammo-loadout-inspection.txt
+          OUT=inspection/ui-gameplay-inspection.txt
           : > "$OUT"
-          for pat in 'requestPlay' 'prepareForRound' 'clearCombatSlots' 'resetForNewRound' 'requestReload' 'reload' 'magazine' 'reserve' 'revolver'; do
+          echo '=== FILENAMES ===' >> "$OUT"
+          find /tmp/ga -type f \( -name '*.java' -o -name '*.json' \) | grep -Ei 'skill|shop|player|round|spawn|network|ui|weapon|profile' | sort >> "$OUT" || true
+          for pat in 'SkillTree' 'skill' 'credits' 'currency' 'ShopScreen' 'requestCatalog' 'requestBuy' 'PLAYING' 'SPAWNING' 'invulner' 'spawnProtect' 'RenderNameTag' 'RenderNameplate' 'NameTag' 'health' 'hp' 'ArenaPlayerState'; do
             echo "===== $pat =====" >> "$OUT"
-            grep -Rni -C 24 "$pat" /tmp/ga --include='*.java' >> "$OUT" || true
-            echo >> "$OUT"
+            grep -Rni -C 20 "$pat" /tmp/ga --include='*.java' | head -n 600 >> "$OUT" || true
           done
-          echo '===== RELEVANT FILENAMES =====' >> "$OUT"
-          grep -RliE 'requestPlay|prepareForRound|clearCombatSlots|resetForNewRound|requestReload|reload|magazine|reserve|revolver' /tmp/ga --include='*.java' | sort >> "$OUT" || true
+          echo '=== FULL TARGET FILES ===' >> "$OUT"
+          for f in $(find /tmp/ga -type f -name '*.java' | grep -Ei 'SkillTreeScreen|SkillTree|Rpg|Progression|ShopScreen|ArenaPlayerManager|ArenaPlayerSession|ArenaNetwork|GunnerArenaUiMod' | head -n 50); do
+            echo "----- $f -----" >> "$OUT"
+            sed -n '1,420p' "$f" >> "$OUT"
+          done
           wc -l "$OUT"
-      - name: Upload compact inspection
+      - name: Upload inspection
         uses: actions/upload-artifact@v4
         with:
-          name: ga-ammo-loadout-inspection
-          path: inspection/ammo-loadout-inspection.txt
+          name: ga-ui-gameplay-inspection
+          path: inspection/ui-gameplay-inspection.txt
           if-no-files-found: error
           retention-days: 3
