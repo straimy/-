@@ -51,7 +51,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Keep auth/menu/NPC integration prepared above, then replace only the final gameplay layer and UI.
           cp hotfix/MinimalGameplayFixes.java ga-build/src/main/java/arena/forge/MinimalGameplayFixes.java
           cp hotfix/ui/ShopScreen.java ga-build/client-ui/src/main/java/arena/client/ui/ShopScreen.java
           cp hotfix/ui/MainArenaScreen.java ga-build/client-ui/src/main/java/arena/client/ui/MainArenaScreen.java
@@ -155,7 +154,7 @@ jobs:
           CORE=final-artifacts/server/mods/gunnerarena-0.6.0-test55-polish.jar
           UI=final-artifacts/client/mods/gunnerarena_ui-0.6.0-test55-polish.jar
           javap -classpath "$CORE" -p arena.forge.MinimalGameplayFixes >/tmp/core.txt
-          javap -classpath "$UI" -p arena.client.ui.GunnerArenaUiMod >/tmp/ui.txt
+          javap -classpath "$UI" -p 'arena.client.ui.GunnerArenaUiMod$ForgeEvents' >/tmp/ui.txt
           grep -q 'onRegisterCommands' /tmp/core.txt
           grep -q 'onEntityInteract' /tmp/core.txt
           grep -q 'onRightClickItem' /tmp/core.txt
