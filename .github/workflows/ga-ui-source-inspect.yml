@@ -1,0 +1,38 @@
+name: GA UI source inspect
+on:
+  push:
+    paths:
+      - '.github/workflows/ga-ui-source-inspect.yml'
+  workflow_dispatch:
+env:
+  SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Export UI and runtime sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf src-export ga && mkdir src-export ga
+          unzip -q "$SOURCE_ZIP" -d ga
+          for f in \
+            client-ui/src/main/java/arena/client/ui/ShopScreen.java \
+            client-ui/src/main/java/arena/client/ui/MainArenaScreen.java \
+            client-ui/src/main/java/arena/client/ui/AbstractArenaScreen.java \
+            client-ui/src/main/java/arena/client/ui/UiTheme.java \
+            client-ui/src/main/java/arena/client/ui/ArenaButton.java \
+            client-ui/src/main/java/arena/client/ui/GunnerArenaUiMod.java \
+            client-ui/src/main/java/arena/client/net/ArenaClientShopItem.java \
+            src/main/java/arena/forge/ArenaRuntime.java \
+            src/main/java/arena/forge/GunnerCommands.java; do
+            test -f "ga/$f"
+            mkdir -p "src-export/$(dirname "$f")"
+            cp "ga/$f" "src-export/$f"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ga-ui-current-sources
+          path: src-export/**
+          retention-days: 2
