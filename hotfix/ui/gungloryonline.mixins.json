@@ -1,0 +1,8 @@
+{
+  "required": false,
+  "minVersion": "0.8",
+  "package": "arena.client.ui",
+  "compatibilityLevel": "JAVA_17",
+  "client": ["JegMetaLoaderMixin"],
+  "injectors": {"defaultRequire": 0}
+}
