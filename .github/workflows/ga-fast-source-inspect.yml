@@ -9,13 +9,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '17'
-      - name: Inspect SAuth 2.0.0 bytecode
+      - name: Inspect Gunner Arena loadout and reload sources
         shell: bash
         run: |
           set -euo pipefail
-          curl -fL --retry 3 -o /tmp/sauth.jar 'https://cdn.modrinth.com/data/tyAKpqKg/versions/p5bijuHC/SAuth-2.0.0.jar'
-          javap -classpath /tmp/sauth.jar -private -c com.example.examplemod.ServerRegistrationMod | sed -n '1,360p'
+          rm -rf /tmp/ga
+          mkdir /tmp/ga
+          unzip -q gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip -d /tmp/ga
+          echo '=== FILES ==='
+          find /tmp/ga -type f -name '*.java' | sort
+          echo '=== LOADOUT / ROUND / RELOAD MATCHES ==='
+          grep -RniE 'prepareForRound|clearCombatSlots|resetForNewRound|requestReload|reload|magazine|reserve|ammo|revolver|loadout|giveWeapon|equip' /tmp/ga --include='*.java' | head -n 1200 || true
+          echo '=== RELEVANT SOURCE FILES ==='
+          for f in $(grep -RliE 'prepareForRound|clearCombatSlots|requestReload|reload|magazine|reserve|revolver' /tmp/ga --include='*.java' | head -n 40); do
+            echo "----- $f -----"
+            sed -n '1,360p' "$f"
+          done
