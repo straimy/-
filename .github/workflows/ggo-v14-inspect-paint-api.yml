@@ -1,0 +1,37 @@
+name: GGO v14 inspect JEG paint API
+on:
+  push:
+    paths: ['.github/workflows/ggo-v14-inspect-paint-api.yml']
+  workflow_dispatch:
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect paintjob runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p inspection
+          curl -fL --retry 3 -o /tmp/jeg.jar 'https://mediafilez.forgecdn.net/files/6808/139/JustEnoughGuns-0.13.2-1.20.1.jar'
+          OUT=inspection/paint-api.txt
+          echo '=== relevant classes ===' > "$OUT"
+          jar tf /tmp/jeg.jar | grep -Ei 'GunItem|Gun\.class|PaintJob|Paintjob|DyeItemRecipe|Attachment|GunModifier|NBT|Tag' | head -n 250 >> "$OUT" || true
+          for C in \
+            ttv.migami.jeg.item.GunItem \
+            ttv.migami.jeg.common.Gun \
+            ttv.migami.jeg.item.attachment.item.PaintJobCanItem \
+            ttv.migami.jeg.item.attachment.impl.Paintjob \
+            ttv.migami.jeg.crafting.DyeItemRecipe \
+            ttv.migami.jeg.util.GunModifierHelper \
+            ttv.migami.jeg.util.DyeUtils; do
+            echo "\n=== $C ===" >> "$OUT"
+            javap -classpath /tmp/jeg.jar -p -c -s "$C" >> "$OUT" 2>&1 || true
+          done
+          echo '\n=== constant strings mentioning paint ===' >> "$OUT"
+          unzip -p /tmp/jeg.jar | strings | grep -Ei 'paintjob|paint_job|paint job|skin|dye' | sort -u | head -n 250 >> "$OUT" || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ggo-v14-paint-api
+          path: inspection/paint-api.txt
+          retention-days: 2
