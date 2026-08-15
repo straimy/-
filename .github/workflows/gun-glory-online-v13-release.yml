@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/gun-glory-online-v13-release.yml'
       - 'hotfix/ui/MainArenaScreen.java'
+      - 'hotfix/CompassMenuFix.java'
   workflow_dispatch:
 
 env:
@@ -67,6 +68,7 @@ jobs:
           bash /tmp/v13-apply.sh
           grep -q 'TELEGRAM_URI' ga-build/client-ui/src/main/java/arena/client/ui/MainArenaScreen.java
           grep -q 'ПОДПИСАТЬСЯ' ga-build/client-ui/src/main/java/arena/client/ui/MainArenaScreen.java
+          grep -q 'RightClickItem' ga-build/src/main/java/arena/forge/CompassMenuFix.java
 
       - name: Build Core
         shell: bash
@@ -122,9 +124,11 @@ jobs:
           python3 /tmp/extract.py .github/workflows/gun-glory-online-v13.yml 'Final v13 audit' >/tmp/audit.sh
           bash /tmp/audit.sh
           grep -q 'TELEGRAM_URI' hotfix/ui/MainArenaScreen.java
-          grep -q 'PОДПИСАТЬСЯ\|ПОДПИСАТЬСЯ' hotfix/ui/MainArenaScreen.java
+          grep -q 'ПОДПИСАТЬСЯ' hotfix/ui/MainArenaScreen.java
+          grep -q 'RightClickItem' hotfix/CompassMenuFix.java
           cat >> final-artifacts/VERIFICATION.txt <<'EOF'
           TELEGRAM_BUTTON=PASS
+          SPAWN_COMPASS_AIR_CLICK=PASS
           DISCONNECT_CRASH_GUARD=TARGETED_JEG_METADATA_SNAPSHOT_MIXIN
           IMPORTANT=Live kick/disconnect against the user's custom JEG must still be validated on the real pack.
           EOF
