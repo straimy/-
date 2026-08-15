@@ -6,71 +6,43 @@ import arena.client.net.ClientSkillTreeStore;
 import arena.client.net.ClientSnapshotStore;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
-
 import java.util.List;
 
 final class SkillsScreen extends AbstractArenaScreen {
-    private int page;
-    SkillsScreen() { super(Component.literal("Навыки"), UiRoute.SKILLS); }
+    private int page; private String selectedId;
+    SkillsScreen(){super(Component.literal("GunGloryOnline • Навыки"),UiRoute.SKILLS);}
+    @Override protected void init(){ installNavigation(); ArenaClientNetwork.requestSkillTree(); ArenaClientNetwork.requestSnapshot(); rebuild(); }
 
-    @Override protected void init() {
-        installNavigation();
-        ArenaClientNetwork.requestSkillTree();
-        ArenaClientNetwork.requestSnapshot();
-        rebuildButtons();
-    }
-
-    private void rebuildButtons() {
-        clearWidgets();
-        installNavigation();
-        List<ArenaClientSkillEntry> all = ClientSkillTreeStore.entries();
-        int perPage = 12;
-        int from = Math.min(page * perPage, all.size());
-        int to = Math.min(from + perPage, all.size());
-        UiLayout.Rect panel = UiLayout.of(width,height).contentPanel();
-        int gap = 8;
-        int colW = Math.max(180, (panel.width()-48-gap)/2);
-        int leftX = panel.x()+20;
-        int rightX = leftX + colW + gap;
-        int baseY = panel.y()+62;
-        for (int i=from;i<to;i++) {
-            ArenaClientSkillEntry e=all.get(i); final String id=e.id();
-            int local=i-from, col=local/6, row=local%6;
-            int x=col==0?leftX:rightX, y=baseY+row*27;
-            ArenaButton b=new ArenaButton(new UiLayout.Rect(x,y,colW,22), Component.literal(label(e)), ignored->{ArenaClientNetwork.unlockSkill(id);ArenaClientNetwork.requestSkillTree();ArenaClientNetwork.requestSnapshot();});
-            b.active=e.available() && !e.unlocked(); addRenderableWidget(b);
+    private void rebuild(){
+        clearWidgets(); installNavigation(); List<ArenaClientSkillEntry> all=ClientSkillTreeStore.entries(); UiLayout.Rect p=UiLayout.of(width,height).contentPanel();
+        int rows=Math.max(3,Math.min(5,(p.height()-118)/25)); int cols=p.width()>=410?2:1; int per=rows*cols;
+        int from=Math.min(page*per,all.size()),to=Math.min(from+per,all.size()); int gap=6, colW=(p.width()-32-gap*(cols-1))/cols; int baseY=p.y()+66;
+        if(selectedId==null&&from<to)selectedId=all.get(from).id();
+        for(int i=from;i<to;i++){
+            ArenaClientSkillEntry e=all.get(i); int local=i-from,col=local/rows,row=local%rows; int x=p.x()+16+col*(colW+gap),y=baseY+row*25;
+            String mark=e.id().equals(selectedId)?"◆ ":e.unlocked()?"✓ ":"· ";
+            addRenderableWidget(new ArenaButton(new UiLayout.Rect(x,y,colW,20),Component.literal(mark+shortName(e.name())),b->{selectedId=e.id();rebuild();}));
         }
-        int navY=panel.y()+panel.height()-28;
-        if (page>0) addRenderableWidget(new ArenaButton(new UiLayout.Rect(leftX,navY,88,20),Component.literal("‹ НАЗАД"),i->{page--;rebuildButtons();}));
-        if (to<all.size()) addRenderableWidget(new ArenaButton(new UiLayout.Rect(leftX+96,navY,88,20),Component.literal("ДАЛЕЕ ›"),i->{page++;rebuildButtons();}));
-    }
-
-    private static String label(ArenaClientSkillEntry e) {
-        if (e.unlocked()) return "✓ " + e.name();
-        int crystals=Math.max(1,(e.cost()+9)/10);
-        return e.name()+"  · "+e.cost()+" TP / "+crystals+"◆";
-    }
-
-    @Override public void tick() {
-        super.tick();
-        if (minecraft != null && minecraft.level != null && minecraft.level.getGameTime()%20L==0L) {
-            ArenaClientNetwork.requestSkillTree(); ArenaClientNetwork.requestSnapshot();
+        ArenaClientSkillEntry sel=selected(all); int bottom=p.y()+p.height()-29;
+        if(page>0)addRenderableWidget(new ArenaButton(new UiLayout.Rect(p.x()+16,bottom,70,19),Component.literal("‹"),b->{page--;selectedId=null;rebuild();}));
+        if(to<all.size())addRenderableWidget(new ArenaButton(new UiLayout.Rect(p.x()+92,bottom,70,19),Component.literal("›"),b->{page++;selectedId=null;rebuild();}));
+        if(sel!=null&&!sel.unlocked()){
+            int bw=Math.min(160,p.width()/2); int bx=p.x()+p.width()-bw-16; int crystals=Math.max(1,(sel.cost()+9)/10);
+            ArenaButton up=new ArenaButton(new UiLayout.Rect(bx,bottom,bw,19),Component.literal("✦ ПРОКАЧАТЬ • "+sel.cost()+"TP / "+crystals+"◆"),b->{ArenaClientNetwork.unlockSkill(sel.id());ArenaClientNetwork.requestSkillTree();ArenaClientNetwork.requestSnapshot();});
+            up.active=sel.available(); addRenderableWidget(up);
         }
     }
+    private ArenaClientSkillEntry selected(List<ArenaClientSkillEntry> a){for(var e:a)if(e.id().equals(selectedId))return e;return null;}
+    private static String shortName(String s){return s.length()>20?s.substring(0,19)+"…":s;}
 
-    @Override public void render(GuiGraphics g,int mouseX,int mouseY,float partialTick) {
-        drawBackdrop(g); UiLayout.Rect panel=UiLayout.of(width,height).contentPanel(); drawPanel(g,panel);
-        g.drawString(font,Component.literal("✦ НАВЫКИ"),panel.x()+20,panel.y()+15,UiTheme.ACCENT_2);
-        if (!ClientSkillTreeStore.fresh(System.currentTimeMillis())) {
-            g.drawString(font,Component.literal("обновление…"),panel.x()+20,panel.y()+38,UiTheme.MUTED);
-        } else {
-            var snap=ClientSnapshotStore.get();
-            String top="Lv."+ClientSkillTreeStore.level()+"   •   TP "+ClientSkillTreeStore.points()+"   •   ◆ "+snap.crystals();
-            g.drawString(font,Component.literal(top),panel.x()+20,panel.y()+37,UiTheme.TEXT);
-            String hint="TP: +1 за 20 мин активной игры   •   ◆: +1 за 30 мин   •   кристаллами можно ускорить открытие";
-            g.drawString(font,Component.literal(hint),panel.x()+210,panel.y()+38,UiTheme.MUTED);
-        }
-        super.render(g,mouseX,mouseY,partialTick);
+    @Override public void tick(){super.tick();if(minecraft!=null&&minecraft.level!=null&&minecraft.level.getGameTime()%20L==0L){ArenaClientNetwork.requestSkillTree();ArenaClientNetwork.requestSnapshot();}}
+    @Override public void render(GuiGraphics g,int mx,int my,float pt){
+        drawBackdrop(g);UiLayout.Rect p=UiLayout.of(width,height).contentPanel();drawPanel(g,p);int x=p.x()+16,y=p.y()+12;
+        g.drawString(font,Component.literal("✦ НАВЫКИ"),x,y,UiTheme.ACCENT_2);var snap=ClientSnapshotStore.get();
+        g.drawString(font,Component.literal("Lv."+ClientSkillTreeStore.level()+"  •  TP "+ClientSkillTreeStore.points()+"  •  ◆ "+snap.crystals()),x,y+18,UiTheme.TEXT);
+        g.drawString(font,Component.literal("+1 TP / 20 мин  •  +1◆ / 30 мин  •  выбери навык → ПРОКАЧАТЬ"),x,y+34,UiTheme.MUTED);
+        ArenaClientSkillEntry sel=selected(ClientSkillTreeStore.entries()); if(sel!=null){int cy=p.y()+p.height()-50;String state=sel.unlocked()?"✓ ОТКРЫТ":sel.available()?"доступен":"нужны предыдущие навыки";g.drawString(font,Component.literal(sel.name()+" • "+state),x,cy,sel.unlocked()?UiTheme.ACCENT_2:UiTheme.PINK);}
+        super.render(g,mx,my,pt);
     }
     @Override public boolean isPauseScreen(){return false;}
 }
