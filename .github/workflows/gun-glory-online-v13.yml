@@ -1,0 +1,216 @@
+name: GunGloryOnline v13
+
+on:
+  push:
+    paths:
+      - '.github/workflows/gun-glory-online-v13.yml'
+      - 'hotfix/CompassMenuFix.java'
+      - 'hotfix/CosmeticCommands.java'
+      - 'hotfix/ui/**'
+  workflow_dispatch:
+
+env:
+  SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+  FINAL_RP: GunnerArena-ResourcePack-1.20.1-v1.zip
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Prepare v12 proven base
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat >/tmp/extract.py <<'PY'
+          import sys
+          from pathlib import Path
+          wf=Path(sys.argv[1]); wanted=sys.argv[2]
+          lines=wf.read_text().splitlines()
+          start=next((i for i,l in enumerate(lines) if l.strip()==f'- name: {wanted}'),None)
+          if start is None: raise SystemExit('step not found: '+wanted)
+          run=None
+          for i in range(start+1,len(lines)):
+              if lines[i].startswith('      - name:') or lines[i].startswith('      - uses:'): break
+              if lines[i].strip()=='run: |': run=i+1; break
+          if run is None: raise SystemExit('run block missing: '+wanted)
+          out=[]
+          for i in range(run,len(lines)):
+              l=lines[i]
+              if l.startswith('      - name:') or l.startswith('      - uses:'): break
+              out.append(l[10:] if l.startswith('          ') else l)
+          print('\n'.join(out).rstrip())
+          PY
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v12.yml 'Prepare authenticated base source' >/tmp/v12-prep.sh
+          bash /tmp/v12-prep.sh
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v12.yml 'Apply GunGloryOnline v12 patch' >/tmp/v12-apply.sh
+          bash /tmp/v12-apply.sh
+
+      - name: Apply v13 responsive cosmetics disconnect patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp hotfix/CompassMenuFix.java ga-build/src/main/java/arena/forge/CompassMenuFix.java
+          cp hotfix/CosmeticCommands.java ga-build/src/main/java/arena/forge/CosmeticCommands.java
+          cp hotfix/ui/UiLayout.java ga-build/client-ui/src/main/java/arena/client/ui/UiLayout.java
+          cp hotfix/ui/GunnerArenaUiMod.java ga-build/client-ui/src/main/java/arena/client/ui/GunnerArenaUiMod.java
+          cp hotfix/ui/SkillsScreen.java ga-build/client-ui/src/main/java/arena/client/ui/SkillsScreen.java
+          cp hotfix/ui/LobbyShopScreen.java ga-build/client-ui/src/main/java/arena/client/ui/LobbyShopScreen.java
+          cp hotfix/ui/JegMetaLoaderMixin.java ga-build/client-ui/src/main/java/arena/client/ui/JegMetaLoaderMixin.java
+          cp hotfix/ui/gungloryonline.mixins.json ga-build/client-ui/src/main/resources/gungloryonline.mixins.json
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          # Persistent cosmetics in profile.
+          pp=next(Path('ga-build/src/main/java').rglob('PlayerProfile.java'))
+          s=pp.read_text()
+          if 'equippedSkin' not in s:
+              anchor='public String specialization = "NONE";'
+              if anchor not in s: raise SystemExit('PlayerProfile specialization anchor missing')
+              s=s.replace(anchor,anchor+'\n    public java.util.Set<String> cosmetics = new java.util.LinkedHashSet<>();\n    public String equippedSkin = "NONE";',1)
+              pp.write_text(s)
+
+          # Persist cosmetic ownership/equipped skin. Locate storage implementation rather than guessing path.
+          stores=list(Path('ga-build/src/main/java').rglob('ProfileStorage.java'))
+          if not stores: raise SystemExit('ProfileStorage.java missing')
+          ps=stores[0]; s=ps.read_text()
+          if 'equippedSkin' not in s:
+              load_anchor='profile.specialization = p.getProperty("specialization", "NONE");'
+              save_anchor='p.setProperty("specialization", profile.specialization == null ? "NONE" : profile.specialization);'
+              if load_anchor not in s or save_anchor not in s: raise SystemExit('ProfileStorage anchors missing')
+              load_extra='''profile.specialization = p.getProperty("specialization", "NONE");\n        profile.equippedSkin = p.getProperty("equippedSkin", "NONE");\n        String ownedCosmetics = p.getProperty("cosmetics", "");\n        if (!ownedCosmetics.isBlank()) for (String c : ownedCosmetics.split(",")) if (!c.isBlank()) profile.cosmetics.add(c.trim());'''
+              save_extra='''p.setProperty("specialization", profile.specialization == null ? "NONE" : profile.specialization);\n        p.setProperty("equippedSkin", profile.equippedSkin == null ? "NONE" : profile.equippedSkin);\n        p.setProperty("cosmetics", String.join(",", profile.cosmetics));'''
+              s=s.replace(load_anchor,load_extra,1).replace(save_anchor,save_extra,1)
+              ps.write_text(s)
+
+          # Register optional client mixin config.
+          mt=Path('ga-build/client-ui/src/main/resources/META-INF/mods.toml')
+          s=mt.read_text()
+          if 'gungloryonline.mixins.json' not in s:
+              s += '\n[[mixins]]\nconfig="gungloryonline.mixins.json"\n'
+              mt.write_text(s)
+
+          # Advance version only; stable mod IDs stay unchanged for network compatibility.
+          gp=Path('ga-build/gradle.properties'); g=gp.read_text()
+          g=re.sub(r'mod_version=0\.7\.0-gungloryonline-v12','mod_version=0.7.1-gungloryonline-v13',g)
+          gp.write_text(g)
+          PY
+          grep -q 'GLFW_KEY_M' ga-build/client-ui/src/main/java/arena/client/ui/GunnerArenaUiMod.java
+          grep -q 'JegMetaLoaderMixin' ga-build/client-ui/src/main/resources/gungloryonline.mixins.json
+          grep -q 'equippedSkin' "$(find ga-build/src/main/java -name PlayerProfile.java | head -n1)"
+          grep -q 'cosmetics' "$(find ga-build/src/main/java -name ProfileStorage.java | head -n1)"
+
+      - name: Build Core
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v12.yml 'Bootstrap ForgeGradle and build Core' >/tmp/core.sh
+          (cd ga-build && bash /tmp/core.sh)
+
+      - name: Build UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v12.yml 'Build UI against real Core' >/tmp/ui.sh
+          (cd ga-build && bash /tmp/ui.sh)
+
+      - name: Prepare v13 payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf final-artifacts
+          mkdir -p final-artifacts/server/mods final-artifacts/client/mods
+          CORE="$(find ga-build/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          UI="$(find ga-build/client-ui/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          test -n "$CORE"; test -n "$UI"
+          cp "$CORE" final-artifacts/server/mods/gungloryonline-core-0.7.1-v13.jar
+          cp "$CORE" final-artifacts/client/mods/gungloryonline-core-0.7.1-v13.jar
+          cp "$UI" final-artifacts/client/mods/gungloryonline-ui-0.7.1-v13.jar
+          cmp final-artifacts/server/mods/gungloryonline-core-0.7.1-v13.jar final-artifacts/client/mods/gungloryonline-core-0.7.1-v13.jar
+          jar tf "$CORE" | grep -q '^arena/forge/CompassMenuFix.class$'
+          jar tf "$CORE" | grep -q '^arena/forge/CosmeticCommands.class$'
+          jar tf "$UI" | grep -q '^arena/client/ui/JegMetaLoaderMixin.class$'
+          jar tf "$UI" | grep -q '^gungloryonline.mixins.json$'
+          unzip -p "$UI" META-INF/mods.toml | grep -q 'gungloryonline.mixins.json'
+
+      - name: Dedicated server smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v12.yml 'Dedicated server smoke' >/tmp/server-smoke.sh
+          bash /tmp/server-smoke.sh
+
+      - name: Real Forge client smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v12.yml 'Real Forge client smoke' >/tmp/client-smoke.sh
+          bash /tmp/client-smoke.sh
+
+      - name: Final v13 audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          CORE=final-artifacts/server/mods/gungloryonline-core-0.7.1-v13.jar
+          UI=final-artifacts/client/mods/gungloryonline-ui-0.7.1-v13.jar
+          grep -q 'List.copyOf(registry.getValues())' hotfix/ui/JegMetaLoaderMixin.java
+          grep -q 'GLFW_KEY_M' hotfix/ui/GunnerArenaUiMod.java
+          grep -q 'GLFW_KEY_G' hotfix/ui/GunnerArenaUiMod.java
+          grep -q 'skinbuy' hotfix/CosmeticCommands.java
+          grep -q 'ПРОКАЧАТЬ' hotfix/ui/SkillsScreen.java
+          grep -q 'RightClickBlock' hotfix/CompassMenuFix.java
+          ! grep -q 'GLFW_KEY_R' hotfix/ui/GunnerArenaUiMod.java
+          cat > final-artifacts/VERIFICATION.txt <<'EOF'
+          GUNGLORYONLINE_V13=PASS
+          CORE_BUILD=PASS
+          UI_BUILD=PASS
+          SERVER_SMOKE=PASS
+          CLIENT_SMOKE=PASS
+          RESPONSIVE_LAYOUT=BUILT
+          SPAWN_MENU_KEY=M
+          ARENA_WEAPON_SHOP_KEY=G
+          SPAWN_COMPASS_BLOCK_CLICK_FIX=BUILT
+          PERMANENT_CRYSTAL_COSMETICS=BUILT
+          SKILL_UPGRADE_BUTTON=BUILT
+          JEG_DISCONNECT_CME_GUARD=BUILT_TARGETED_MIXIN
+          NOTE=Real disconnect against the user's custom modified JEG still requires live client validation.
+          EOF
+          cat > final-artifacts/REMOVE-OLD-JARS.txt <<'EOF'
+          BEFORE INSTALLING V13 delete old Gunner/GunGlory Core+UI jars from both client/server mods folders.
+          In particular remove gunnerarena-0.6.0-test54-gameplayfix.jar and gunnerarena_ui-0.6.0-test54-compatible.jar if present.
+          Keep exactly one GunGloryOnline Core on client and server, and exactly one GunGloryOnline UI on client.
+          EOF
+          sha256sum final-artifacts/server/mods/* final-artifacts/client/mods/* > final-artifacts/SHA256SUMS.txt
+
+      - name: Upload verified v13
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-v13-verified
+          path: final-artifacts/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-v13-diagnostics
+          path: |
+            v12-core-build.log
+            v12-ui-build.log
+            dedicated-server-console.log
+            dedicated-server-latest.log
+            client-smoke.log
+            client-smoke-latest.log
+            ds/logs/**
+            cs/run/logs/**
+            cs/run/crash-reports/**
+          if-no-files-found: ignore
+          retention-days: 7
