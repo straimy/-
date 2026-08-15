@@ -1,0 +1,30 @@
+name: GGO v13 inspect JEG disconnect
+on:
+  push:
+    paths: ['.github/workflows/ggo-v13-inspect-jeg.yml']
+  workflow_dispatch:
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect modified JEG MetaLoader and UI layout
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p inspection
+          JEG="$(find . -maxdepth 2 -type f -name '*JEG*changes*.jar' | head -n1 || true)"
+          echo "JEG=$JEG" > inspection/v13.txt
+          if [ -n "$JEG" ]; then
+            javap -classpath "$JEG" -p -c -s ttv.migami.jeg.client.MetaLoader >> inspection/v13.txt 2>&1 || true
+          fi
+          unzip -q -o gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip -d /tmp/ga
+          echo '=== UILAYOUT ===' >> inspection/v13.txt
+          sed -n '1,320p' /tmp/ga/client-ui/src/main/java/arena/client/ui/UiLayout.java >> inspection/v13.txt || true
+          echo '=== PROFILE ===' >> inspection/v13.txt
+          grep -Rni -C 8 'class PlayerProfile\|crystals\|coins' /tmp/ga/src/main/java/arena | head -n 500 >> inspection/v13.txt || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ggo-v13-inspection
+          path: inspection/v13.txt
+          retention-days: 2
