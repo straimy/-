@@ -13,6 +13,7 @@ on:
 
 env:
   SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+  FINAL_RP: GunnerArena-ResourcePack-1.20.1-v1.zip
 
 jobs:
   build:
@@ -71,9 +72,7 @@ jobs:
           python3 hotfix/apply_v6_runtime_patch.py
           python3 - <<'PY'
           from pathlib import Path
-          import re
 
-          # 1. remove duplicate round/loadout reset before requestPlay and automatic shop popup.
           p=Path('ga-build/src/main/java/arena/forge/MinimalGameplayFixes.java'); s=p.read_text()
           bad='''            runtime.forgeLoadouts().clearCombatSlots(player);\n            runtime.players().roundSession(player).resetForNewRound(500);\n            boolean spawned = runtime.players().requestPlay(server, player, runtime.rounds().state(), runtime.rounds().roundNumber(), now);'''
           good='''            // requestPlay -> prepareForRound owns round reset/loadout initialization exactly once.\n            boolean spawned = runtime.players().requestPlay(server, player, runtime.rounds().state(), runtime.rounds().roundNumber(), now);'''
@@ -82,25 +81,21 @@ jobs:
                       'LAST_NO_SPAWN_WARN.remove(player.getUUID()); player.sendSystemMessage(Component.literal("[GGO] Ты в игре • $500 • G — магазин оружия").withStyle(ChatFormatting.AQUA));')
           p.write_text(s)
 
-          # 2. 5 second spawn protection.
           p=Path('ga-build/src/main/java/arena/forge/player/ArenaPlayerManager.java'); s=p.read_text()
           s=s.replace('public static final long SPAWN_PROTECTION_TICKS = 20L * 3L;', 'public static final long SPAWN_PROTECTION_TICKS = 20L * 5L;')
           s=s.replace('[GA] Spawn protection: 3s', '[GGO] Бессмертие 5с • G — магазин оружия')
           p.write_text(s)
 
-          # 3. Skill unlock: slow free TP still works; crystals can accelerate a missing-points unlock.
           p=Path('ga-build/src/main/java/arena/forge/net/ArenaNetwork.java'); s=p.read_text()
           old='''                var result=runtime.rpg().unlock(profile,packet.id);\n                if(result.ok()) { runtime.profiles().markDirty(player.getUUID()); player.sendSystemMessage(Component.literal("[GA] Навык открыт: "+result.skill().name())); }\n                else player.sendSystemMessage(Component.literal("[GA] Навык недоступен: "+result.code()));'''
           new='''                var result=runtime.rpg().unlock(profile,packet.id);\n                boolean paidWithCrystals=false;\n                int crystalCost=0;\n                if(!result.ok() && result.code()==arena.rpg.RpgService.UnlockCode.NOT_ENOUGH_POINTS && result.skill()!=null) {\n                    crystalCost=Math.max(1,(result.skill().cost()+9)/10);\n                    if(profile.crystals>=crystalCost) {\n                        int savedPoints=profile.skillPoints;\n                        profile.skillPoints=Math.max(profile.skillPoints,result.skill().cost());\n                        result=runtime.rpg().unlock(profile,packet.id);\n                        profile.skillPoints=savedPoints;\n                        if(result.ok()) { profile.crystals-=crystalCost; paidWithCrystals=true; }\n                    }\n                }\n                if(result.ok()) { runtime.profiles().markDirty(player.getUUID()); player.sendSystemMessage(Component.literal("[GGO] Навык открыт: "+result.skill().name()+(paidWithCrystals?" • -"+crystalCost+"◆":""))); }\n                else player.sendSystemMessage(Component.literal("[GGO] Навык недоступен: "+result.code()));'''
           if old not in s: raise SystemExit('skill unlock block missing')
           p.write_text(s.replace(old,new,1))
 
-          # 4. Normal navigation Shop is lobby/cosmetics; weapon shop is server-opened via /gunshop (G).
           p=Path('ga-build/client-ui/src/main/java/arena/client/ui/ArenaNavigation.java'); s=p.read_text()
           s=s.replace('case SHOP -> mc.setScreen(new ShopScreen());','case SHOP -> mc.setScreen(new LobbyShopScreen());')
           p.write_text(s)
 
-          # 5. Product branding, keep stable mod IDs for compatibility.
           for q in [Path('ga-build/src/main/resources/META-INF/mods.toml'), Path('ga-build/client-ui/src/main/resources/META-INF/mods.toml')]:
               if q.exists():
                   t=q.read_text(); t=t.replace('Gunner Arena UI','GunGloryOnline UI').replace('Gunner Arena','GunGloryOnline').replace('KVICloud','GunGloryOnline'); q.write_text(t)
