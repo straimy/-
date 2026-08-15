@@ -25,7 +25,7 @@ public final class MainArenaScreen extends AbstractArenaScreen {
         playButton.active = playAllowed;
         addRenderableWidget(playButton);
         UiLayout layout = UiLayout.of(width, height);
-        addRenderableWidget(new ArenaButton(layout.primaryButton(1), Component.literal("◈  ЛОББИ-МАГАЗИН"), b -> Minecraft.getInstance().setScreen(new ShopScreen())));
+        addRenderableWidget(new ArenaButton(layout.primaryButton(1), Component.literal("◈  ЛОББИ-МАГАЗИН"), b -> Minecraft.getInstance().setScreen(new LobbyShopScreen())));
         addRenderableWidget(new ArenaButton(layout.primaryButton(2), Component.literal("◇  ПРОФИЛЬ"), b -> Minecraft.getInstance().setScreen(new ProfileScreen())));
     }
 
