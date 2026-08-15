@@ -20,9 +20,10 @@ import org.lwjgl.glfw.GLFW;
 public final class GunnerArenaUiMod {
     public static final String MODID = "gunnerarena_ui";
     private static final boolean DEV_KEY_ENABLED = UiNavigationPolicy.devKeyEnabled(System.getProperty("gunnerarena.ui.devKey"));
-    // R is intentionally left to JEG. Gunner Arena custom weapons use U for their own fallback reload.
+    // R is intentionally left to JEG. GunGlory custom weapons use U for their own fallback reload.
     private static final KeyMapping RELOAD_WEAPON = new KeyMapping("key.gunnerarena_ui.reload_weapon", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_U, "key.categories.gunnerarena_ui");
     private static final KeyMapping FIREMODE = new KeyMapping("key.gunnerarena_ui.firemode", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_V, "key.categories.gunnerarena_ui");
+    private static final KeyMapping GUN_SHOP = new KeyMapping("key.gunnerarena_ui.gun_shop", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_G, "key.categories.gunnerarena_ui");
     private static final KeyMapping OPEN_MENU = new KeyMapping("key.gunnerarena_ui.open_menu_dev", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_F8, "key.categories.gunnerarena_ui");
 
     public GunnerArenaUiMod() { ArenaClientNetwork.register(); }
@@ -30,7 +31,7 @@ public final class GunnerArenaUiMod {
     @Mod.EventBusSubscriber(modid = MODID, value = Dist.CLIENT, bus = Mod.EventBusSubscriber.Bus.MOD)
     public static final class ModEvents {
         @SubscribeEvent public static void registerKeys(RegisterKeyMappingsEvent event) {
-            event.register(RELOAD_WEAPON); event.register(FIREMODE); if (DEV_KEY_ENABLED) event.register(OPEN_MENU);
+            event.register(RELOAD_WEAPON); event.register(FIREMODE); event.register(GUN_SHOP); if (DEV_KEY_ENABLED) event.register(OPEN_MENU);
         }
     }
 
@@ -45,6 +46,7 @@ public final class GunnerArenaUiMod {
             Minecraft mc = Minecraft.getInstance();
             while (DEV_KEY_ENABLED && OPEN_MENU.consumeClick()) if (mc.player != null) ClientUiOpener.open(0);
             if (mc.player != null && mc.screen == null) {
+                while (GUN_SHOP.consumeClick()) mc.player.connection.sendCommand("gunshop");
                 while (RELOAD_WEAPON.consumeClick()) {
                     var stack = mc.player.getMainHandItem();
                     var id = stack.isEmpty() ? null : BuiltInRegistries.ITEM.getKey(stack.getItem());
@@ -84,7 +86,7 @@ public final class GunnerArenaUiMod {
             if (title.length() > 22) title = title.substring(0,22)+"…";
             g.drawString(mc.font, Component.literal("✦ "+title), x+31,y+9,UiTheme.TEXT);
             g.drawString(mc.font, Component.literal("("+ru+")"), x+31,y+22,UiTheme.PINK);
-            String hint = "jeg".equals(id.getNamespace()) ? "R перезарядка JEG  •  V режим" : "U перезарядка  •  V режим";
+            String hint = "jeg".equals(id.getNamespace()) ? "R перезарядка  •  G магазин" : "U перезарядка  •  G магазин";
             g.drawString(mc.font, Component.literal(hint), x+31,y+34,UiTheme.MUTED);
         }
     }
