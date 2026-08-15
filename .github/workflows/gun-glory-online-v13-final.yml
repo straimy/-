@@ -1,0 +1,91 @@
+name: GunGloryOnline v13 FINAL
+on:
+  push:
+    paths: ['.github/workflows/gun-glory-online-v13-final.yml']
+  workflow_dispatch:
+env:
+  SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+  FINAL_RP: GunnerArena-ResourcePack-1.20.1-v1.zip
+jobs:
+  final:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with: {distribution: temurin, java-version: '17'}
+      - name: Run v13 source build stages
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat >/tmp/extract.py <<'PY'
+          import sys
+          from pathlib import Path
+          wf=Path(sys.argv[1]); wanted=sys.argv[2]; lines=wf.read_text().splitlines()
+          start=next((i for i,l in enumerate(lines) if l.strip()==f'- name: {wanted}'),None)
+          if start is None: raise SystemExit('step not found: '+wanted)
+          run=None
+          for i in range(start+1,len(lines)):
+              if lines[i].startswith('      - name:') or lines[i].startswith('      - uses:'): break
+              if lines[i].strip()=='run: |': run=i+1; break
+          if run is None: raise SystemExit('run block missing: '+wanted)
+          out=[]
+          for i in range(run,len(lines)):
+              l=lines[i]
+              if l.startswith('      - name:') or l.startswith('      - uses:'): break
+              out.append(l[10:] if l.startswith('          ') else l)
+          print('\n'.join(out).rstrip())
+          PY
+          WF=.github/workflows/gun-glory-online-v13.yml
+          for STEP in 'Prepare v12 proven base' 'Apply v13 responsive cosmetics disconnect patch' 'Build Core' 'Build UI' 'Prepare v13 payload'; do
+            python3 /tmp/extract.py "$WF" "$STEP" >/tmp/step.sh
+            bash /tmp/step.sh
+          done
+      - name: Dedicated server smoke direct
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf ds forge-installer.jar
+          mkdir ds
+          curl -fL --retry 3 -o forge-installer.jar https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-installer.jar
+          java -jar forge-installer.jar --installServer ds >/tmp/forge-install.log 2>&1
+          echo 'eula=true' > ds/eula.txt
+          mkdir -p ds/mods
+          cp final-artifacts/server/mods/gungloryonline-core-0.7.1-v13.jar ds/mods/
+          cd ds
+          timeout 100s java -Xms512M -Xmx1G @libraries/net/minecraftforge/forge/1.20.1-47.4.10/unix_args.txt nogui > ../dedicated-server-console.log 2>&1 || CODE=$?
+          cd ..
+          test -f ds/logs/latest.log
+          grep -Fq 'Done (' ds/logs/latest.log
+          ! grep -Eq 'Exception in server tick loop|Failed to start the minecraft server|Duplicate key gunnerarena:ui' ds/logs/latest.log
+      - name: Real Forge client smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v13.yml 'Real Forge client smoke' >/tmp/client.sh
+          bash /tmp/client.sh
+      - name: Final v13 audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v13.yml 'Final v13 audit' >/tmp/audit.sh
+          bash /tmp/audit.sh
+      - name: Upload verified v13
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-v13-verified
+          path: final-artifacts/**
+          if-no-files-found: error
+          retention-days: 30
+      - name: Diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-v13-final-diagnostics
+          path: |
+            dedicated-server-console.log
+            ds/logs/**
+            cs/run/logs/**
+            cs/run/crash-reports/**
+          if-no-files-found: ignore
+          retention-days: 7
