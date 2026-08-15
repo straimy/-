@@ -28,7 +28,7 @@ jobs:
           path: test54
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ github.repository }}
-          run-id: 31859223620
+          run-id: 31896919869
 
       - name: Download proven v4 client payload
         uses: actions/download-artifact@v4
@@ -124,7 +124,7 @@ jobs:
           test "$(jar tf "$CORE" | grep -c '^arena/forge/net/ArenaNetwork.class$')" -eq 1
           ! jar tf "$UI" | grep -q '^arena/forge/net/ArenaNetwork.class$'
           jar tf "$CORE" | grep -q '^arena/forge/MinimalGameplayFixes.class$'
-          printf 'CORE_SERVER_SMOKE=PASS\nCORE_UI_CLIENT_SMOKE=PASS\nDUPLICATE_CHANNEL_AUDIT=PASS\nAUTH_NPC_GAMEPLAY_PATCH=test54\n' > final-artifacts/VERIFICATION.txt
+          printf 'CORE_SERVER_SMOKE=PASS\nCORE_UI_CLIENT_SMOKE=PASS\nDUPLICATE_CHANNEL_AUDIT=PASS\nAUTH_NPC_GAMEPLAY_PATCH=test54-latest\n' > final-artifacts/VERIFICATION.txt
 
       - name: Upload verified final Core UI payload
         uses: actions/upload-artifact@v4
