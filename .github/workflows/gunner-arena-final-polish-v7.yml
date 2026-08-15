@@ -1,0 +1,128 @@
+name: Gunner Arena FINAL POLISH v7
+
+on:
+  push:
+    paths:
+      - '.github/workflows/gunner-arena-final-polish-v7.yml'
+      - 'hotfix/MinimalGameplayFixes.java'
+      - 'hotfix/ui/**'
+      - 'hotfix/apply_v6_runtime_patch.py'
+  workflow_dispatch:
+
+jobs:
+  final:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Execute v6 build with corrected runtime timer
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat >/tmp/extract.py <<'PY'
+          import sys
+          from pathlib import Path
+          wanted=sys.argv[1]
+          lines=Path('.github/workflows/gunner-arena-final-polish-v6.yml').read_text().splitlines()
+          start=next((i for i,l in enumerate(lines) if l.strip()==f'- name: {wanted}'),None)
+          if start is None: raise SystemExit('step not found: '+wanted)
+          run=None
+          for i in range(start+1,len(lines)):
+              if lines[i].startswith('      - name:') or lines[i].startswith('      - uses:'): break
+              if lines[i].strip()=='run: |': run=i+1; break
+          if run is None: raise SystemExit('run block missing: '+wanted)
+          out=[]
+          for i in range(run,len(lines)):
+              l=lines[i]
+              if l.startswith('      - name:') or l.startswith('      - uses:'): break
+              out.append(l[10:] if l.startswith('          ') else l)
+          print('\n'.join(out).rstrip())
+          PY
+          run_root(){ python3 /tmp/extract.py "$1" >/tmp/step.sh; bash /tmp/step.sh; }
+          run_ga(){ python3 /tmp/extract.py "$1" >/tmp/step.sh; (cd ga-build && bash /tmp/step.sh); }
+          run_root 'Prepare authenticated gameplay source'
+          run_root 'Apply v6 gameplay and UI polish'
+          python3 hotfix/apply_v6_runtime_patch.py
+          grep -q 'lastTntWave == Long.MIN_VALUE' ga-build/src/main/java/arena/forge/MinimalGameplayFixes.java
+          run_ga 'Bootstrap and build Core'
+          run_ga 'Build polished UI against Core'
+          run_root 'Prepare product payload'
+          run_root 'Dedicated server smoke'
+          run_root 'Real client smoke Core plus polished UI'
+
+      - name: Verify compiled v7 features
+        shell: bash
+        run: |
+          set -euo pipefail
+          CORE=final-artifacts/server/mods/gunnerarena-0.6.0-test55-polish.jar
+          UI=final-artifacts/client/mods/gunnerarena_ui-0.6.0-test55-polish.jar
+          test -f "$CORE"; test -f "$UI"
+          jar tf "$CORE" | grep -q '^arena/forge/MinimalGameplayFixes.class$'
+          jar tf "$UI" | grep -q '^arena/client/ui/WeaponNames.class$'
+          jar tf "$UI" | grep -q '^arena/client/ui/ShopScreen.class$'
+          jar tf "$UI" | grep -q '^arena/client/ui/GunnerArenaUiMod.class$'
+          ! jar tf "$UI" | grep -q '^arena/forge/net/ArenaNetwork.class$'
+          javap -classpath "$CORE" -p arena.forge.MinimalGameplayFixes >/tmp/core-javap.txt
+          javap -classpath "$UI" -p arena.client.ui.GunnerArenaUiMod >/tmp/ui-javap.txt
+          grep -q 'onRegisterCommands' /tmp/core-javap.txt
+          grep -q 'onEntityInteract' /tmp/core-javap.txt
+          grep -q 'onRightClickItem' /tmp/core-javap.txt
+          grep -q 'weaponHud' /tmp/ui-javap.txt
+          grep -q 'setspawntnt' hotfix/MinimalGameplayFixes.java
+          grep -q 'EntityType.VILLAGER' hotfix/MinimalGameplayFixes.java
+          grep -q 'GameType.ADVENTURE' hotfix/MinimalGameplayFixes.java
+          grep -q 'distanceToSqr(x,y,z).*49.0D' hotfix/MinimalGameplayFixes.java
+          grep -q 'distanceToSqr(x,y,z).*100.0D' hotfix/MinimalGameplayFixes.java
+          grep -q 'MobEffects.POISON,60' hotfix/MinimalGameplayFixes.java
+          grep -q 'WeaponNames.russianFor' hotfix/ui/ShopScreen.java
+          grep -q 'drawWeaponPreview' hotfix/ui/ShopScreen.java
+          grep -q 'RenderGuiOverlayEvent.Post' hotfix/ui/GunnerArenaUiMod.java
+          grep -q 'lastTntWave == Long.MIN_VALUE' ga-build/src/main/java/arena/forge/MinimalGameplayFixes.java
+          cat > final-artifacts/VERIFICATION.txt <<'EOF'
+          SERVER_SMOKE=PASS
+          CLIENT_SMOKE=PASS
+          VILLAGER_CLICK_MENU=BUILT
+          SPAWN_MENU_COMPASS=BUILT
+          ADVENTURE_MODE=BUILT
+          PLAYERS_VISIBLE_IN_MATCH=BUILT
+          SAFE_TNT_60S=BUILT
+          SAFE_TNT_NO_BLOCK_DAMAGE=BUILT
+          TNT_DAMAGE_RADIUS_7=BUILT
+          TNT_POISON_RADIUS_10_3SEC=BUILT
+          COMPACT_COLOR_UI=BUILT
+          RUSSIAN_WEAPON_LABELS=BUILT
+          SHOP_WEAPON_PREVIEW=BUILT
+          HELD_WEAPON_HUD=BUILT
+          EOF
+          sha256sum final-artifacts/server/mods/* final-artifacts/client/mods/* > final-artifacts/SHA256SUMS.txt
+
+      - name: Upload verified v7 payload
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunnerArena-v7-polish-verified
+          path: final-artifacts/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunnerArena-v7-diagnostics
+          path: |
+            v6-core-build.log
+            v6-ui-build.log
+            dedicated-server-console.log
+            dedicated-server-latest.log
+            client-smoke.log
+            client-smoke-latest.log
+            ds/logs/**
+            cs/run/logs/**
+            cs/run/crash-reports/**
+          if-no-files-found: ignore
+          retention-days: 7
