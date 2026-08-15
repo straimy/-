@@ -1,0 +1,85 @@
+name: Gunner Arena ResourcePack Embeddium Hotfix
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/ga-resourcepack-embeddium-hotfix.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build compatible resource pack
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC='GunnerArena-ResourcePack-1.20.1-v1.zip'
+          OUT='GunnerArena-ResourcePack-1.20.1-v2-embeddium-fix.zip'
+          WORK="$RUNNER_TEMP/ga-rp"
+          test -f "$SRC"
+          rm -rf "$WORK"
+          mkdir -p "$WORK"
+          unzip -q "$SRC" -d "$WORK"
+
+          # Embeddium explicitly rejects vanilla terrain shader replacements.
+          rm -rf "$WORK/assets/minecraft/shaders/core"
+
+          test -f "$WORK/pack.mcmeta"
+          (
+            cd "$WORK"
+            zip -qr "$GITHUB_WORKSPACE/$OUT" .
+          )
+
+          # Fail if any forbidden terrain shader override survived.
+          if unzip -Z1 "$OUT" | grep -q '^assets/minecraft/shaders/core/'; then
+            echo 'Forbidden terrain shader overrides are still present' >&2
+            exit 1
+          fi
+
+          # pack.mcmeta must be at ZIP root.
+          unzip -Z1 "$OUT" | grep -qx 'pack.mcmeta'
+
+          SHA1="$(sha1sum "$OUT" | awk '{print $1}')"
+          echo "sha1=$SHA1" >> "$GITHUB_ENV"
+          printf '%s  %s\n' "$SHA1" "$OUT" | tee "$OUT.sha1"
+          unzip -t "$OUT" >/dev/null
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunnerArena-ResourcePack-1.20.1-v2-embeddium-fix
+          path: |
+            GunnerArena-ResourcePack-1.20.1-v2-embeddium-fix.zip
+            GunnerArena-ResourcePack-1.20.1-v2-embeddium-fix.zip.sha1
+
+      - name: Publish release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG='resourcepack-1.20.1-v2-embeddium-fix'
+          ZIP='GunnerArena-ResourcePack-1.20.1-v2-embeddium-fix.zip'
+          SHA_FILE="$ZIP.sha1"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ZIP" "$SHA_FILE" --clobber
+          else
+            gh release create "$TAG" "$ZIP" "$SHA_FILE" \
+              --title 'Gunner Arena Resource Pack 1.20.1 v2 — Embeddium fix' \
+              --notes "Removes unsupported assets/minecraft/shaders/core terrain shader overrides that crash Embeddium during Rendering overlay. Normal textures/models/lang/sounds remain. SHA1: $sha1"
+          fi
+
+      - name: Print server.properties values
+        shell: bash
+        run: |
+          echo 'require-resource-pack=true'
+          echo 'resource-pack=https://github.com/straimy/-/releases/download/resourcepack-1.20.1-v2-embeddium-fix/GunnerArena-ResourcePack-1.20.1-v2-embeddium-fix.zip'
+          echo "resource-pack-sha1=$sha1"
