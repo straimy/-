@@ -1,0 +1,216 @@
+name: Gunner Arena FINAL POLISH v10
+
+on:
+  push:
+    paths:
+      - '.github/workflows/gunner-arena-final-polish-v10.yml'
+      - 'hotfix/MinimalGameplayFixes.java'
+      - 'hotfix/RoundLoadoutGuard.java'
+      - 'hotfix/PlayerListDuplicateLoginMixin.java'
+      - 'hotfix/gunnerarena.mixins.json'
+      - 'hotfix/ui/**'
+  workflow_dispatch:
+
+env:
+  SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+
+jobs:
+  final:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Prepare authenticated base source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat >/tmp/extract.py <<'PY'
+          import sys
+          from pathlib import Path
+          wf=Path(sys.argv[1]); wanted=sys.argv[2]
+          lines=wf.read_text().splitlines()
+          start=next((i for i,l in enumerate(lines) if l.strip()==f'- name: {wanted}'),None)
+          if start is None: raise SystemExit('step not found: '+wanted)
+          run=None
+          for i in range(start+1,len(lines)):
+              if lines[i].startswith('      - name:') or lines[i].startswith('      - uses:'): break
+              if lines[i].strip()=='run: |': run=i+1; break
+          if run is None: raise SystemExit('run block missing: '+wanted)
+          out=[]
+          for i in range(run,len(lines)):
+              l=lines[i]
+              if l.startswith('      - name:') or l.startswith('      - uses:'): break
+              out.append(l[10:] if l.startswith('          ') else l)
+          print('\n'.join(out).rstrip())
+          PY
+          python3 /tmp/extract.py .github/workflows/ga-hotfix-auth-menu-npc.yml 'Prepare patched source' >/tmp/auth.sh
+          bash /tmp/auth.sh
+
+      - name: Apply v10 gameplay UI and multi-device patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ga-build/src/main/java/arena/mixin ga-build/src/main/resources
+          cp hotfix/MinimalGameplayFixes.java ga-build/src/main/java/arena/forge/MinimalGameplayFixes.java
+          cp hotfix/RoundLoadoutGuard.java ga-build/src/main/java/arena/forge/RoundLoadoutGuard.java
+          cp hotfix/PlayerListDuplicateLoginMixin.java ga-build/src/main/java/arena/mixin/PlayerListDuplicateLoginMixin.java
+          cp hotfix/gunnerarena.mixins.json ga-build/src/main/resources/gunnerarena.mixins.json
+          cp hotfix/ui/ShopScreen.java ga-build/client-ui/src/main/java/arena/client/ui/ShopScreen.java
+          cp hotfix/ui/MainArenaScreen.java ga-build/client-ui/src/main/java/arena/client/ui/MainArenaScreen.java
+          cp hotfix/ui/UiTheme.java ga-build/client-ui/src/main/java/arena/client/ui/UiTheme.java
+          cp hotfix/ui/GunnerArenaUiMod.java ga-build/client-ui/src/main/java/arena/client/ui/GunnerArenaUiMod.java
+          cp hotfix/ui/WeaponNames.java ga-build/client-ui/src/main/java/arena/client/ui/WeaponNames.java
+          python3 hotfix/apply_v6_runtime_patch.py
+          cat >> ga-build/build.gradle <<'GRADLE'
+
+          tasks.named('jar', Jar).configure {
+              manifest {
+                  attributes(['MixinConfigs': 'gunnerarena.mixins.json'])
+              }
+          }
+          GRADLE
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('ga-build/gradle.properties')
+          s=p.read_text()
+          for old in ('mod_version=0.6.0-test53-authfix','mod_version=0.6.0-test54-gameplayfix','mod_version=0.6.0-test55-polish','mod_version=0.6.0-test52-grepfix'):
+              s=s.replace(old,'mod_version=0.6.0-test56-sessionfix')
+          p.write_text(s)
+          PY
+          grep -q 'RoundLoadoutGuard' ga-build/src/main/java/arena/forge/RoundLoadoutGuard.java
+          grep -q 'multiplayer.disconnect.duplicate_login' ga-build/src/main/java/arena/mixin/PlayerListDuplicateLoginMixin.java
+          grep -q 'GLFW_KEY_U' ga-build/client-ui/src/main/java/arena/client/ui/GunnerArenaUiMod.java
+          ! grep -q 'GLFW_KEY_R' ga-build/client-ui/src/main/java/arena/client/ui/GunnerArenaUiMod.java
+
+      - name: Bootstrap ForgeGradle and build Core
+        working-directory: ga-build
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/mdk /tmp/mdk.zip
+          curl -fL --retry 3 -o /tmp/mdk.zip https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-mdk.zip
+          mkdir /tmp/mdk
+          unzip -q /tmp/mdk.zip 'gradlew' 'gradlew.bat' 'gradle/*' -d /tmp/mdk
+          cp /tmp/mdk/gradlew .
+          cp /tmp/mdk/gradlew.bat .
+          cp -a /tmp/mdk/gradle .
+          chmod +x gradlew
+          ./gradlew --no-daemon clean build --stacktrace 2>&1 | tee ../v10-core-build.log
+
+      - name: Build UI against real Core
+        working-directory: ga-build
+        shell: bash
+        run: |
+          set -euo pipefail
+          CORE="$(find build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          test -n "$CORE"
+          mkdir -p client-ui/libs
+          cp "$CORE" client-ui/libs/gunnerarena-core.jar
+          cp gradlew client-ui/gradlew
+          cp gradlew.bat client-ui/gradlew.bat
+          rm -rf client-ui/gradle
+          cp -a gradle client-ui/gradle
+          chmod +x client-ui/gradlew
+          (cd client-ui && ./gradlew --no-daemon clean build --stacktrace) 2>&1 | tee ../v10-ui-build.log
+
+      - name: Prepare product payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf final-artifacts
+          mkdir -p final-artifacts/server/mods final-artifacts/client/mods
+          CORE="$(find ga-build/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          UI="$(find ga-build/client-ui/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          test -n "$CORE"; test -n "$UI"
+          cp "$CORE" final-artifacts/server/mods/gunnerarena-0.6.0-test56-sessionfix.jar
+          cp "$CORE" final-artifacts/client/mods/gunnerarena-0.6.0-test56-sessionfix.jar
+          cp "$UI" final-artifacts/client/mods/gunnerarena_ui-0.6.0-test56-sessionfix.jar
+          cmp final-artifacts/server/mods/gunnerarena-0.6.0-test56-sessionfix.jar final-artifacts/client/mods/gunnerarena-0.6.0-test56-sessionfix.jar
+          jar tf "$CORE" | grep -q '^arena/forge/RoundLoadoutGuard.class$'
+          jar tf "$CORE" | grep -q '^arena/mixin/PlayerListDuplicateLoginMixin.class$'
+          jar tf "$CORE" | grep -q '^gunnerarena.mixins.json$'
+          unzip -p "$CORE" META-INF/MANIFEST.MF | grep -q 'MixinConfigs: gunnerarena.mixins.json'
+
+      - name: Dedicated server smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gunner-arena-final-build-v3.yml 'Dedicated server smoke' >/tmp/server-smoke.sh
+          bash /tmp/server-smoke.sh
+
+      - name: Real Forge client smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 -o /tmp/mdk.zip https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-mdk.zip
+          python3 /tmp/extract.py .github/workflows/gunner-arena-final-build-v3.yml 'Real client smoke with Core and UI JAR' >/tmp/client-smoke.sh
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/client-smoke.sh'); s=p.read_text()
+          anchor='cd cs; chmod +x gradlew\n'
+          if anchor not in s: raise SystemExit('client smoke anchor missing')
+          prep="""mkdir -p cs/libs\nfor j in cs/run/mods/*.jar; do\n  if jar tf \"$j\" | grep -q '^arena/GunnerArenaMod.class$'; then cp \"$j\" cs/libs/gunnerarena-core-0.6.0.jar;\n  elif jar tf \"$j\" | grep -q '^arena/client/net/ArenaClientNetwork.class$'; then cp \"$j\" cs/libs/gunnerarena-ui-0.6.0.jar; fi\ndone\ntest -f cs/libs/gunnerarena-core-0.6.0.jar\ntest -f cs/libs/gunnerarena-ui-0.6.0.jar\nrm -f cs/run/mods/*.jar\ncat >> cs/build.gradle <<'GRADLE'\nrepositories { flatDir { dirs 'libs' } }\ndependencies {\n runtimeOnly fg.deobf('local:gunnerarena-core:0.6.0')\n runtimeOnly fg.deobf('local:gunnerarena-ui:0.6.0')\n}\ntasks.configureEach { t -> if (t.name == 'runClient') { t.doFirst { file('build/resources/main').mkdirs(); file('build/classes/java/main').mkdirs() } } }\nGRADLE\n"""
+          s=s.replace(anchor,prep+anchor,1)
+          old="""if [ -f \"$L\" ] && grep -Fq 'Reloading ResourceManager:' \"$L\" && grep -Fq 'gunnerarena' \"$L\" && grep -Fq 'gunnerarena_ui' \"$L\"; then R=1; break; fi"""
+          new="""if [ -f \"$L\" ] && [ -f run/logs/debug.log ] && grep -Fq 'Reloading ResourceManager:' \"$L\" && grep -Fq 'with {gunnerarena} mods' run/logs/debug.log && grep -Fq 'with {gunnerarena_ui} mods' run/logs/debug.log; then R=1; break; fi"""
+          if old not in s: raise SystemExit('client condition missing')
+          p.write_text(s.replace(old,new,1))
+          PY
+          bash /tmp/client-smoke.sh
+
+      - name: Final v10 audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          CORE=final-artifacts/server/mods/gunnerarena-0.6.0-test56-sessionfix.jar
+          UI=final-artifacts/client/mods/gunnerarena_ui-0.6.0-test56-sessionfix.jar
+          javap -classpath "$CORE" -p arena.forge.RoundLoadoutGuard >/tmp/guard.txt
+          javap -classpath "$CORE" -p arena.mixin.PlayerListDuplicateLoginMixin >/tmp/mixin.txt
+          javap -classpath "$UI" -p 'arena.client.ui.GunnerArenaUiMod$ForgeEvents' >/tmp/ui.txt
+          grep -q 'onServerTick' /tmp/guard.txt
+          grep -q 'allowDuplicateLogin' /tmp/mixin.txt
+          grep -q 'weaponHud' /tmp/ui.txt
+          grep -q 'GLFW_KEY_U' hotfix/ui/GunnerArenaUiMod.java
+          ! grep -q 'GLFW_KEY_R' hotfix/ui/GunnerArenaUiMod.java
+          cat > final-artifacts/VERIFICATION.txt <<'EOF'
+          SERVER_SMOKE=PASS
+          CLIENT_SMOKE=PASS
+          MAP_REGEN_STALE_LOADOUT_GUARD=BUILT
+          OLD_ROUND_WEAPONS_CLEARED_DURING_REGEN=BUILT
+          JEG_R_KEY_CONFLICT_REMOVED=BUILT
+          JEG_NATIVE_RELOAD_LEFT_IN_CONTROL=BUILT
+          MULTI_DEVICE_DUPLICATE_LOGIN_MIXIN=BUILT_SERVER_START_VERIFIED
+          MULTI_DEVICE_TWO_REAL_CLIENTS=NEEDS_LIVE_SERVER_TEST
+          EOF
+          sha256sum final-artifacts/server/mods/* final-artifacts/client/mods/* > final-artifacts/SHA256SUMS.txt
+
+      - name: Upload verified product
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunnerArena-v10-session-reload-verified
+          path: final-artifacts/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunnerArena-v10-diagnostics
+          path: |
+            v10-core-build.log
+            v10-ui-build.log
+            dedicated-server-console.log
+            dedicated-server-latest.log
+            client-smoke.log
+            client-smoke-latest.log
+            ds/logs/**
+            cs/run/logs/**
+            cs/run/crash-reports/**
+          if-no-files-found: ignore
+          retention-days: 7
