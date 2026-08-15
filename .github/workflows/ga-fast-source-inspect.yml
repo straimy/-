@@ -16,9 +16,11 @@ jobs:
           rm -rf /tmp/ga && mkdir /tmp/ga
           unzip -q gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip -d /tmp/ga
           cd /tmp/ga
-          echo '=== AUTH STRINGS ==='
-          grep -RInE 'Сначала войдите|ВОЙДИ ИЛИ ЗАРЕГИСТРИРУЙСЯ|login <|register <|authenticated|isAuthenticated|auth' src/main/java client-ui/src/main/java 2>/dev/null | head -n 250 || true
-          echo '=== COMMAND REGISTRATION ==='
-          grep -RInE 'Commands\.literal|RegisterCommandsEvent|literal\("|setnpc|menu' src/main/java 2>/dev/null | head -n 300 || true
-          echo '=== PLAYER EVENTS / INVENTORY ==='
-          grep -RInE 'PlayerLoggedInEvent|PlayerEvent|inventory|Compass|Items\.COMPASS|InteractionEvent|RightClickItem' src/main/java 2>/dev/null | head -n 300 || true
+          echo '=== AuthGate.java ==='
+          sed -n '1,140p' src/main/java/arena/forge/AuthGate.java
+          echo '=== ArenaRuntime imports + login ==='
+          sed -n '1,190p' src/main/java/arena/forge/ArenaRuntime.java
+          echo '=== ArenaRuntime interactions/tick ==='
+          sed -n '300,470p' src/main/java/arena/forge/ArenaRuntime.java
+          echo '=== GunnerCommands top ==='
+          sed -n '1,210p' src/main/java/arena/forge/GunnerCommands.java
