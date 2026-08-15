@@ -40,8 +40,10 @@ jobs:
           python3 ai-gunner-1.5/rc3-apply.py
           python3 ai-gunner-1.5/rc3-fix.py
           python3 ai-gunner-1.5/rc4-apply.py
+          python3 ai-gunner-1.5/rc4-cache.py
           grep -q 'give @s' /tmp/aigunner/ai-gunner-dev10/src/main/java/ai/gunner/integration/GunnerArenaAdapter.java
           grep -q 'jeg:assault_rifle' /tmp/aigunner/ai-gunner-dev10/src/main/java/ai/gunner/integration/GunnerArenaAdapter.java
+          grep -q 'rememberedRifleAmmo' /tmp/aigunner/ai-gunner-dev10/src/main/java/ai/gunner/brain/CombatBrain.java
       - name: Build rc4
         shell: bash
         run: |
