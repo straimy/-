@@ -1,0 +1,180 @@
+name: Gunner Arena FINAL POLISH v6
+
+on:
+  push:
+    paths:
+      - '.github/workflows/gunner-arena-final-polish-v6.yml'
+      - 'hotfix/MinimalGameplayFixes.java'
+      - 'hotfix/ui/**'
+  workflow_dispatch:
+
+env:
+  SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+  FINAL_RP: GunnerArena-ResourcePack-1.20.1-v1.zip
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Prepare authenticated gameplay source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat >/tmp/extract_step.py <<'PY'
+          import sys
+          from pathlib import Path
+          wf=Path(sys.argv[1]); wanted=sys.argv[2]
+          lines=wf.read_text().splitlines()
+          start=next((i for i,l in enumerate(lines) if l.strip()==f'- name: {wanted}'),None)
+          if start is None: raise SystemExit('step not found: '+wanted)
+          run=None
+          for i in range(start+1,len(lines)):
+              if lines[i].startswith('      - name:'): break
+              if lines[i].strip()=='run: |': run=i+1; break
+          if run is None: raise SystemExit('run block missing')
+          out=[]
+          for i in range(run,len(lines)):
+              l=lines[i]
+              if l.startswith('      - name:'): break
+              out.append(l[10:] if l.startswith('          ') else l)
+          print('\n'.join(out).rstrip())
+          PY
+          python3 /tmp/extract_step.py .github/workflows/ga-hotfix-auth-menu-npc.yml 'Prepare patched source' >/tmp/auth.sh
+          bash /tmp/auth.sh
+          python3 /tmp/extract_step.py .github/workflows/ga-hotfix-gameplay-minimal.yml 'Apply test54 gameplay patch' >/tmp/gameplay.sh
+          (cd ga-build && bash /tmp/gameplay.sh)
+
+      - name: Apply v6 gameplay and UI polish
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp hotfix/MinimalGameplayFixes.java ga-build/src/main/java/arena/forge/MinimalGameplayFixes.java
+          cp hotfix/ui/ShopScreen.java ga-build/client-ui/src/main/java/arena/client/ui/ShopScreen.java
+          cp hotfix/ui/MainArenaScreen.java ga-build/client-ui/src/main/java/arena/client/ui/MainArenaScreen.java
+          cp hotfix/ui/UiTheme.java ga-build/client-ui/src/main/java/arena/client/ui/UiTheme.java
+          cp hotfix/ui/GunnerArenaUiMod.java ga-build/client-ui/src/main/java/arena/client/ui/GunnerArenaUiMod.java
+          cp hotfix/ui/WeaponNames.java ga-build/client-ui/src/main/java/arena/client/ui/WeaponNames.java
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('ga-build/gradle.properties')
+          s=p.read_text().replace('mod_version=0.6.0-test54-gameplayfix','mod_version=0.6.0-test55-polish')
+          p.write_text(s)
+          PY
+          grep -q 'setspawntnt' ga-build/src/main/java/arena/forge/MinimalGameplayFixes.java
+          grep -q 'EntityType.VILLAGER' ga-build/src/main/java/arena/forge/MinimalGameplayFixes.java
+          grep -q 'GameType.ADVENTURE' ga-build/src/main/java/arena/forge/MinimalGameplayFixes.java
+          grep -q 'WeaponNames.russianFor' ga-build/client-ui/src/main/java/arena/client/ui/ShopScreen.java
+          grep -q 'RenderGuiOverlayEvent.Post' ga-build/client-ui/src/main/java/arena/client/ui/GunnerArenaUiMod.java
+
+      - name: Bootstrap and build Core
+        working-directory: ga-build
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/mdk /tmp/mdk.zip
+          curl -fL --retry 3 -o /tmp/mdk.zip https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-mdk.zip
+          mkdir /tmp/mdk
+          unzip -q /tmp/mdk.zip 'gradlew' 'gradlew.bat' 'gradle/*' -d /tmp/mdk
+          cp /tmp/mdk/gradlew .; cp /tmp/mdk/gradlew.bat .; cp -a /tmp/mdk/gradle .; chmod +x gradlew
+          ./gradlew --no-daemon clean build --stacktrace 2>&1 | tee ../v6-core-build.log
+
+      - name: Build polished UI against Core
+        working-directory: ga-build
+        shell: bash
+        run: |
+          set -euo pipefail
+          CORE="$(find build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          test -n "$CORE"
+          mkdir -p client-ui/libs; cp "$CORE" client-ui/libs/gunnerarena-core.jar
+          cp gradlew client-ui/gradlew; cp gradlew.bat client-ui/gradlew.bat; rm -rf client-ui/gradle; cp -a gradle client-ui/gradle; chmod +x client-ui/gradlew
+          (cd client-ui && ./gradlew --no-daemon clean build --stacktrace) 2>&1 | tee ../v6-ui-build.log
+
+      - name: Prepare product payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf final-artifacts
+          mkdir -p final-artifacts/server/mods final-artifacts/client/mods
+          CORE="$(find ga-build/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          UI="$(find ga-build/client-ui/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          test -n "$CORE"; test -n "$UI"
+          cp "$CORE" final-artifacts/server/mods/gunnerarena-0.6.0-test55-polish.jar
+          cp "$CORE" final-artifacts/client/mods/gunnerarena-0.6.0-test55-polish.jar
+          cp "$UI" final-artifacts/client/mods/gunnerarena_ui-0.6.0-test55-polish.jar
+          cmp final-artifacts/server/mods/gunnerarena-0.6.0-test55-polish.jar final-artifacts/client/mods/gunnerarena-0.6.0-test55-polish.jar
+          jar tf "$CORE" | grep -q '^arena/forge/MinimalGameplayFixes.class$'
+          jar tf "$UI" | grep -q '^arena/client/ui/WeaponNames.class$'
+          jar tf "$UI" | grep -q '^arena/client/ui/ShopScreen.class$'
+          ! jar tf "$UI" | grep -q '^arena/forge/net/ArenaNetwork.class$'
+
+      - name: Dedicated server smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract_step.py .github/workflows/gunner-arena-final-build-v3.yml 'Dedicated server smoke' >/tmp/server-smoke.sh
+          bash /tmp/server-smoke.sh
+
+      - name: Real client smoke Core plus polished UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 -o /tmp/mdk.zip https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-mdk.zip
+          python3 /tmp/extract_step.py .github/workflows/gunner-arena-final-build-v3.yml 'Real client smoke with Core and UI JAR' >/tmp/client-smoke.sh
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/client-smoke.sh'); s=p.read_text()
+          anchor='cd cs; chmod +x gradlew\n'
+          if anchor not in s: raise SystemExit('client smoke anchor missing')
+          prep="""mkdir -p cs/libs\nfor j in cs/run/mods/*.jar; do\n  if jar tf \"$j\" | grep -q '^arena/GunnerArenaMod.class$'; then cp \"$j\" cs/libs/gunnerarena-core-0.6.0.jar;\n  elif jar tf \"$j\" | grep -q '^arena/client/net/ArenaClientNetwork.class$'; then cp \"$j\" cs/libs/gunnerarena-ui-0.6.0.jar; fi\ndone\ntest -f cs/libs/gunnerarena-core-0.6.0.jar\ntest -f cs/libs/gunnerarena-ui-0.6.0.jar\nrm -f cs/run/mods/*.jar\ncat >> cs/build.gradle <<'GRADLE'\nrepositories { flatDir { dirs 'libs' } }\ndependencies {\n runtimeOnly fg.deobf('local:gunnerarena-core:0.6.0')\n runtimeOnly fg.deobf('local:gunnerarena-ui:0.6.0')\n}\ntasks.configureEach { t -> if (t.name == 'runClient') { t.doFirst { file('build/resources/main').mkdirs(); file('build/classes/java/main').mkdirs() } } }\nGRADLE\n"""
+          s=s.replace(anchor,prep+anchor,1)
+          old="""if [ -f \"$L\" ] && grep -Fq 'Reloading ResourceManager:' \"$L\" && grep -Fq 'gunnerarena' \"$L\" && grep -Fq 'gunnerarena_ui' \"$L\"; then R=1; break; fi"""
+          new="""if [ -f \"$L\" ] && [ -f run/logs/debug.log ] && grep -Fq 'Reloading ResourceManager:' \"$L\" && grep -Fq 'with {gunnerarena} mods' run/logs/debug.log && grep -Fq 'with {gunnerarena_ui} mods' run/logs/debug.log; then R=1; break; fi"""
+          if old not in s: raise SystemExit('client condition missing')
+          p.write_text(s.replace(old,new,1))
+          PY
+          bash /tmp/client-smoke.sh
+
+      - name: Verify v6 feature invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          CORE=final-artifacts/server/mods/gunnerarena-0.6.0-test55-polish.jar
+          UI=final-artifacts/client/mods/gunnerarena_ui-0.6.0-test55-polish.jar
+          strings "$CORE" | grep -q 'setspawntnt'
+          strings "$CORE" | grep -q 'gunnerarena_tnt_spawn'
+          strings "$CORE" | grep -q 'gunnerarena_menu_npc'
+          strings "$UI" | grep -q 'WeaponNames'
+          printf 'SERVER_SMOKE=PASS\nCLIENT_SMOKE=PASS\nVILLAGER_MENU=BUILT\nSPAWN_MENU_COMPASS=BUILT\nADVENTURE_MODE=BUILT\nSAFE_TNT=BUILT\nPOLISHED_UI=BUILT\nWEAPON_PREVIEW_HUD=BUILT\n' > final-artifacts/VERIFICATION.txt
+          sha256sum final-artifacts/server/mods/* final-artifacts/client/mods/* > final-artifacts/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GunnerArena-v6-polish-verified
+          path: final-artifacts/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunnerArena-v6-diagnostics
+          path: |
+            v6-core-build.log
+            v6-ui-build.log
+            dedicated-server-console.log
+            dedicated-server-latest.log
+            client-smoke.log
+            client-smoke-latest.log
+            ds/logs/**
+            cs/run/logs/**
+            cs/run/crash-reports/**
+          if-no-files-found: ignore
+          retention-days: 7
