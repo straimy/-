@@ -11,12 +11,13 @@
   },
   "app": {
     "windows": [{"title":"GunGloryOnline","width":1180,"height":720,"minWidth":900,"minHeight":620,"resizable":true,"fullscreen":false}],
-    "security": {"csp":"default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' ipc: http://ipc.localhost"}
+    "security": {"csp":"default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' ipc: http://ipc.localhost"}
   },
   "bundle": {
     "active": true,
     "targets": ["nsis", "appimage"],
-    "createUpdaterArtifacts": true,
+    "icon": ["icons/icon.png"],
+    "createUpdaterArtifacts": false,
     "windows": {"nsis":{"installMode":"currentUser"}}
   }
 }
