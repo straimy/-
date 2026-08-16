@@ -54,13 +54,15 @@ jobs:
       - name: Prepare v29 source
         shell: bash
         run: |
-          python3 /tmp/extract.py .github/workflows/gun-glory-online-v29-arena-authority-belt.yml 'Prepare authenticated base source' >/tmp/s.sh; bash /tmp/s.sh
-          python3 /tmp/extract.py .github/workflows/gun-glory-online-v29-arena-authority-belt.yml 'Apply v12 base patch' >/tmp/s.sh; bash /tmp/s.sh
-          python3 /tmp/extract.py .github/workflows/gun-glory-online-v29-arena-authority-belt.yml 'Apply retained UI patches' >/tmp/s.sh; bash /tmp/s.sh
-          python3 /tmp/extract.py .github/workflows/gun-glory-online-v29-arena-authority-belt.yml 'Apply v21 gameplay baseline' >/tmp/s.sh; bash /tmp/s.sh
-          python3 /tmp/extract.py .github/workflows/gun-glory-online-v29-arena-authority-belt.yml 'Apply v22 economy identity progression' >/tmp/s.sh; bash /tmp/s.sh
-          python3 /tmp/extract.py .github/workflows/gun-glory-online-v29-arena-authority-belt.yml 'Apply v28 social companion baseline' >/tmp/s.sh; bash /tmp/s.sh
-          python3 /tmp/extract.py .github/workflows/gun-glory-online-v29-arena-authority-belt.yml 'Apply v29 arena authority belt fixes' >/tmp/s.sh; bash /tmp/s.sh
+          set -euo pipefail
+          for step in 'Prepare authenticated base source' 'Apply v12 base patch' 'Apply retained UI patches' 'Apply v21 gameplay baseline' 'Apply v22 economy identity progression'; do
+            python3 /tmp/extract.py .github/workflows/gun-glory-online-v22-economy-identity.yml "$step" >/tmp/s.sh
+            bash /tmp/s.sh
+          done
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v28-social-companion.yml 'Apply v28 gameplay social UI' >/tmp/s.sh
+          bash /tmp/s.sh
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v29-arena-authority-belt.yml 'Apply v29 arena authority belt fixes' >/tmp/s.sh
+          bash /tmp/s.sh
 
       - name: Apply v30 PvP ammo cleanup
         shell: bash
@@ -121,6 +123,7 @@ jobs:
           DUPLICATE_BELT_OVERLAY_REMOVED=PASS
           PHYSICAL_MENU_COMPASS_REMOVED=PASS
           LEGACY_SPAWN_NPC_ARMORSTAND_CLEANUP=PASS
+          LEGACY_STARTER_WEAPONS_SCRUB=PASS
           LEGACY_COMMAND_BLOCK_AMMO_SCRUB=PASS
           UNIVERSAL_AMMO_BOXES=PASS
           AMMO_BOX_RESPAWN_20_40S=PASS
