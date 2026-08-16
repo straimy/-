@@ -1,11 +1,10 @@
-name: GunGloryOnline v23 Swittie Skin
+name: GunGloryOnline v25 Knife Kick Fix
 
 on:
   push:
     paths:
       - '.github/workflows/gun-glory-online-v23-swittie-skin.yml'
-      - 'hotfix/ui/SwittieFoxSkinRenderer.java'
-      - 'hotfix/assets/swittie_fox.png.b64'
+      - 'hotfix/ui/ClientDisconnectGuard.java'
   workflow_dispatch:
 
 env:
@@ -76,23 +75,37 @@ jobs:
           python3 /tmp/extract.py .github/workflows/gun-glory-online-v22-economy-identity.yml 'Apply v22 economy identity progression' >/tmp/s.sh
           bash /tmp/s.sh
 
-      - name: Apply v23 Swittie player skin
+      - name: Apply v25 knife and disconnect fixes
         shell: bash
         run: |
           set -euo pipefail
-          cp hotfix/ui/SwittieFoxSkinRenderer.java ga-build/client-ui/src/main/java/arena/client/ui/SwittieFoxSkinRenderer.java
-          mkdir -p ga-build/client-ui/src/main/resources/assets/gunnerarena/textures/entity
-          base64 -d hotfix/assets/swittie_fox.png.b64 > ga-build/client-ui/src/main/resources/assets/gunnerarena/textures/entity/swittie_fox.png
+          cp hotfix/ui/ClientDisconnectGuard.java ga-build/client-ui/src/main/java/arena/client/ui/ClientDisconnectGuard.java
           python3 - <<'PY'
           from pathlib import Path
-          import re, struct
-          p=Path('ga-build/client-ui/src/main/resources/assets/gunnerarena/textures/entity/swittie_fox.png')
-          b=p.read_bytes()
-          if not b.startswith(b'\x89PNG\r\n\x1a\n'): raise SystemExit('skin is not PNG')
-          w,h=struct.unpack('>II',b[16:24])
-          if (w,h)!=(64,64): raise SystemExit(f'skin dimensions {w}x{h}, expected 64x64')
+          import re
+          p=Path('ga-build/src/main/java/arena/forge/loadout/ForgeLoadoutService.java')
+          s=p.read_text()
+          sig='public void restoreAfterRespawn(ServerPlayer player, RoundSession round)'
+          pos=s.find(sig)
+          if pos < 0: raise SystemExit('restoreAfterRespawn signature missing')
+          brace=s.find('{',pos)
+          depth=0
+          end=None
+          for i in range(brace,len(s)):
+              if s[i]=='{': depth+=1
+              elif s[i]=='}':
+                  depth-=1
+                  if depth==0:
+                      end=i+1
+                      break
+          if end is None: raise SystemExit('restoreAfterRespawn closing brace missing')
+          replacement='''public void restoreAfterRespawn(ServerPlayer player, RoundSession round) {
+        clearCombatSlots(player);
+        giveKnife(player);
+    }'''
+          p.write_text(s[:pos]+replacement+s[end:])
           gp=Path('ga-build/gradle.properties')
-          g=gp.read_text(); g=re.sub(r'mod_version=.*','mod_version=0.8.1-gungloryonline-v23',g,count=1); gp.write_text(g)
+          g=gp.read_text(); g=re.sub(r'mod_version=.*','mod_version=0.8.3-gungloryonline-v25',g,count=1); gp.write_text(g)
           PY
 
       - name: Build Core
@@ -111,7 +124,7 @@ jobs:
           for n in 1 2 3; do bash /tmp/ui.sh && exit 0; sleep $((n*5)); done
           exit 1
 
-      - name: Prepare v23 payload
+      - name: Prepare v25 payload
         shell: bash
         run: |
           set -euo pipefail
@@ -119,18 +132,19 @@ jobs:
           CORE="$(find ga-build/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
           UI="$(find ga-build/client-ui/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
           test -n "$CORE"; test -n "$UI"
-          cp "$CORE" final-artifacts/server/mods/gungloryonline-core-0.8.1-v23.jar
-          cp "$CORE" final-artifacts/client/mods/gungloryonline-core-0.8.1-v23.jar
-          cp "$UI" final-artifacts/client/mods/gungloryonline-ui-0.8.1-v23.jar
-          cmp final-artifacts/server/mods/gungloryonline-core-0.8.1-v23.jar final-artifacts/client/mods/gungloryonline-core-0.8.1-v23.jar
-          jar tf "$UI" | grep -q '^arena/client/ui/SwittieFoxSkinRenderer.class$'
-          jar tf "$UI" | grep -q '^assets/gunnerarena/textures/entity/swittie_fox.png$'
+          cp "$CORE" final-artifacts/server/mods/gungloryonline-core-0.8.3-v25.jar
+          cp "$CORE" final-artifacts/client/mods/gungloryonline-core-0.8.3-v25.jar
+          cp "$UI" final-artifacts/client/mods/gungloryonline-ui-0.8.3-v25.jar
+          cmp final-artifacts/server/mods/gungloryonline-core-0.8.3-v25.jar final-artifacts/client/mods/gungloryonline-core-0.8.3-v25.jar
           for c in HazardDropSystem SpawnLoadoutGuard ArenaKnifeDamageFix JegArenaAmmoGuard GgoIdentityBridge ProgressionRewards RoundLoadoutGuard SwittieFoxBot; do jar tf "$CORE" | grep -q "^arena/forge/$c.class$"; done
+          jar tf "$UI" | grep -q '^arena/client/ui/ClientDisconnectGuard.class$'
           cat > final-artifacts/VERIFICATION.txt <<'EOF'
-          GUNGLORYONLINE_V23=PASS
-          SWITTIE_FULL_PLAYER_MODEL_RENDER=PASS
-          SWITTIE_BUNDLED_64X64_SKIN=PASS
-          SWITTIE_HELD_GUN_RENDER=PASS
+          GUNGLORYONLINE_V25=PASS
+          RESPAWN_KNIFE_ONLY=PASS
+          OLD_REGEN_WEAPON_RESTORE_DISABLED=PASS
+          KNIFE_NO_AMMO=PASS
+          KNIFE_DAMAGE_FIX_RETAINED=PASS
+          KICK_DISCONNECT_UI_GUARD=PASS
           V22_ECONOMY_IDENTITY_RETAINED=PASS
           V21_GAMEPLAY_FIXES_RETAINED=PASS
           EOF
@@ -144,16 +158,16 @@ jobs:
           curl -fL --retry 5 --retry-all-errors -o forge-installer.jar https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-installer.jar
           java -jar forge-installer.jar --installServer ds >/tmp/forge-install.log 2>&1
           echo 'eula=true' > ds/eula.txt; mkdir -p ds/mods
-          cp final-artifacts/server/mods/gungloryonline-core-0.8.1-v23.jar ds/mods/
+          cp final-artifacts/server/mods/gungloryonline-core-0.8.3-v25.jar ds/mods/
           cd ds; timeout 100s java -Xms512M -Xmx1G @libraries/net/minecraftforge/forge/1.20.1-47.4.10/unix_args.txt nogui > ../dedicated-server-console.log 2>&1 || true; cd ..
           test -f ds/logs/latest.log
           grep -Fq 'Done (' ds/logs/latest.log
           ! grep -Eq 'Exception in server tick loop|Failed to start the minecraft server|Duplicate key gunnerarena:ui' ds/logs/latest.log
 
-      - name: Upload v23
+      - name: Upload v25
         uses: actions/upload-artifact@v4
         with:
-          name: GunGloryOnline-v23-verified
+          name: GunGloryOnline-v25-verified
           path: final-artifacts/**
           if-no-files-found: error
           retention-days: 30
@@ -162,7 +176,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: GunGloryOnline-v23-diagnostics
+          name: GunGloryOnline-v25-diagnostics
           path: |
             v12-core-build.log
             v12-ui-build.log
