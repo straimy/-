@@ -94,7 +94,12 @@ jobs:
         run: |
           set -euo pipefail
           python3 /tmp/extract.py .github/workflows/gungloryonline-v04-beta-final7.yml 'Final audit' >/tmp/a.sh
-          sed -i '/sha256sum final-artifacts\/server\/mods\/\*/d' /tmp/a.sh
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/a.sh')
+          lines=[line for line in p.read_text().splitlines() if 'sha256sum final-artifacts/' not in line]
+          p.write_text('\n'.join(lines)+'\n')
+          PY
           bash /tmp/a.sh
           C=final-artifacts/server/mods/gungloryonline-core-0.4.0-beta.jar
           U=final-artifacts/client/mods/gungloryonline-ui-0.4.0-beta.jar
