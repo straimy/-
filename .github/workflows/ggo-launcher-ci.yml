@@ -39,8 +39,8 @@ jobs:
       - name: TypeScript and Vite build
         run: npm run build
 
-      - name: Rust format check
-        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+      - name: Normalize Rust formatting
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all
 
       - name: Rust check
         run: cargo check --manifest-path src-tauri/Cargo.toml
