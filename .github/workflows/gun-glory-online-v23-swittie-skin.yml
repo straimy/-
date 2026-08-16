@@ -99,10 +99,7 @@ jobs:
                       end=i+1
                       break
           if end is None: raise SystemExit('restoreAfterRespawn closing brace missing')
-          replacement='''public void restoreAfterRespawn(ServerPlayer player, RoundSession round) {
-        clearCombatSlots(player);
-        giveKnife(player);
-    }'''
+          replacement="public void restoreAfterRespawn(ServerPlayer player, RoundSession round) {\n        clearCombatSlots(player);\n        giveKnife(player);\n    }"
           p.write_text(s[:pos]+replacement+s[end:])
           gp=Path('ga-build/gradle.properties')
           g=gp.read_text(); g=re.sub(r'mod_version=.*','mod_version=0.8.3-gungloryonline-v25',g,count=1); gp.write_text(g)
