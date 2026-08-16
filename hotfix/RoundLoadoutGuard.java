@@ -17,6 +17,7 @@ import net.minecraftforge.server.ServerLifecycleHooks;
  */
 @Mod.EventBusSubscriber(modid = "gunnerarena", bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class RoundLoadoutGuard {
+    public static final int STARTING_CREDITS = 700;
     private static RoundState previousState;
     private static int previousRound = Integer.MIN_VALUE;
 
@@ -37,10 +38,9 @@ public final class RoundLoadoutGuard {
         if (enteredRegeneration || roundRolledWhileNotPlaying) {
             for (ServerPlayer player : server.getPlayerList().getPlayers()) {
                 if (!runtime.auth().isAuthenticated(player)) continue;
-                // Remove only Gunner Arena-bound combat items/ammo. Normal inventory is untouched.
                 runtime.forgeLoadouts().clearCombatSlots(player);
-                // Prevent respawn hooks during regeneration from restoring the old purchased weapons.
-                runtime.players().roundSession(player).resetForNewRound(500);
+                // Credits/loadout are per-match. Death does NOT call this; regeneration/new round does.
+                runtime.players().roundSession(player).resetForNewRound(STARTING_CREDITS);
                 runtime.customWeaponCombat().forget(player);
                 runtime.players().session(player).state(ArenaPlayerState.LOBBY);
                 player.setInvisible(true);
