@@ -1,6 +1,7 @@
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::{env, sync::Arc, time::Duration};
 use thiserror::Error;
@@ -15,6 +16,10 @@ use uuid::Uuid;
 
 const AUTHORIZE_URL: &str = "https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize";
 const TOKEN_URL: &str = "https://login.microsoftonline.com/consumers/oauth2/v2.0/token";
+const XBOX_USER_AUTH_URL: &str = "https://user.auth.xboxlive.com/user/authenticate";
+const XSTS_AUTH_URL: &str = "https://xsts.auth.xboxlive.com/xsts/authorize";
+const MINECRAFT_LOGIN_URL: &str = "https://api.minecraftservices.com/authentication/login_with_xbox";
+const MINECRAFT_PROFILE_URL: &str = "https://api.minecraftservices.com/minecraft/profile";
 const SCOPE: &str = "XboxLive.signin XboxLive.offline_access";
 
 #[derive(Debug, Error)]
@@ -33,6 +38,14 @@ pub enum MicrosoftAuthError {
     StateMismatch,
     #[error("Microsoft returned OAuth error: {0}")]
     OAuth(String),
+    #[error("Xbox authentication failed: {0}")]
+    Xbox(String),
+    #[error("XSTS authentication failed: {0}")]
+    Xsts(String),
+    #[error("Minecraft authentication failed: {0}")]
+    Minecraft(String),
+    #[error("Minecraft profile is unavailable; the account may not own Minecraft Java Edition or may not have created a profile")]
+    MinecraftProfileUnavailable,
     #[error("network error: {0}")]
     Network(#[from] reqwest::Error),
     #[error("I/O error: {0}")]
@@ -45,6 +58,13 @@ pub struct MicrosoftLoginResult {
     pub authenticated: bool,
     pub expires_in_seconds: u64,
     pub refresh_available: bool,
+    pub minecraft_profile: Option<MinecraftProfile>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MinecraftProfile {
+    pub id: String,
+    pub name: String,
 }
 
 #[derive(Debug, Clone)]
@@ -52,6 +72,8 @@ pub struct MicrosoftSession {
     pub access_token: String,
     pub refresh_token: Option<String>,
     pub expires_in_seconds: u64,
+    pub minecraft_access_token: String,
+    pub minecraft_profile: MinecraftProfile,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -89,7 +111,44 @@ struct TokenErrorResponse {
     error_description: String,
 }
 
-pub async fn login(http: &Client, store: &MicrosoftSessionStore) -> Result<MicrosoftLoginResult, MicrosoftAuthError> {
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct XboxTokenResponse {
+    token: String,
+    display_claims: XboxDisplayClaims,
+}
+
+#[derive(Debug, Deserialize)]
+struct XboxDisplayClaims {
+    xui: Vec<XboxUserClaim>,
+}
+
+#[derive(Debug, Deserialize)]
+struct XboxUserClaim {
+    uhs: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct MinecraftTokenResponse {
+    access_token: String,
+    #[serde(default)]
+    expires_in: u64,
+}
+
+#[derive(Debug, Deserialize)]
+struct ServiceError {
+    #[serde(default)]
+    error: String,
+    #[serde(default, rename = "errorMessage")]
+    error_message: String,
+    #[serde(default)]
+    message: String,
+}
+
+pub async fn login(
+    http: &Client,
+    store: &MicrosoftSessionStore,
+) -> Result<MicrosoftLoginResult, MicrosoftAuthError> {
     let client_id = env::var("GGO_MICROSOFT_CLIENT_ID")
         .ok()
         .filter(|value| !value.trim().is_empty())
@@ -101,11 +160,17 @@ pub async fn login(http: &Client, store: &MicrosoftSessionStore) -> Result<Micro
     let port = listener.local_addr()?.port();
     let redirect_uri = format!("http://localhost:{port}/callback");
 
-    let verifier = format!("{}{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple(), Uuid::new_v4().simple());
+    let verifier = format!(
+        "{}{}{}",
+        Uuid::new_v4().simple(),
+        Uuid::new_v4().simple(),
+        Uuid::new_v4().simple()
+    );
     let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
     let state = Uuid::new_v4().simple().to_string();
 
-    let mut authorize = Url::parse(AUTHORIZE_URL).expect("static Microsoft authorize URL must parse");
+    let mut authorize =
+        Url::parse(AUTHORIZE_URL).expect("static Microsoft authorize URL must parse");
     authorize
         .query_pairs_mut()
         .append_pair("client_id", &client_id)
@@ -118,7 +183,8 @@ pub async fn login(http: &Client, store: &MicrosoftSessionStore) -> Result<Micro
         .append_pair("code_challenge_method", "S256")
         .append_pair("prompt", "select_account");
 
-    open::that(authorize.as_str()).map_err(|error| MicrosoftAuthError::OpenBrowser(error.to_string()))?;
+    open::that(authorize.as_str())
+        .map_err(|error| MicrosoftAuthError::OpenBrowser(error.to_string()))?;
 
     let (mut socket, _) = timeout(Duration::from_secs(180), listener.accept())
         .await
@@ -127,7 +193,10 @@ pub async fn login(http: &Client, store: &MicrosoftSessionStore) -> Result<Micro
     let mut buffer = vec![0_u8; 8192];
     let read = socket.read(&mut buffer).await?;
     let request = String::from_utf8_lossy(&buffer[..read]);
-    let request_line = request.lines().next().ok_or(MicrosoftAuthError::InvalidCallback)?;
+    let request_line = request
+        .lines()
+        .next()
+        .ok_or(MicrosoftAuthError::InvalidCallback)?;
     let target = request_line
         .split_whitespace()
         .nth(1)
@@ -154,7 +223,7 @@ pub async fn login(http: &Client, store: &MicrosoftSessionStore) -> Result<Micro
     };
     let response = format!(
         "HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-        html.as_bytes().len(),
+        html.len(),
         html
     );
     socket.write_all(response.as_bytes()).await?;
@@ -182,34 +251,142 @@ pub async fn login(http: &Client, store: &MicrosoftSessionStore) -> Result<Micro
         .await?;
 
     if !response.status().is_success() {
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-        if let Ok(parsed) = serde_json::from_str::<TokenErrorResponse>(&body) {
-            let detail = if parsed.error_description.is_empty() {
-                parsed.error
-            } else {
-                format!("{}: {}", parsed.error, parsed.error_description)
-            };
-            return Err(MicrosoftAuthError::OAuth(detail));
-        }
-        return Err(MicrosoftAuthError::OAuth(format!("HTTP {status}")));
+        let detail = service_error(response).await;
+        return Err(MicrosoftAuthError::OAuth(detail));
     }
 
     let token = response.json::<TokenResponse>().await?;
+    let (minecraft_access_token, minecraft_expires_in, profile) =
+        exchange_for_minecraft(http, &token.access_token).await?;
+
     let result = MicrosoftLoginResult {
         authenticated: true,
-        expires_in_seconds: token.expires_in,
+        expires_in_seconds: minecraft_expires_in,
         refresh_available: token.refresh_token.is_some(),
+        minecraft_profile: Some(profile.clone()),
     };
+
     store
         .set(MicrosoftSession {
             access_token: token.access_token,
             refresh_token: token.refresh_token,
             expires_in_seconds: token.expires_in,
+            minecraft_access_token,
+            minecraft_profile: profile,
         })
         .await;
 
     Ok(result)
+}
+
+async fn exchange_for_minecraft(
+    http: &Client,
+    microsoft_access_token: &str,
+) -> Result<(String, u64, MinecraftProfile), MicrosoftAuthError> {
+    let xbox_response = http
+        .post(XBOX_USER_AUTH_URL)
+        .header("x-xbl-contract-version", "1")
+        .json(&json!({
+            "RelyingParty": "http://auth.xboxlive.com",
+            "TokenType": "JWT",
+            "Properties": {
+                "AuthMethod": "RPS",
+                "SiteName": "user.auth.xboxlive.com",
+                "RpsTicket": format!("d={microsoft_access_token}")
+            }
+        }))
+        .send()
+        .await?;
+
+    if !xbox_response.status().is_success() {
+        return Err(MicrosoftAuthError::Xbox(service_error(xbox_response).await));
+    }
+    let xbox = xbox_response.json::<XboxTokenResponse>().await?;
+
+    let xsts_response = http
+        .post(XSTS_AUTH_URL)
+        .header("x-xbl-contract-version", "1")
+        .json(&json!({
+            "Properties": {
+                "SandboxId": "RETAIL",
+                "UserTokens": [xbox.token]
+            },
+            "RelyingParty": "rp://api.minecraftservices.com/",
+            "TokenType": "JWT"
+        }))
+        .send()
+        .await?;
+
+    if !xsts_response.status().is_success() {
+        return Err(MicrosoftAuthError::Xsts(service_error(xsts_response).await));
+    }
+    let xsts = xsts_response.json::<XboxTokenResponse>().await?;
+    let user_hash = xsts
+        .display_claims
+        .xui
+        .first()
+        .map(|claim| claim.uhs.clone())
+        .or_else(|| xbox.display_claims.xui.first().map(|claim| claim.uhs.clone()))
+        .ok_or_else(|| MicrosoftAuthError::Xsts("missing user hash".to_string()))?;
+
+    let minecraft_response = http
+        .post(MINECRAFT_LOGIN_URL)
+        .json(&json!({
+            "identityToken": format!("XBL3.0 x={user_hash};{}", xsts.token)
+        }))
+        .send()
+        .await?;
+
+    if !minecraft_response.status().is_success() {
+        return Err(MicrosoftAuthError::Minecraft(
+            service_error(minecraft_response).await,
+        ));
+    }
+    let minecraft = minecraft_response.json::<MinecraftTokenResponse>().await?;
+
+    let profile_response = http
+        .get(MINECRAFT_PROFILE_URL)
+        .bearer_auth(&minecraft.access_token)
+        .send()
+        .await?;
+
+    if profile_response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Err(MicrosoftAuthError::MinecraftProfileUnavailable);
+    }
+    if !profile_response.status().is_success() {
+        return Err(MicrosoftAuthError::Minecraft(
+            service_error(profile_response).await,
+        ));
+    }
+
+    let profile = profile_response.json::<MinecraftProfile>().await?;
+    Ok((minecraft.access_token, minecraft.expires_in, profile))
+}
+
+async fn service_error(response: reqwest::Response) -> String {
+    let status = response.status();
+    let body = response.text().await.unwrap_or_default();
+    if let Ok(parsed) = serde_json::from_str::<TokenErrorResponse>(&body) {
+        if !parsed.error.is_empty() {
+            return if parsed.error_description.is_empty() {
+                parsed.error
+            } else {
+                format!("{}: {}", parsed.error, parsed.error_description)
+            };
+        }
+    }
+    if let Ok(parsed) = serde_json::from_str::<ServiceError>(&body) {
+        for value in [parsed.error_message, parsed.message, parsed.error] {
+            if !value.is_empty() {
+                return format!("HTTP {status}: {value}");
+            }
+        }
+    }
+    if body.trim().is_empty() {
+        format!("HTTP {status}")
+    } else {
+        format!("HTTP {status}: {}", body.trim())
+    }
 }
 
 #[cfg(test)]
@@ -223,5 +400,12 @@ mod tests {
         assert!(!challenge.contains('='));
         assert!(!challenge.contains('+'));
         assert!(!challenge.contains('/'));
+    }
+
+    #[test]
+    fn minecraft_identity_header_has_expected_shape() {
+        let uhs = "123";
+        let token = "abc";
+        assert_eq!(format!("XBL3.0 x={uhs};{token}"), "XBL3.0 x=123;abc");
     }
 }
