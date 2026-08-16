@@ -7,6 +7,7 @@ use core::{
     updater::{self, SyncReport, UpdatePlan},
 };
 use runtime::{
+    ggo_local_install::{self, LocalInstallReport},
     minecraft::{self, JavaRuntimeInfo, LaunchPreparation, RuntimeCheck},
     minecraft_install::{self, RuntimeInstallReport},
     minecraft_launch::{self, LaunchCommandPreview, LaunchOptions, LaunchResult},
@@ -49,6 +50,24 @@ async fn install_runtime(
         custom_java.as_deref(),
     )
     .await
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn install_local_ggo(
+    package_zip: String,
+    resource_pack_zip: String,
+    install_dir: String,
+) -> Result<LocalInstallReport, String> {
+    tokio::task::spawn_blocking(move || {
+        ggo_local_install::install_local(
+            &PathBuf::from(package_zip),
+            &PathBuf::from(resource_pack_zip),
+            &PathBuf::from(install_dir),
+        )
+    })
+    .await
+    .map_err(|error| format!("local installer task failed: {error}"))?
     .map_err(|error| error.to_string())
 }
 
@@ -171,6 +190,7 @@ pub fn run() {
             check_runtime,
             prepare_launch,
             install_runtime,
+            install_local_ggo,
             preview_minecraft_launch,
             launch_minecraft,
             microsoft_login,
