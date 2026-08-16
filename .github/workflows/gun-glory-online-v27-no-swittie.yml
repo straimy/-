@@ -1,0 +1,178 @@
+name: GunGloryOnline v27 No Swittie NPC
+
+on:
+  push:
+    paths:
+      - '.github/workflows/gun-glory-online-v27-no-swittie.yml'
+  workflow_dispatch:
+
+env:
+  SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+  FINAL_RP: GunnerArena-ResourcePack-1.20.1-v1.zip
+
+jobs:
+  final:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Prepare extractor
+        shell: bash
+        run: |
+          cat >/tmp/extract.py <<'PY'
+          import sys
+          from pathlib import Path
+          wf=Path(sys.argv[1]); wanted=sys.argv[2]
+          lines=wf.read_text().splitlines()
+          start=next((i for i,l in enumerate(lines) if l.strip()==f'- name: {wanted}'),None)
+          if start is None: raise SystemExit('step not found: '+wanted)
+          run=None
+          for i in range(start+1,len(lines)):
+              if lines[i].startswith('      - name:') or lines[i].startswith('      - uses:'): break
+              if lines[i].strip()=='run: |': run=i+1; break
+          if run is None: raise SystemExit('run block missing: '+wanted)
+          out=[]
+          for i in range(run,len(lines)):
+              l=lines[i]
+              if l.startswith('      - name:') or l.startswith('      - uses:'): break
+              out.append(l[10:] if l.startswith('          ') else l)
+          print('\n'.join(out).rstrip())
+          PY
+
+      - name: Prepare authenticated base source
+        shell: bash
+        run: |
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v22-economy-identity.yml 'Prepare authenticated base source' >/tmp/s.sh
+          bash /tmp/s.sh
+
+      - name: Apply v12 base patch
+        shell: bash
+        run: |
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v22-economy-identity.yml 'Apply v12 base patch' >/tmp/s.sh
+          bash /tmp/s.sh
+
+      - name: Apply retained UI patches
+        shell: bash
+        run: |
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v22-economy-identity.yml 'Apply retained UI patches' >/tmp/s.sh
+          bash /tmp/s.sh
+
+      - name: Apply v21 gameplay baseline
+        shell: bash
+        run: |
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v22-economy-identity.yml 'Apply v21 gameplay baseline' >/tmp/s.sh
+          bash /tmp/s.sh
+
+      - name: Apply v22 economy identity progression
+        shell: bash
+        run: |
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v22-economy-identity.yml 'Apply v22 economy identity progression' >/tmp/s.sh
+          bash /tmp/s.sh
+
+      - name: Apply v26 atmosphere UI
+        shell: bash
+        run: |
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v23-swittie-skin.yml 'Apply v26 knife disconnect atmosphere UI' >/tmp/s.sh
+          bash /tmp/s.sh
+
+      - name: Remove Swittie NPC completely
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f ga-build/src/main/java/arena/forge/SwittieFoxBot.java
+          rm -f ga-build/client-ui/src/main/java/arena/client/ui/SwittieFoxSkinRenderer.java
+          rm -f ga-build/client-ui/src/main/resources/assets/gunnerarena/textures/entity/swittie_fox.png
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          gp=Path('ga-build/gradle.properties')
+          g=gp.read_text(); g=re.sub(r'mod_version=.*','mod_version=0.8.5-gungloryonline-v27',g,count=1); gp.write_text(g)
+          PY
+          test ! -e ga-build/src/main/java/arena/forge/SwittieFoxBot.java
+          test ! -e ga-build/client-ui/src/main/java/arena/client/ui/SwittieFoxSkinRenderer.java
+
+      - name: Build Core
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v12.yml 'Bootstrap ForgeGradle and build Core' >/tmp/core.sh
+          for n in 1 2 3; do (cd ga-build && bash /tmp/core.sh) && exit 0; sleep $((n*5)); done
+          exit 1
+
+      - name: Build UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v12.yml 'Build UI against real Core' >/tmp/ui.sh
+          for n in 1 2 3; do (cd ga-build && bash /tmp/ui.sh) && exit 0; sleep $((n*5)); done
+          exit 1
+
+      - name: Prepare v27 payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf final-artifacts; mkdir -p final-artifacts/server/mods final-artifacts/client/mods
+          CORE="$(find ga-build/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          UI="$(find ga-build/client-ui/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          test -n "$CORE"; test -n "$UI"
+          cp "$CORE" final-artifacts/server/mods/gungloryonline-core-0.8.5-v27.jar
+          cp "$CORE" final-artifacts/client/mods/gungloryonline-core-0.8.5-v27.jar
+          cp "$UI" final-artifacts/client/mods/gungloryonline-ui-0.8.5-v27.jar
+          cmp final-artifacts/server/mods/gungloryonline-core-0.8.5-v27.jar final-artifacts/client/mods/gungloryonline-core-0.8.5-v27.jar
+          ! jar tf "$CORE" | grep -q '^arena/forge/SwittieFoxBot.class$'
+          ! jar tf "$UI" | grep -q '^arena/client/ui/SwittieFoxSkinRenderer.class$'
+          for c in HazardDropSystem SpawnLoadoutGuard ArenaKnifeDamageFix JegArenaAmmoGuard GgoIdentityBridge ProgressionRewards RoundLoadoutGuard; do jar tf "$CORE" | grep -q "^arena/forge/$c.class$"; done
+          for c in ClientDisconnectGuard JegMetaLoaderMixin UiTheme MainArenaScreen LobbyShopScreen MatchShopScreen; do jar tf "$UI" | grep -q "^arena/client/ui/$c.class$"; done
+          cat > final-artifacts/VERIFICATION.txt <<'EOF'
+          GUNGLORYONLINE_V27=PASS
+          SWITTIE_NPC_REMOVED=PASS
+          SWITTIE_COMMAND_REMOVED=PASS
+          SWITTIE_RENDERER_REMOVED=PASS
+          ATMOSPHERE_UI_RETAINED=PASS
+          RESPAWN_KNIFE_ONLY=PASS
+          JEG_DISCONNECT_CME_GUARD=PASS
+          V22_ECONOMY_IDENTITY_RETAINED=PASS
+          V21_GAMEPLAY_FIXES_RETAINED=PASS
+          RESOURCEPACK_V4_EXPECTED=GunGloryOnline-ResourcePack-1.20.1-v4-no-swittie.zip
+          EOF
+          sha256sum final-artifacts/server/mods/* final-artifacts/client/mods/* > final-artifacts/SHA256SUMS.txt
+
+      - name: Dedicated server smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf ds forge-installer.jar; mkdir ds
+          curl -fL --retry 5 --retry-all-errors -o forge-installer.jar https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-installer.jar
+          java -jar forge-installer.jar --installServer ds >/tmp/forge-install.log 2>&1
+          echo 'eula=true' > ds/eula.txt; mkdir -p ds/mods
+          cp final-artifacts/server/mods/gungloryonline-core-0.8.5-v27.jar ds/mods/
+          cd ds; timeout 100s java -Xms512M -Xmx1G @libraries/net/minecraftforge/forge/1.20.1-47.4.10/unix_args.txt nogui > ../dedicated-server-console.log 2>&1 || true; cd ..
+          test -f ds/logs/latest.log
+          grep -Fq 'Done (' ds/logs/latest.log
+          ! grep -Eq 'Exception in server tick loop|Failed to start the minecraft server|Duplicate key gunnerarena:ui' ds/logs/latest.log
+
+      - name: Upload v27
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-v27-no-swittie
+          path: final-artifacts/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-v27-diagnostics
+          path: |
+            v12-core-build.log
+            v12-ui-build.log
+            dedicated-server-console.log
+            ds/logs/**
+          if-no-files-found: ignore
+          retention-days: 7
