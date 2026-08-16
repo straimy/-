@@ -4,7 +4,10 @@ on:
   push:
     paths:
       - '.github/workflows/gun-glory-online-v23-swittie-skin.yml'
+      - 'hotfix/RoundLoadoutGuard.java'
       - 'hotfix/ui/ClientDisconnectGuard.java'
+      - 'hotfix/ui/JegMetaLoaderMixin.java'
+      - 'hotfix/ui/gungloryonline.mixins.json'
   workflow_dispatch:
 
 env:
@@ -79,31 +82,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          cp hotfix/RoundLoadoutGuard.java ga-build/src/main/java/arena/forge/RoundLoadoutGuard.java
           cp hotfix/ui/ClientDisconnectGuard.java ga-build/client-ui/src/main/java/arena/client/ui/ClientDisconnectGuard.java
+          cp hotfix/ui/JegMetaLoaderMixin.java ga-build/client-ui/src/main/java/arena/client/ui/JegMetaLoaderMixin.java
+          cp hotfix/ui/gungloryonline.mixins.json ga-build/client-ui/src/main/resources/gungloryonline.mixins.json
           python3 - <<'PY'
           from pathlib import Path
           import re
-          p=Path('ga-build/src/main/java/arena/forge/loadout/ForgeLoadoutService.java')
-          s=p.read_text()
-          sig='public void restoreAfterRespawn(ServerPlayer player, RoundSession round)'
-          pos=s.find(sig)
-          if pos < 0: raise SystemExit('restoreAfterRespawn signature missing')
-          brace=s.find('{',pos)
-          depth=0
-          end=None
-          for i in range(brace,len(s)):
-              if s[i]=='{': depth+=1
-              elif s[i]=='}':
-                  depth-=1
-                  if depth==0:
-                      end=i+1
-                      break
-          if end is None: raise SystemExit('restoreAfterRespawn closing brace missing')
-          replacement="public void restoreAfterRespawn(ServerPlayer player, RoundSession round) {\n        clearCombatSlots(player);\n        giveKnife(player);\n    }"
-          p.write_text(s[:pos]+replacement+s[end:])
+          mt=Path('ga-build/client-ui/src/main/resources/META-INF/mods.toml')
+          s=mt.read_text()
+          if 'gungloryonline.mixins.json' not in s:
+              s += '\n[[mixins]]\nconfig="gungloryonline.mixins.json"\n'
+              mt.write_text(s)
           gp=Path('ga-build/gradle.properties')
           g=gp.read_text(); g=re.sub(r'mod_version=.*','mod_version=0.8.3-gungloryonline-v25',g,count=1); gp.write_text(g)
           PY
+          grep -q 'PlayerRespawnEvent' ga-build/src/main/java/arena/forge/RoundLoadoutGuard.java
+          grep -q 'giveKnifeOnly' ga-build/src/main/java/arena/forge/RoundLoadoutGuard.java
+          grep -q 'List.copyOf(registry.getValues())' ga-build/client-ui/src/main/java/arena/client/ui/JegMetaLoaderMixin.java
+          grep -q 'JegMetaLoaderMixin' ga-build/client-ui/src/main/resources/gungloryonline.mixins.json
 
       - name: Build Core
         shell: bash
@@ -135,6 +132,9 @@ jobs:
           cmp final-artifacts/server/mods/gungloryonline-core-0.8.3-v25.jar final-artifacts/client/mods/gungloryonline-core-0.8.3-v25.jar
           for c in HazardDropSystem SpawnLoadoutGuard ArenaKnifeDamageFix JegArenaAmmoGuard GgoIdentityBridge ProgressionRewards RoundLoadoutGuard SwittieFoxBot; do jar tf "$CORE" | grep -q "^arena/forge/$c.class$"; done
           jar tf "$UI" | grep -q '^arena/client/ui/ClientDisconnectGuard.class$'
+          jar tf "$UI" | grep -q '^arena/client/ui/JegMetaLoaderMixin.class$'
+          jar tf "$UI" | grep -q '^gungloryonline.mixins.json$'
+          unzip -p "$UI" META-INF/mods.toml | grep -q 'gungloryonline.mixins.json'
           cat > final-artifacts/VERIFICATION.txt <<'EOF'
           GUNGLORYONLINE_V25=PASS
           RESPAWN_KNIFE_ONLY=PASS
@@ -142,8 +142,10 @@ jobs:
           KNIFE_NO_AMMO=PASS
           KNIFE_DAMAGE_FIX_RETAINED=PASS
           KICK_DISCONNECT_UI_GUARD=PASS
+          JEG_DISCONNECT_CME_GUARD=PASS
           V22_ECONOMY_IDENTITY_RETAINED=PASS
           V21_GAMEPLAY_FIXES_RETAINED=PASS
+          NOTE=Live kick/disconnect still requires client validation with the user's modified JEG jar.
           EOF
           sha256sum final-artifacts/server/mods/* final-artifacts/client/mods/* > final-artifacts/SHA256SUMS.txt
 
