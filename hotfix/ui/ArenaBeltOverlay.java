@@ -1,8 +1,8 @@
 package arena.client.ui;
 
-import arena.client.net.ClientSnapshotStore;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.api.distmarker.Dist;
@@ -22,7 +22,7 @@ public final class ArenaBeltOverlay {
 
     @SubscribeEvent public static void render(RenderGuiOverlayEvent.Post e){
         Minecraft mc=Minecraft.getInstance();if(mc.player==null||mc.options.hideGui||mc.screen!=null)return;
-        var snap=ClientSnapshotStore.get();boolean battle=snap.initialized()&&"ALIVE".equalsIgnoreCase(snap.state());
+        boolean battle=false;for(int i=0;i<5;i++)if(isCombat(mc.player.getInventory().getItem(i))){battle=true;break;}
         GuiGraphics g=e.getGuiGraphics();int w=mc.getWindow().getGuiScaledWidth(),h=mc.getWindow().getGuiScaledHeight();
         int cell=22,gap=2,beltW=5*cell+4*gap,menuW=62,total=beltW+(battle?0:7+menuW),x=w/2-total/2,y=h-25;
         for(int i=0;i<5;i++){
@@ -31,7 +31,7 @@ public final class ArenaBeltOverlay {
             ItemStack s=mc.player.getInventory().getItem(i);if(!s.isEmpty())g.renderItem(s,sx+3,y+3);
             g.drawString(mc.font,Component.literal(Integer.toString(i+1)),sx+2,y+2,sel?UiTheme.TEXT:UiTheme.DIM,false);
         }
-        // Menu is now a UI action, not a fake inventory item. This keeps the Minecraft inventory clean.
         if(!battle){int mx=x+beltW+7;g.fill(mx,y,mx+menuW,y+cell,0xD0142032);g.renderOutline(mx,y,menuW,cell,UiTheme.ACCENT_2);g.drawCenteredString(mc.font,Component.literal("M  ✦  МЕНЮ"),mx+menuW/2,y+7,UiTheme.TEXT);}
     }
+    private static boolean isCombat(ItemStack s){if(s==null||s.isEmpty())return false;if(s.hasTag()&&(s.getTag().getBoolean("GunnerArenaKnife")||s.getTag().getBoolean("GunnerArenaBound")))return true;var id=BuiltInRegistries.ITEM.getKey(s.getItem());return id!=null&&"jeg".equals(id.getNamespace());}
 }
