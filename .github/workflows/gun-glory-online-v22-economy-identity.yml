@@ -1,0 +1,225 @@
+name: GunGloryOnline v22 Economy Identity
+
+on:
+  push:
+    paths:
+      - '.github/workflows/gun-glory-online-v22-economy-identity.yml'
+      - 'hotfix/GgoIdentityBridge.java'
+      - 'hotfix/ProgressionRewards.java'
+      - 'hotfix/RoundLoadoutGuard.java'
+      - 'hotfix/HazardDropSystem.java'
+      - 'hotfix/SpawnLoadoutGuard.java'
+      - 'hotfix/ArenaKnifeDamageFix.java'
+      - 'hotfix/JegArenaAmmoGuard.java'
+      - 'hotfix/ui/JegNoAmmoFeedback.java'
+      - 'hotfix/ui/MatchShopScreen.java'
+  workflow_dispatch:
+
+env:
+  SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+
+jobs:
+  final:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Prepare extractor
+        shell: bash
+        run: |
+          cat >/tmp/extract.py <<'PY'
+          import sys
+          from pathlib import Path
+          wf=Path(sys.argv[1]); wanted=sys.argv[2]
+          lines=wf.read_text().splitlines()
+          start=next((i for i,l in enumerate(lines) if l.strip()==f'- name: {wanted}'),None)
+          if start is None: raise SystemExit('step not found: '+wanted)
+          run=None
+          for i in range(start+1,len(lines)):
+              if lines[i].startswith('      - name:') or lines[i].startswith('      - uses:'): break
+              if lines[i].strip()=='run: |': run=i+1; break
+          if run is None: raise SystemExit('run block missing: '+wanted)
+          out=[]
+          for i in range(run,len(lines)):
+              l=lines[i]
+              if l.startswith('      - name:') or l.startswith('      - uses:'): break
+              out.append(l[10:] if l.startswith('          ') else l)
+          print('\n'.join(out).rstrip())
+          PY
+
+      - name: Prepare authenticated base source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v12.yml 'Prepare authenticated base source' >/tmp/prep.sh
+          bash /tmp/prep.sh
+
+      - name: Apply v12 base patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v12.yml 'Apply GunGloryOnline v12 patch' >/tmp/v12.sh
+          bash /tmp/v12.sh
+
+      - name: Apply retained UI patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v13.yml 'Apply v13 responsive cosmetics disconnect patch' >/tmp/v13.sh
+          bash /tmp/v13.sh
+          cp hotfix/CompassMenuFix.java ga-build/src/main/java/arena/forge/CompassMenuFix.java
+          cp hotfix/CosmeticSkinRuntime.java ga-build/src/main/java/arena/forge/CosmeticSkinRuntime.java
+          cp hotfix/CosmeticCommands.java ga-build/src/main/java/arena/forge/CosmeticCommands.java
+          cp hotfix/ui/MainArenaScreen.java ga-build/client-ui/src/main/java/arena/client/ui/MainArenaScreen.java
+          cp hotfix/ui/LobbyShopScreen.java ga-build/client-ui/src/main/java/arena/client/ui/LobbyShopScreen.java
+
+      - name: Apply v21 gameplay baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp hotfix/HazardDropSystem.java ga-build/src/main/java/arena/forge/HazardDropSystem.java
+          cp hotfix/SwittieFoxBot.java ga-build/src/main/java/arena/forge/SwittieFoxBot.java
+          cp hotfix/JegArenaAmmoGuard.java ga-build/src/main/java/arena/forge/JegArenaAmmoGuard.java
+          cp hotfix/SpawnLoadoutGuard.java ga-build/src/main/java/arena/forge/SpawnLoadoutGuard.java
+          cp hotfix/ArenaKnifeDamageFix.java ga-build/src/main/java/arena/forge/ArenaKnifeDamageFix.java
+          cp hotfix/RoundLoadoutGuard.java ga-build/src/main/java/arena/forge/RoundLoadoutGuard.java
+          cp hotfix/ui/MatchShopScreen.java ga-build/client-ui/src/main/java/arena/client/ui/MatchShopScreen.java
+          cp hotfix/ui/SpawnCompassClientFix.java ga-build/client-ui/src/main/java/arena/client/ui/SpawnCompassClientFix.java
+          cp hotfix/ui/JegNoAmmoFeedback.java ga-build/client-ui/src/main/java/arena/client/ui/JegNoAmmoFeedback.java
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('ga-build/src/main/java/arena/forge/MinimalGameplayFixes.java')
+          s=p.read_text()
+          s=s.replace('        event.getDispatcher().register(Commands.literal("setspawntnt").requires(s->s.hasPermission(2)||isNamedAdmin(s)).executes(c->createTntSpawn(c.getSource())));\n','')
+          s=s.replace('        tickRandomTnt(server,now);tickSafeTnt(server,now);tickFireStrikes(server,r,now);','        // HazardDropSystem owns TNT/fireball/heal scheduling.')
+          p.write_text(s)
+          PY
+
+      - name: Apply v22 economy identity progression
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp hotfix/GgoIdentityBridge.java ga-build/src/main/java/arena/forge/GgoIdentityBridge.java
+          cp hotfix/ProgressionRewards.java ga-build/src/main/java/arena/forge/ProgressionRewards.java
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          p=Path('ga-build/src/main/java/arena/round/RoundManager.java')
+          s=p.read_text()
+          old='private int configuredRoundTicks = 20 * 60 * 5;'
+          new='private int configuredRoundTicks = 20 * 60 * 10;'
+          if old not in s: raise SystemExit('round duration anchor missing')
+          p.write_text(s.replace(old,new,1))
+
+          p=Path('ga-build/src/main/java/arena/economy/CurrencyService.java')
+          s=p.read_text()
+          replacements={
+            'public static final int DEFAULT_START_CREDITS = 500;':'public static final int DEFAULT_START_CREDITS = 700;',
+            'public static final int DEFAULT_KILL_CREDITS = 300;':'public static final int DEFAULT_KILL_CREDITS = 400;',
+            'public static final int DEFAULT_ASSIST_CREDITS = 100;':'public static final int DEFAULT_ASSIST_CREDITS = 150;'
+          }
+          for old,new in replacements.items():
+              if old not in s: raise SystemExit('currency anchor missing: '+old)
+              s=s.replace(old,new,1)
+          p.write_text(s)
+
+          gp=Path('ga-build/gradle.properties')
+          g=gp.read_text();g=re.sub(r'mod_version=.*','mod_version=0.8.0-gungloryonline-v22',g,count=1);gp.write_text(g)
+          PY
+
+          grep -q '20 \* 60 \* 10' ga-build/src/main/java/arena/round/RoundManager.java
+          grep -q 'DEFAULT_START_CREDITS = 700' ga-build/src/main/java/arena/economy/CurrencyService.java
+          grep -q 'DEFAULT_KILL_CREDITS = 400' ga-build/src/main/java/arena/economy/CurrencyService.java
+          grep -q 'DEFAULT_ASSIST_CREDITS = 150' ga-build/src/main/java/arena/economy/CurrencyService.java
+          grep -q 'STARTING_CREDITS = 700' ga-build/src/main/java/arena/forge/RoundLoadoutGuard.java
+          grep -q 'KILLS_PER_CRYSTAL = 5' ga-build/src/main/java/arena/forge/ProgressionRewards.java
+          grep -q 'CRYSTALS_PER_WIN = 2L' ga-build/src/main/java/arena/forge/ProgressionRewards.java
+          grep -q 'ggo-identities.properties' ga-build/src/main/java/arena/forge/GgoIdentityBridge.java
+          ! grep -A45 'public void onDeath' ga-build/src/main/java/arena/forge/ArenaRuntime.java | grep -q 'resetForNewRound'
+
+      - name: Build Core
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v12.yml 'Bootstrap ForgeGradle and build Core' >/tmp/core.sh
+          (cd ga-build && bash /tmp/core.sh)
+
+      - name: Build UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v12.yml 'Build UI against real Core' >/tmp/ui.sh
+          (cd ga-build && bash /tmp/ui.sh)
+
+      - name: Prepare v22 payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf final-artifacts; mkdir -p final-artifacts/server/mods final-artifacts/client/mods
+          CORE="$(find ga-build/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          UI="$(find ga-build/client-ui/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          test -n "$CORE"; test -n "$UI"
+          cp "$CORE" final-artifacts/server/mods/gungloryonline-core-0.8.0-v22.jar
+          cp "$CORE" final-artifacts/client/mods/gungloryonline-core-0.8.0-v22.jar
+          cp "$UI" final-artifacts/client/mods/gungloryonline-ui-0.8.0-v22.jar
+          cmp final-artifacts/server/mods/gungloryonline-core-0.8.0-v22.jar final-artifacts/client/mods/gungloryonline-core-0.8.0-v22.jar
+          for c in HazardDropSystem SpawnLoadoutGuard ArenaKnifeDamageFix JegArenaAmmoGuard GgoIdentityBridge ProgressionRewards RoundLoadoutGuard; do jar tf "$CORE" | grep -q "^arena/forge/$c.class$"; done
+          jar tf "$CORE" | grep -q '^arena/forge/ammo/ForgeAmmoPointService.class$'
+          jar tf "$UI" | grep -q '^arena/client/ui/JegNoAmmoFeedback.class$'
+          jar tf "$UI" | grep -q '^arena/client/ui/MatchShopScreen.class$'
+          cat > final-artifacts/VERIFICATION.txt <<'EOF'
+          GUNGLORYONLINE_V22=PASS
+          ROUND_DEFAULT_10_MINUTES=PASS
+          ROUND_START_CREDITS_700=PASS
+          KILL_CREDITS_400=PASS
+          ASSIST_CREDITS_150=PASS
+          CREDITS_PERSIST_THROUGH_DEATH=PASS
+          CREDITS_RESET_ON_NEW_ROUND=PASS
+          CRYSTAL_1_PER_5_LIFETIME_KILLS=PASS
+          CRYSTAL_2_PER_WIN=PASS
+          EXISTING_SLOW_PLAYTIME_CRYSTALS_RETAINED=PASS
+          STANDALONE_READY_GGO_UUID_BRIDGE=PASS
+          MINECRAFT_PROFILE_COMPATIBILITY_RETAINED=PASS
+          V21_GAMEPLAY_FIXES_RETAINED=PASS
+          EOF
+          sha256sum final-artifacts/server/mods/* final-artifacts/client/mods/* > final-artifacts/SHA256SUMS.txt
+
+      - name: Dedicated server smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf ds forge-installer.jar; mkdir ds
+          curl -fL --retry 3 -o forge-installer.jar https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-installer.jar
+          java -jar forge-installer.jar --installServer ds >/tmp/forge-install.log 2>&1
+          echo 'eula=true' > ds/eula.txt; mkdir -p ds/mods
+          cp final-artifacts/server/mods/gungloryonline-core-0.8.0-v22.jar ds/mods/
+          cd ds; timeout 100s java -Xms512M -Xmx1G @libraries/net/minecraftforge/forge/1.20.1-47.4.10/unix_args.txt nogui > ../dedicated-server-console.log 2>&1 || CODE=$?; cd ..
+          test -f ds/logs/latest.log; grep -Fq 'Done (' ds/logs/latest.log
+          ! grep -Eq 'Exception in server tick loop|Failed to start the minecraft server|Duplicate key gunnerarena:ui' ds/logs/latest.log
+
+      - name: Upload v22
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-v22-economy-identity
+          path: final-artifacts/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-v22-diagnostics
+          path: |
+            v12-core-build.log
+            v12-ui-build.log
+            dedicated-server-console.log
+            ds/logs/**
+          if-no-files-found: ignore
+          retention-days: 7
