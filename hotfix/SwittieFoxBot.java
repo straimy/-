@@ -24,6 +24,7 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.monster.Pillager;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraftforge.common.util.FakePlayer;
 import net.minecraftforge.common.util.FakePlayerFactory;
 import net.minecraftforge.event.RegisterCommandsEvent;
@@ -37,8 +38,9 @@ import net.minecraftforge.server.ServerLifecycleHooks;
 import java.util.*;
 
 /**
- * Server adaptation of the user's client-only AI Gunner rc4 concept.
- * The combat body is a stable server-side humanoid mob so the arena never depends on a second Minecraft client.
+ * Server-side Swittie Fox combat bot.
+ * The body remains a stable mob entity, but damage is explicitly applied only to valid arena players,
+ * so maps that globally suppress hostile-mob damage do not make the bot harmless.
  */
 @Mod.EventBusSubscriber(modid="gunnerarena",bus=Mod.EventBusSubscriber.Bus.FORGE)
 public final class SwittieFoxBot {
@@ -75,20 +77,45 @@ public final class SwittieFoxBot {
         if((now%5)!=0)return;
         ServerPlayer target=findTarget(server,r,bot);if(target==null){bot.setTarget(null);return;}lastTarget=target.getUUID();bot.setTarget(target);bot.getLookControl().setLookAt(target,30f,30f);
         double d2=bot.distanceToSqr(target);if(d2>49)bot.getNavigation().moveTo(target,1.05);else bot.getNavigation().stop();
-        if(d2<=324&&now>=nextShot&&bot.getSensing().hasLineOfSight(target)){nextShot=now+22+RANDOM.nextInt(13);shoot(bot,target);}
+        if(d2<=324&&now>=nextShot&&bot.getSensing().hasLineOfSight(target)){nextShot=now+22+RANDOM.nextInt(13);shoot(bot,target,r);}
     }
 
     private static void spawn(MinecraftServer server,ArenaRuntime r,long now){
         List<ArenaPoint> points=r.spawns().combatSpawns();if(points.isEmpty()){respawnAt=now+100;return;}ArenaPoint p=points.get(RANDOM.nextInt(points.size()));ServerLevel level=server.getLevel(p.dimension());if(level==null){respawnAt=now+60;return;}
         Pillager bot=EntityType.PILLAGER.create(level);if(bot==null){respawnAt=now+100;return;}bot.moveTo(p.x(),p.y(),p.z(),p.yaw(),p.pitch());bot.addTag(TAG);bot.setCustomName(Component.literal(DISPLAY_NAME).withStyle(ChatFormatting.LIGHT_PURPLE));bot.setCustomNameVisible(true);bot.setPersistenceRequired();bot.setCanPickUpLoot(false);bot.setHealth(20f);
         var max=bot.getAttribute(Attributes.MAX_HEALTH);if(max!=null)max.setBaseValue(20.0);var speed=bot.getAttribute(Attributes.MOVEMENT_SPEED);if(speed!=null)speed.setBaseValue(.31);
+
+        // Visible player-skin head. If the profile exists, vanilla resolves its skin through the normal skull profile path.
+        ItemStack head=new ItemStack(Items.PLAYER_HEAD);head.getOrCreateTag().putString("SkullOwner",INTERNAL_NAME);head.setHoverName(Component.literal("Свитти Фокс"));bot.setItemSlot(EquipmentSlot.HEAD,head);bot.setDropChance(EquipmentSlot.HEAD,0f);
+        bot.setItemSlot(EquipmentSlot.CHEST,new ItemStack(Items.LEATHER_CHESTPLATE));bot.setDropChance(EquipmentSlot.CHEST,0f);
+        bot.setItemSlot(EquipmentSlot.LEGS,new ItemStack(Items.LEATHER_LEGGINGS));bot.setDropChance(EquipmentSlot.LEGS,0f);
+        bot.setItemSlot(EquipmentSlot.FEET,new ItemStack(Items.LEATHER_BOOTS));bot.setDropChance(EquipmentSlot.FEET,0f);
+
         Item gun=ForgeRegistries.ITEMS.getValue(new ResourceLocation("jeg","pump_shotgun"));if(gun!=null){ItemStack s=new ItemStack(gun);s.getOrCreateTag().putBoolean("IgnoreAmmo",true);s.getOrCreateTag().putInt("AmmoCount",6);s.getOrCreateTag().putBoolean("GunGloryBotWeapon",true);bot.setItemSlot(EquipmentSlot.MAINHAND,s);bot.setDropChance(EquipmentSlot.MAINHAND,0f);}
         level.addFreshEntity(bot);bodyId=bot.getUUID();respawnAt=Long.MAX_VALUE;nextShot=now+20;
     }
 
-    private static ServerPlayer findTarget(MinecraftServer server,ArenaRuntime r,Pillager bot){ServerPlayer best=null;double bd=45*45;for(ServerPlayer p:server.getPlayerList().getPlayers()){if(!p.isAlive()||p.level()!=bot.level()||!r.auth().isAuthenticated(p)||r.players().session(p).state()!=ArenaPlayerState.ALIVE)continue;double d=bot.distanceToSqr(p);if(d<bd){bd=d;best=p;}}return best;}
-    private static void shoot(Pillager bot,ServerPlayer target){
-        ServerLevel level=(ServerLevel)bot.level();level.playSound(null,bot.getX(),bot.getY(),bot.getZ(),SoundEvents.GENERIC_EXPLODE,SoundSource.HOSTILE,.45f,1.7f);double dx=target.getX()-bot.getX(),dy=target.getEyeY()-bot.getEyeY(),dz=target.getZ()-bot.getZ();double len=Math.max(.001,Math.sqrt(dx*dx+dy*dy+dz*dz));for(int i=1;i<=8;i++){double t=i/8.0;level.sendParticles(ParticleTypes.SMOKE,bot.getX()+dx*t,bot.getEyeY()+dy*t,bot.getZ()+dz*t,1,.02,.02,.02,0);}float damage=4.5f;target.hurt(level.damageSources().mobAttack(bot),damage);
+    private static ServerPlayer findTarget(MinecraftServer server,ArenaRuntime r,Pillager bot){ServerPlayer best=null;double bd=45*45;for(ServerPlayer p:server.getPlayerList().getPlayers()){if(!p.isAlive()||p.level()!=bot.level()||!r.auth().isAuthenticated(p)||r.players().session(p).state()!=ArenaPlayerState.ALIVE||r.safeRegions().isSafe(p))continue;double d=bot.distanceToSqr(p);if(d<bd){bd=d;best=p;}}return best;}
+
+    private static void shoot(Pillager bot,ServerPlayer target,ArenaRuntime runtime){
+        if(!target.isAlive()||runtime.players().session(target).state()!=ArenaPlayerState.ALIVE||runtime.safeRegions().isSafe(target))return;
+        ServerLevel level=(ServerLevel)bot.level();
+        level.playSound(null,bot.getX(),bot.getY(),bot.getZ(),SoundEvents.GENERIC_EXPLODE,SoundSource.HOSTILE,.45f,1.7f);
+        double dx=target.getX()-bot.getX(),dy=target.getEyeY()-bot.getEyeY(),dz=target.getZ()-bot.getZ();double len=Math.max(.001,Math.sqrt(dx*dx+dy*dy+dz*dz));
+        for(int i=1;i<=8;i++){double t=i/8.0;level.sendParticles(ParticleTypes.SMOKE,bot.getX()+dx*t,bot.getEyeY()+dy*t,bot.getZ()+dz*t,1,.02,.02,.02,0);}
+        float damage=4.5f;
+        float before=target.getHealth();
+        boolean hurt=target.hurt(level.damageSources().mobAttack(bot),damage);
+        // Some maps cancel hostile-mob damage globally. For a valid non-safe arena target, apply a controlled fallback.
+        if(!hurt&&target.isAlive()&&target.getHealth()>=before-.01f){
+            float after=Math.max(0f,before-damage);
+            target.setHealth(after);
+            target.hurtMarked=true;
+            if(after<=0f){
+                broadcast(level.getServer(),Component.literal("<"+DISPLAY_NAME+"> "+KILL_LINES[RANDOM.nextInt(KILL_LINES.length)]).withStyle(ChatFormatting.WHITE));
+                target.kill();
+            }
+        }
     }
 
     @SubscribeEvent public static void death(LivingDeathEvent e){
@@ -100,7 +127,7 @@ public final class SwittieFoxBot {
     private static void removeBodies(MinecraftServer server){for(ServerLevel l:server.getAllLevels()){List<Entity> all=new ArrayList<>();for(Entity e:l.getAllEntities())all.add(e);for(Entity e:all)if(e.getTags().contains(TAG))e.discard();}}
     private static void broadcast(MinecraftServer server,Component c){server.getPlayerList().broadcastSystemMessage(c,false);}
 
-    /** Optional real tab-row. Forge FakePlayer is used only as packet data and is never inserted into the world/player list. Failure is non-fatal. */
+    /** Optional real tab-row. Forge FakePlayer is used only as packet data and is never inserted into the world/player list. */
     private static void syncTab(MinecraftServer server,boolean add){
         try{ServerLevel level=server.overworld();FakePlayer fp=FakePlayerFactory.get(level,new GameProfile(TAB_UUID,INTERNAL_NAME));if(add){ClientboundPlayerInfoUpdatePacket packet=ClientboundPlayerInfoUpdatePacket.createPlayerInitializing(List.of(fp));for(ServerPlayer p:server.getPlayerList().getPlayers())p.connection.send(packet);}else{ClientboundPlayerInfoRemovePacket packet=new ClientboundPlayerInfoRemovePacket(List.of(TAB_UUID));for(ServerPlayer p:server.getPlayerList().getPlayers())p.connection.send(packet);}}catch(Throwable ignored){}
     }
