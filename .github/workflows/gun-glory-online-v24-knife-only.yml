@@ -1,0 +1,180 @@
+name: GunGloryOnline v24 Knife Only
+
+on:
+  push:
+    paths:
+      - '.github/workflows/gun-glory-online-v24-knife-only.yml'
+  workflow_dispatch:
+
+env:
+  SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+  FINAL_RP: GunnerArena-ResourcePack-1.20.1-v1.zip
+
+jobs:
+  final:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Prepare extractor
+        shell: bash
+        run: |
+          cat >/tmp/extract.py <<'PY'
+          import sys
+          from pathlib import Path
+          wf=Path(sys.argv[1]); wanted=sys.argv[2]
+          lines=wf.read_text().splitlines()
+          start=next((i for i,l in enumerate(lines) if l.strip()==f'- name: {wanted}'),None)
+          if start is None: raise SystemExit('step not found: '+wanted)
+          run=None
+          for i in range(start+1,len(lines)):
+              if lines[i].startswith('      - name:') or lines[i].startswith('      - uses:'): break
+              if lines[i].strip()=='run: |': run=i+1; break
+          if run is None: raise SystemExit('run block missing: '+wanted)
+          out=[]
+          for i in range(run,len(lines)):
+              l=lines[i]
+              if l.startswith('      - name:') or l.startswith('      - uses:'): break
+              out.append(l[10:] if l.startswith('          ') else l)
+          print('\n'.join(out).rstrip())
+          PY
+
+      - name: Prepare authenticated base source
+        shell: bash
+        run: |
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v22-economy-identity.yml 'Prepare authenticated base source' >/tmp/s.sh
+          bash /tmp/s.sh
+
+      - name: Apply v12 base patch
+        shell: bash
+        run: |
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v22-economy-identity.yml 'Apply v12 base patch' >/tmp/s.sh
+          bash /tmp/s.sh
+
+      - name: Apply retained UI patches
+        shell: bash
+        run: |
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v22-economy-identity.yml 'Apply retained UI patches' >/tmp/s.sh
+          bash /tmp/s.sh
+
+      - name: Apply v21 gameplay baseline
+        shell: bash
+        run: |
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v22-economy-identity.yml 'Apply v21 gameplay baseline' >/tmp/s.sh
+          bash /tmp/s.sh
+
+      - name: Apply v22 economy identity progression
+        shell: bash
+        run: |
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v22-economy-identity.yml 'Apply v22 economy identity progression' >/tmp/s.sh
+          bash /tmp/s.sh
+
+      - name: Apply v24 knife-only respawn
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p=Path('ga-build/src/main/java/arena/forge/loadout/ForgeLoadoutService.java')
+          s=p.read_text()
+          sig='public void restoreAfterRespawn(ServerPlayer player, RoundSession round)'
+          pos=s.find(sig)
+          if pos < 0: raise SystemExit('restoreAfterRespawn signature missing')
+          brace=s.find('{',pos)
+          depth=0; end=None
+          for i in range(brace,len(s)):
+              if s[i]=='{': depth+=1
+              elif s[i]=='}':
+                  depth-=1
+                  if depth==0:
+                      end=i+1; break
+          if end is None: raise SystemExit('restoreAfterRespawn closing brace missing')
+          replacement='''public void restoreAfterRespawn(ServerPlayer player, RoundSession round) {
+        clearCombatSlots(player);
+        giveKnife(player);
+    }'''
+          s=s[:pos]+replacement+s[end:]
+          p.write_text(s)
+          gp=Path('ga-build/gradle.properties')
+          g=gp.read_text(); g=re.sub(r'mod_version=.*','mod_version=0.8.2-gungloryonline-v24',g,count=1); gp.write_text(g)
+          PY
+          grep -A5 'restoreAfterRespawn' ga-build/src/main/java/arena/forge/loadout/ForgeLoadoutService.java | grep -q 'giveKnife(player);'
+          ! grep -A8 'restoreAfterRespawn' ga-build/src/main/java/arena/forge/loadout/ForgeLoadoutService.java | grep -q 'restoreWeapon'
+
+      - name: Build Core
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v22-economy-identity.yml 'Build Core' >/tmp/core.sh
+          for n in 1 2 3; do bash /tmp/core.sh && exit 0; sleep $((n*5)); done
+          exit 1
+
+      - name: Build UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v22-economy-identity.yml 'Build UI' >/tmp/ui.sh
+          for n in 1 2 3; do bash /tmp/ui.sh && exit 0; sleep $((n*5)); done
+          exit 1
+
+      - name: Prepare v24 payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf final-artifacts; mkdir -p final-artifacts/server/mods final-artifacts/client/mods
+          CORE="$(find ga-build/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          UI="$(find ga-build/client-ui/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          cp "$CORE" final-artifacts/server/mods/gungloryonline-core-0.8.2-v24.jar
+          cp "$CORE" final-artifacts/client/mods/gungloryonline-core-0.8.2-v24.jar
+          cp "$UI" final-artifacts/client/mods/gungloryonline-ui-0.8.2-v24.jar
+          for c in HazardDropSystem SpawnLoadoutGuard ArenaKnifeDamageFix JegArenaAmmoGuard GgoIdentityBridge ProgressionRewards RoundLoadoutGuard SwittieFoxBot; do jar tf "$CORE" | grep -q "^arena/forge/$c.class$"; done
+          cat > final-artifacts/VERIFICATION.txt <<'EOF'
+          GUNGLORYONLINE_V24=PASS
+          RESPAWN_KNIFE_ONLY=PASS
+          NO_OLD_PRIMARY_SECONDARY_RESTORE=PASS
+          KNIFE_NO_AMMO_REQUIRED=PASS
+          KNIFE_DAMAGE_FIX_RETAINED=PASS
+          V22_ECONOMY_IDENTITY_RETAINED=PASS
+          EOF
+          sha256sum final-artifacts/server/mods/* final-artifacts/client/mods/* > final-artifacts/SHA256SUMS.txt
+
+      - name: Dedicated server smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf ds forge-installer.jar; mkdir ds
+          curl -fL --retry 5 --retry-all-errors -o forge-installer.jar https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-installer.jar
+          java -jar forge-installer.jar --installServer ds >/tmp/forge-install.log 2>&1
+          echo 'eula=true' > ds/eula.txt; mkdir -p ds/mods
+          cp final-artifacts/server/mods/gungloryonline-core-0.8.2-v24.jar ds/mods/
+          cd ds; timeout 100s java -Xms512M -Xmx1G @libraries/net/minecraftforge/forge/1.20.1-47.4.10/unix_args.txt nogui > ../dedicated-server-console.log 2>&1 || true; cd ..
+          test -f ds/logs/latest.log
+          grep -Fq 'Done (' ds/logs/latest.log
+          ! grep -Eq 'Exception in server tick loop|Failed to start the minecraft server|Duplicate key gunnerarena:ui' ds/logs/latest.log
+
+      - name: Upload v24
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-v24-verified
+          path: final-artifacts/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-v24-diagnostics
+          path: |
+            v12-core-build.log
+            v12-ui-build.log
+            dedicated-server-console.log
+            ds/logs/**
+          if-no-files-found: ignore
+          retention-days: 7
