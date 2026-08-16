@@ -11,13 +11,15 @@ use thiserror::Error;
 pub const MINECRAFT_VERSION: &str = "1.20.1";
 pub const FORGE_VERSION: &str = "47.4.10";
 pub const REQUIRED_JAVA_MAJOR: u8 = 17;
+pub const DEFAULT_SERVER: &str = "31.77.232.254";
+pub const DEFAULT_SERVER_PORT: u16 = 24842;
 
 #[derive(Debug, Error)]
 pub enum MinecraftRuntimeError {
-    #[error("minecraft runtime installation is not implemented yet")]
-    NotInstalled,
-    #[error("minecraft runtime launch is not implemented yet")]
-    NotImplemented,
+    #[error("minecraft runtime is incomplete: {0}")]
+    Incomplete(String),
+    #[error("minecraft runtime launch is not implemented until identity is available")]
+    IdentityRequired,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -28,6 +30,31 @@ pub struct JavaRuntimeInfo {
     pub major: u32,
     pub compatible: bool,
     pub source: &'static str,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeCheck {
+    pub ready: bool,
+    pub minecraft_version: &'static str,
+    pub forge_version: &'static str,
+    pub java: Option<JavaRuntimeInfo>,
+    pub missing: Vec<String>,
+    pub version_profile: String,
+    pub game_directory: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LaunchPreparation {
+    pub ready: bool,
+    pub java_path: Option<String>,
+    pub game_directory: String,
+    pub version_profile: String,
+    pub server: &'static str,
+    pub port: u16,
+    pub extra_game_args: Vec<String>,
+    pub blockers: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -45,12 +72,89 @@ impl GameRuntime for MinecraftForgeRuntime {
         "minecraft-forge"
     }
 
-    fn verify(&self, _install_dir: &Path) -> Result<(), Self::Error> {
-        Err(MinecraftRuntimeError::NotInstalled)
+    fn verify(&self, install_dir: &Path) -> Result<(), Self::Error> {
+        let check = check_runtime(install_dir, None);
+        if check.ready {
+            Ok(())
+        } else {
+            Err(MinecraftRuntimeError::Incomplete(check.missing.join(", ")))
+        }
     }
 
     fn launch(&self, _install_dir: &Path) -> Result<(), Self::Error> {
-        Err(MinecraftRuntimeError::NotImplemented)
+        Err(MinecraftRuntimeError::IdentityRequired)
+    }
+}
+
+pub fn check_runtime(install_dir: &Path, custom_java: Option<&str>) -> RuntimeCheck {
+    let forge_profile = format!("{MINECRAFT_VERSION}-forge-{FORGE_VERSION}");
+    let version_profile_path = install_dir
+        .join("versions")
+        .join(&forge_profile)
+        .join(format!("{forge_profile}.json"));
+    let vanilla_profile_path = install_dir
+        .join("versions")
+        .join(MINECRAFT_VERSION)
+        .join(format!("{MINECRAFT_VERSION}.json"));
+    let forge_library = install_dir
+        .join("libraries")
+        .join("net")
+        .join("minecraftforge")
+        .join("forge")
+        .join(format!("{MINECRAFT_VERSION}-{FORGE_VERSION}"));
+    let assets = install_dir.join("assets");
+    let libraries = install_dir.join("libraries");
+
+    let mut missing = Vec::new();
+    for (label, path) in [
+        ("Forge version profile", &version_profile_path),
+        ("Minecraft 1.20.1 profile", &vanilla_profile_path),
+        ("Forge libraries", &forge_library),
+        ("Minecraft libraries", &libraries),
+        ("Minecraft assets", &assets),
+    ] {
+        if !path.exists() {
+            missing.push(format!("{label}: {}", path.display()));
+        }
+    }
+
+    let java = detect_java(custom_java)
+        .into_iter()
+        .find(|candidate| candidate.compatible);
+    if java.is_none() {
+        missing.push("Java 17 runtime".to_string());
+    }
+
+    RuntimeCheck {
+        ready: missing.is_empty(),
+        minecraft_version: MINECRAFT_VERSION,
+        forge_version: FORGE_VERSION,
+        java,
+        missing,
+        version_profile: forge_profile,
+        game_directory: install_dir.to_string_lossy().into_owned(),
+    }
+}
+
+pub fn prepare_launch(install_dir: &Path, custom_java: Option<&str>) -> LaunchPreparation {
+    let check = check_runtime(install_dir, custom_java);
+    let java_path = check.java.as_ref().map(|java| java.path.clone());
+    let blockers = check.missing.clone();
+
+    LaunchPreparation {
+        ready: check.ready,
+        java_path,
+        game_directory: check.game_directory,
+        version_profile: check.version_profile,
+        server: DEFAULT_SERVER,
+        port: DEFAULT_SERVER_PORT,
+        extra_game_args: vec![
+            "--server".to_string(),
+            DEFAULT_SERVER.to_string(),
+            "--port".to_string(),
+            DEFAULT_SERVER_PORT.to_string(),
+        ],
+        blockers,
     }
 }
 
@@ -114,7 +218,12 @@ fn extract_java_version(text: &str) -> Option<String> {
     }
 
     text.split_whitespace()
-        .find(|part| part.chars().next().is_some_and(|ch| ch.is_ascii_digit()) && part.contains('.'))
+        .find(|part| {
+            part.chars()
+                .next()
+                .is_some_and(|ch| ch.is_ascii_digit())
+                && part.contains('.')
+        })
         .map(|part| part.trim_matches('"').to_string())
 }
 
