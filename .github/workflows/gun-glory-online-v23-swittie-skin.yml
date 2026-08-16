@@ -106,16 +106,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 /tmp/extract.py .github/workflows/gun-glory-online-v22-economy-identity.yml 'Build Core' >/tmp/core.sh
-          for n in 1 2 3; do bash /tmp/core.sh && exit 0; sleep $((n*5)); done
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v12.yml 'Bootstrap ForgeGradle and build Core' >/tmp/core.sh
+          for n in 1 2 3; do (cd ga-build && bash /tmp/core.sh) && exit 0; sleep $((n*5)); done
           exit 1
 
       - name: Build UI
         shell: bash
         run: |
           set -euo pipefail
-          python3 /tmp/extract.py .github/workflows/gun-glory-online-v22-economy-identity.yml 'Build UI' >/tmp/ui.sh
-          for n in 1 2 3; do bash /tmp/ui.sh && exit 0; sleep $((n*5)); done
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v12.yml 'Build UI against real Core' >/tmp/ui.sh
+          for n in 1 2 3; do (cd ga-build && bash /tmp/ui.sh) && exit 0; sleep $((n*5)); done
           exit 1
 
       - name: Prepare v25 payload
