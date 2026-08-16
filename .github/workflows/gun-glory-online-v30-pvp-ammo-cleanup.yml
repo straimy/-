@@ -99,6 +99,15 @@ jobs:
           from pathlib import Path
           import re
           gp=Path('ga-build/gradle.properties');g=gp.read_text();g=re.sub(r'mod_version=.*','mod_version=0.8.8-gungloryonline-v30',g,count=1);gp.write_text(g)
+          p=Path('ga-build/src/main/java/arena/forge/SpawnNpcCleanup.java')
+          s=p.read_text()
+          old='if(e instanceof ArmorStand stand&&r.safeRegions().isSafe(e.blockPosition(),e.level().dimension())){'
+          new='if(e instanceof ArmorStand stand&&((ServerLevel)e.level()).players().stream().anyMatch(p0->r.auth().isAuthenticated(p0)&&r.safeRegions().isSafe(p0)&&p0.distanceToSqr(e)<=1024.0)){'
+          if old not in s: raise SystemExit('SpawnNpcCleanup safe-region anchor missing')
+          s=s.replace(old,new,1)
+          if 'import net.minecraft.server.level.ServerPlayer;' not in s:
+              s=s.replace('import net.minecraft.server.level.ServerLevel;','import net.minecraft.server.level.ServerLevel;\nimport net.minecraft.server.level.ServerPlayer;')
+          p.write_text(s)
           PY
           grep -q 'AttackEntityEvent' ga-build/src/main/java/arena/forge/ArenaKnifeDamageFix.java
           grep -q 'victim.setHealth' ga-build/src/main/java/arena/forge/ArenaKnifeDamageFix.java
