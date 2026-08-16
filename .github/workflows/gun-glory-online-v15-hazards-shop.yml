@@ -1,0 +1,246 @@
+name: GunGloryOnline v15 Hazards + Shop
+
+on:
+  push:
+    paths:
+      - '.github/workflows/gun-glory-online-v15-hazards-shop.yml'
+      - 'hotfix/HazardDropSystem.java'
+      - 'hotfix/ui/MatchShopScreen.java'
+      - 'hotfix/ui/SpawnCompassClientFix.java'
+  workflow_dispatch:
+
+env:
+  SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+  FINAL_RP: GunnerArena-ResourcePack-1.20.1-v1.zip
+
+jobs:
+  final:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Prepare helper
+        shell: bash
+        run: |
+          cat >/tmp/extract.py <<'PY'
+          import sys
+          from pathlib import Path
+          wf=Path(sys.argv[1]); wanted=sys.argv[2]
+          lines=wf.read_text().splitlines()
+          start=next((i for i,l in enumerate(lines) if l.strip()==f'- name: {wanted}'),None)
+          if start is None: raise SystemExit('step not found: '+wanted)
+          run=None
+          for i in range(start+1,len(lines)):
+              if lines[i].startswith('      - name:') or lines[i].startswith('      - uses:'): break
+              if lines[i].strip()=='run: |': run=i+1; break
+          if run is None: raise SystemExit('run block missing: '+wanted)
+          out=[]
+          for i in range(run,len(lines)):
+              l=lines[i]
+              if l.startswith('      - name:') or l.startswith('      - uses:'): break
+              out.append(l[10:] if l.startswith('          ') else l)
+          print('\n'.join(out).rstrip())
+          PY
+
+      - name: Prepare authenticated base source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v12.yml 'Prepare authenticated base source' >/tmp/prep.sh
+          bash /tmp/prep.sh
+
+      - name: Apply v12 base patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v12.yml 'Apply GunGloryOnline v12 patch' >/tmp/v12.sh
+          bash /tmp/v12.sh
+
+      - name: Apply v13 responsive disconnect patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v13.yml 'Apply v13 responsive cosmetics disconnect patch' >/tmp/v13.sh
+          bash /tmp/v13.sh
+          cp hotfix/CompassMenuFix.java ga-build/src/main/java/arena/forge/CompassMenuFix.java
+          cp hotfix/ui/MainArenaScreen.java ga-build/client-ui/src/main/java/arena/client/ui/MainArenaScreen.java
+
+      - name: Apply v14 native skin patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp hotfix/CosmeticSkinRuntime.java ga-build/src/main/java/arena/forge/CosmeticSkinRuntime.java
+          cp hotfix/CosmeticCommands.java ga-build/src/main/java/arena/forge/CosmeticCommands.java
+          cp hotfix/ui/LobbyShopScreen.java ga-build/client-ui/src/main/java/arena/client/ui/LobbyShopScreen.java
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          gp=Path('ga-build/gradle.properties')
+          s=gp.read_text()
+          s=re.sub(r'mod_version=0\.7\.1-gungloryonline-v13','mod_version=0.7.2-gungloryonline-v14',s)
+          gp.write_text(s)
+          PY
+
+      - name: Apply v15 hazard compass and match shop patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp hotfix/HazardDropSystem.java ga-build/src/main/java/arena/forge/HazardDropSystem.java
+          cp hotfix/ui/MatchShopScreen.java ga-build/client-ui/src/main/java/arena/client/ui/MatchShopScreen.java
+          cp hotfix/ui/SpawnCompassClientFix.java ga-build/client-ui/src/main/java/arena/client/ui/SpawnCompassClientFix.java
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          p=Path('ga-build/src/main/java/arena/forge/MinimalGameplayFixes.java')
+          s=p.read_text()
+          old='        event.getDispatcher().register(Commands.literal("setspawntnt").requires(s->s.hasPermission(2)||isNamedAdmin(s)).executes(c->createTntSpawn(c.getSource())));\n'
+          if old not in s:
+              raise SystemExit('old /setspawntnt registration not found')
+          s=s.replace(old,'',1)
+          old_tick='        tickRandomTnt(server,now);tickSafeTnt(server,now);tickFireStrikes(server,r,now);'
+          if old_tick not in s:
+              raise SystemExit('old hazard tick call not found')
+          s=s.replace(old_tick,'        // HazardDropSystem owns TNT/fireball/heal scheduling from v15 onward.',1)
+          p.write_text(s)
+
+          gp=Path('ga-build/gradle.properties')
+          g=gp.read_text()
+          g=re.sub(r'mod_version=0\.7\.2-gungloryonline-v14','mod_version=0.7.3-gungloryonline-v15',g)
+          gp.write_text(g)
+          PY
+          grep -q 'literal("setspawnfireball")' ga-build/src/main/java/arena/forge/HazardDropSystem.java
+          grep -q 'literal("setspawnheal")' ga-build/src/main/java/arena/forge/HazardDropSystem.java
+          grep -q 'randomTicks(45,90)' ga-build/src/main/java/arena/forge/HazardDropSystem.java
+          grep -q 'randomTicks(55,105)' ga-build/src/main/java/arena/forge/HazardDropSystem.java
+          grep -q 'randomTicks(65,120)' ga-build/src/main/java/arena/forge/HazardDropSystem.java
+          grep -q 'НЕДОСТАТОЧНО СРЕДСТВ' ga-build/client-ui/src/main/java/arena/client/ui/MatchShopScreen.java
+          grep -q 'mouseScrolled' ga-build/client-ui/src/main/java/arena/client/ui/MatchShopScreen.java
+          grep -q 'RightClickItem' ga-build/client-ui/src/main/java/arena/client/ui/SpawnCompassClientFix.java
+          ! grep -q 'tickRandomTnt(server,now);tickSafeTnt(server,now);tickFireStrikes(server,r,now);' ga-build/src/main/java/arena/forge/MinimalGameplayFixes.java
+
+      - name: Build Core
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v12.yml 'Bootstrap ForgeGradle and build Core' >/tmp/core.sh
+          (cd ga-build && bash /tmp/core.sh)
+
+      - name: Build UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v12.yml 'Build UI against real Core' >/tmp/ui.sh
+          (cd ga-build && bash /tmp/ui.sh)
+
+      - name: Prepare final v15 payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf final-artifacts
+          mkdir -p final-artifacts/server/mods final-artifacts/client/mods
+          CORE="$(find ga-build/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          UI="$(find ga-build/client-ui/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          test -n "$CORE"; test -n "$UI"
+          cp "$CORE" final-artifacts/server/mods/gungloryonline-core-0.7.3-v15.jar
+          cp "$CORE" final-artifacts/client/mods/gungloryonline-core-0.7.3-v15.jar
+          cp "$UI" final-artifacts/client/mods/gungloryonline-ui-0.7.3-v15.jar
+          cmp final-artifacts/server/mods/gungloryonline-core-0.7.3-v15.jar final-artifacts/client/mods/gungloryonline-core-0.7.3-v15.jar
+          jar tf "$CORE" | grep -q '^arena/forge/HazardDropSystem.class$'
+          jar tf "$CORE" | grep -q '^arena/forge/CompassMenuFix.class$'
+          jar tf "$UI" | grep -q '^arena/client/ui/MatchShopScreen.class$'
+          jar tf "$UI" | grep -q '^arena/client/ui/SpawnCompassClientFix.class$'
+
+      - name: Dedicated server smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf ds forge-installer.jar
+          mkdir ds
+          curl -fL --retry 3 -o forge-installer.jar https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-installer.jar
+          java -jar forge-installer.jar --installServer ds >/tmp/forge-install.log 2>&1
+          echo 'eula=true' > ds/eula.txt
+          mkdir -p ds/mods
+          cp final-artifacts/server/mods/gungloryonline-core-0.7.3-v15.jar ds/mods/
+          cd ds
+          timeout 100s java -Xms512M -Xmx1G @libraries/net/minecraftforge/forge/1.20.1-47.4.10/unix_args.txt nogui > ../dedicated-server-console.log 2>&1 || CODE=$?
+          cd ..
+          test -f ds/logs/latest.log
+          grep -Fq 'Done (' ds/logs/latest.log
+          ! grep -Eq 'Exception in server tick loop|Failed to start the minecraft server|Duplicate key gunnerarena:ui' ds/logs/latest.log
+
+      - name: Real Forge client smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 -o /tmp/mdk.zip https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-mdk.zip
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v12.yml 'Real Forge client smoke' >/tmp/client.sh
+          bash /tmp/client.sh
+
+      - name: Final v15 audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          CORE=final-artifacts/server/mods/gungloryonline-core-0.7.3-v15.jar
+          UI=final-artifacts/client/mods/gungloryonline-ui-0.7.3-v15.jar
+          jar tf "$CORE" | grep -q '^arena/forge/HazardDropSystem.class$'
+          jar tf "$UI" | grep -q '^arena/client/ui/MatchShopScreen.class$'
+          unzip -p "$CORE" arena/forge/HazardDropSystem.class | strings | grep -q 'setspawnfireball'
+          unzip -p "$CORE" arena/forge/HazardDropSystem.class | strings | grep -q 'setspawnheal'
+          unzip -p "$UI" arena/client/ui/MatchShopScreen.class | strings | grep -q 'НЕДОСТАТОЧНО СРЕДСТВ'
+          unzip -p "$UI" arena/client/ui/SpawnCompassClientFix.class | strings | grep -q 'gunnerarena_menu_compass'
+          cat > final-artifacts/VERIFICATION.txt <<'EOF'
+          GUNGLORYONLINE_V15=PASS
+          CORE_BUILD=PASS
+          UI_BUILD=PASS
+          DEDICATED_SERVER_SMOKE=PASS
+          REAL_FORGE_CLIENT_SMOKE=PASS
+          SPAWN_COMPASS_CLIENT_FALLBACK=PASS
+          MATCH_SHOP_COMPACT_RESPONSIVE_UI=PASS
+          OLD_RANDOM_PLAYER_FIRESTRIKES=DISABLED
+          TNT_MARKER_INTERVAL=45-90_SECONDS
+          FIREBALL_MARKER_INTERVAL=55-105_SECONDS
+          HEAL_MARKER_INTERVAL=65-120_SECONDS
+          TNT_COMMAND=/setspawntnt
+          FIREBALL_COMMAND=/setspawnfireball
+          HEAL_COMMAND=/setspawnheal
+          NPC_COMMAND=/setnpc
+          HEAL_0_TO_3=FULL_HP
+          HEAL_4_TO_5=PLUS_5_HEARTS
+          HEAL_6_TO_10=PLUS_2_HEARTS
+          NOTE=CI verifies compilation and Forge client/server startup. Exact live-server visuals, marker glow appearance, and compass click behavior still need one in-game validation.
+          EOF
+          cat > final-artifacts/REMOVE-OLD-JARS.txt <<'EOF'
+          Remove older GunnerArena/GunGloryOnline Core and UI jars before installing v15.
+          Client: keep exactly gungloryonline-core-0.7.3-v15.jar + gungloryonline-ui-0.7.3-v15.jar.
+          Server: keep exactly gungloryonline-core-0.7.3-v15.jar.
+          EOF
+          sha256sum final-artifacts/server/mods/* final-artifacts/client/mods/* > final-artifacts/SHA256SUMS.txt
+
+      - name: Upload final verified v15
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-v15-hazards-shop-verified
+          path: final-artifacts/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-v15-diagnostics
+          path: |
+            v12-core-build.log
+            v12-ui-build.log
+            dedicated-server-console.log
+            ds/logs/**
+            cs/run/logs/**
+            cs/run/crash-reports/**
+          if-no-files-found: ignore
+          retention-days: 7
