@@ -6,7 +6,10 @@ use core::{
     microsoft_auth::{self, MicrosoftLoginResult, MicrosoftSessionStore},
     updater::{self, SyncReport, UpdatePlan},
 };
-use runtime::minecraft::{self, JavaRuntimeInfo, LaunchPreparation, RuntimeCheck};
+use runtime::{
+    minecraft::{self, JavaRuntimeInfo, LaunchPreparation, RuntimeCheck},
+    minecraft_launch::{self, LaunchCommandPreview, LaunchOptions, LaunchResult},
+};
 use std::path::PathBuf;
 use tauri::{AppHandle, State};
 
@@ -28,6 +31,46 @@ fn check_runtime(install_dir: String, custom_java: Option<String>) -> RuntimeChe
 #[tauri::command]
 fn prepare_launch(install_dir: String, custom_java: Option<String>) -> LaunchPreparation {
     minecraft::prepare_launch(&PathBuf::from(install_dir), custom_java.as_deref())
+}
+
+#[tauri::command]
+async fn preview_minecraft_launch(
+    store: State<'_, MicrosoftSessionStore>,
+    install_dir: String,
+    custom_java: Option<String>,
+    options: LaunchOptions,
+) -> Result<LaunchCommandPreview, String> {
+    let session = store
+        .snapshot()
+        .await
+        .ok_or_else(|| "Minecraft account is not authenticated".to_string())?;
+    minecraft_launch::preview(
+        &PathBuf::from(install_dir),
+        custom_java.as_deref(),
+        &session,
+        &options,
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn launch_minecraft(
+    store: State<'_, MicrosoftSessionStore>,
+    install_dir: String,
+    custom_java: Option<String>,
+    options: LaunchOptions,
+) -> Result<LaunchResult, String> {
+    let session = store
+        .snapshot()
+        .await
+        .ok_or_else(|| "Minecraft account is not authenticated".to_string())?;
+    minecraft_launch::launch(
+        &PathBuf::from(install_dir),
+        custom_java.as_deref(),
+        &session,
+        &options,
+    )
+    .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -105,6 +148,8 @@ pub fn run() {
             detect_java,
             check_runtime,
             prepare_launch,
+            preview_minecraft_launch,
+            launch_minecraft,
             microsoft_login,
             microsoft_auth_status,
             microsoft_logout,
