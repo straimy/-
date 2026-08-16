@@ -9,6 +9,7 @@ use core::{
 use runtime::{
     minecraft::{self, JavaRuntimeInfo, LaunchPreparation, RuntimeCheck},
     minecraft_launch::{self, LaunchCommandPreview, LaunchOptions, LaunchResult},
+    minecraft_process,
 };
 use std::path::PathBuf;
 use tauri::{AppHandle, State};
@@ -64,7 +65,7 @@ async fn launch_minecraft(
         .snapshot()
         .await
         .ok_or_else(|| "Minecraft account is not authenticated".to_string())?;
-    minecraft_launch::launch(
+    minecraft_process::launch_with_natives(
         &PathBuf::from(install_dir),
         custom_java.as_deref(),
         &session,
