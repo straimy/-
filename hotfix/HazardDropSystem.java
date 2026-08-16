@@ -39,8 +39,9 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Low-frequency, marker-based arena drops.
- * Idle markers stay visibly labelled; a 5..1 warning replaces the label before each fast drop.
+ * Independent marker-based arena drops.
+ * Spawn markers are completely hidden while idle. Only during the final five seconds
+ * a small world-space hologram appears directly above the configured drop point.
  */
 @Mod.EventBusSubscriber(modid="gunnerarena",bus=Mod.EventBusSubscriber.Bus.FORGE)
 public final class HazardDropSystem {
@@ -75,8 +76,8 @@ public final class HazardDropSystem {
         if(server==null||runtime==null) return;
         long now=runtime.serverTick();
         scanMarkers(server,now);
-        tickWarnings(server,now);
-        tickTnt(server,runtime,now);
+        tickWarnings(now);
+        tickTnt(runtime,now);
         tickFire(runtime);
         tickHeal(runtime);
     }
@@ -88,13 +89,20 @@ public final class HazardDropSystem {
                 if(!(entity instanceof ArmorStand marker)) continue;
                 DropType type=typeOf(marker);
                 if(type==null) continue;
-                switch(type){case TNT->liveTnt.add(marker.getUUID());case FIREBALL->liveFire.add(marker.getUUID());case HEAL->liveHeal.add(marker.getUUID());}
-                styleMarker(marker,type,!ACTIVE_MARKERS.contains(marker.getUUID()));
+                UUID id=marker.getUUID();
+                switch(type){case TNT->liveTnt.add(id);case FIREBALL->liveFire.add(id);case HEAL->liveHeal.add(id);}
+
+                // Old versions left glowing/name-visible armor stands everywhere. Clear that state
+                // continuously unless this exact marker is in its five-second warning window.
+                if(!ACTIVE_MARKERS.contains(id)) hideMarker(marker);
+
                 Map<UUID,Long> schedule=schedule(type);
-                long due=schedule.computeIfAbsent(marker.getUUID(),u->now+randomInterval(type));
-                if(now>=due&&!ACTIVE_MARKERS.contains(marker.getUUID())){
+                // 25..55 seconds idle + 5 second warning = actual drop every ~30..60 seconds.
+                // The schedule is keyed by marker UUID, so every configured point is independent.
+                long due=schedule.computeIfAbsent(id,u->now+randomWarningDelay());
+                if(now>=due&&!ACTIVE_MARKERS.contains(id)){
                     startWarning(marker,type);
-                    schedule.put(marker.getUUID(),now+randomInterval(type));
+                    schedule.put(id,now+randomWarningDelay());
                 }
             }
         }
@@ -105,24 +113,35 @@ public final class HazardDropSystem {
     }
 
     private static void startWarning(ArmorStand marker,DropType type){
+        if(!(marker.level() instanceof ServerLevel level)) return;
         ACTIVE_MARKERS.add(marker.getUUID());
-        marker.setCustomNameVisible(false);
-        WARNINGS.put(marker.getUUID(),new Warning(marker.serverLevel(),marker.getUUID(),type,marker.getX(),marker.getY(),marker.getZ(),100,-1));
+        marker.setGlowingTag(false);
+        marker.setInvisible(true);
+        marker.setCustomName(Component.literal(type.warningLabel+" 5с").withStyle(type.color,ChatFormatting.BOLD));
+        marker.setCustomNameVisible(true);
+        WARNINGS.put(marker.getUUID(),new Warning(level,marker.getUUID(),type,marker.getX(),marker.getY(),marker.getZ(),100,-1));
     }
 
-    private static void tickWarnings(MinecraftServer server,long now){
+    private static void tickWarnings(long now){
         Iterator<Map.Entry<UUID,Warning>> it=WARNINGS.entrySet().iterator();
         while(it.hasNext()){
-            Map.Entry<UUID,Warning> en=it.next();
-            Warning w=en.getValue();
+            Warning w=it.next().getValue();
             int sec=Math.max(1,(w.ticks+19)/20);
             if(sec!=w.lastSecond){
                 w.lastSecond=sec;
-                for(ServerPlayer p:w.level.players()) if(p.distanceToSqr(w.x,w.y,w.z)<=48*48) showCountdown(server,p,w.type,sec);
+                Entity entity=w.level.getEntity(w.marker);
+                if(entity instanceof ArmorStand marker){
+                    marker.setGlowingTag(false);
+                    marker.setInvisible(true);
+                    marker.setCustomName(Component.literal(w.type.warningLabel+" "+sec+"с").withStyle(w.type.color,ChatFormatting.BOLD));
+                    marker.setCustomNameVisible(true);
+                }
             }
             w.ticks--;
             if(w.ticks>0) continue;
             it.remove();
+            Entity entity=w.level.getEntity(w.marker);
+            if(entity instanceof ArmorStand marker) hideMarker(marker);
             switch(w.type){
                 case TNT->spawnTnt(w,now);
                 case FIREBALL->FIRE_DROPS.add(new FireDrop(w.level,w.marker,w.x,w.y,w.z,w.y+21.0,24));
@@ -133,14 +152,14 @@ public final class HazardDropSystem {
 
     private static void spawnTnt(Warning w,long now){
         PrimedTnt t=EntityType.TNT.create(w.level);
-        if(t==null){finishMarker(w.level,w.marker,w.type);return;}
+        if(t==null){finishMarker(w.level,w.marker);return;}
         t.moveTo(w.x,w.y+3.3,w.z,0,0);
         t.setFuse(40);
         w.level.addFreshEntity(t);
         ACTIVE_TNT.put(t.getUUID(),new ActiveTnt(w.level,w.marker,now+30));
     }
 
-    private static void tickTnt(MinecraftServer server,ArenaRuntime runtime,long now){
+    private static void tickTnt(ArenaRuntime runtime,long now){
         Iterator<Map.Entry<UUID,ActiveTnt>> it=ACTIVE_TNT.entrySet().iterator();
         while(it.hasNext()){
             Map.Entry<UUID,ActiveTnt> en=it.next();
@@ -148,7 +167,7 @@ public final class HazardDropSystem {
             if(now<active.explodeAt) continue;
             Entity entity=active.level.getEntity(en.getKey());
             it.remove();
-            if(!(entity instanceof PrimedTnt t)){finishMarker(active.level,active.marker,DropType.TNT);continue;}
+            if(!(entity instanceof PrimedTnt t)){finishMarker(active.level,active.marker);continue;}
             double x=t.getX(),y=t.getY(),z=t.getZ();
             t.discard();
             active.level.sendParticles(ParticleTypes.EXPLOSION_EMITTER,x,y,z,1,0,0,0,0);
@@ -159,7 +178,7 @@ public final class HazardDropSystem {
                 if(d<=49) p.hurt(p.damageSources().generic(),8);
                 if(d<=100) p.addEffect(new MobEffectInstance(MobEffects.POISON,60,0));
             }
-            finishMarker(active.level,active.marker,DropType.TNT);
+            finishMarker(active.level,active.marker);
         }
     }
 
@@ -178,18 +197,18 @@ public final class HazardDropSystem {
             f.level.sendParticles(ParticleTypes.LAVA,f.x,f.groundY+.2,f.z,22,1.3,.2,1.3,.02);
             f.level.playSound(null,f.x,f.groundY,f.z,SoundEvents.FIRECHARGE_USE,SoundSource.BLOCKS,2.4f,.75f);
             for(ServerPlayer p:f.level.players()) if(canAffect(runtime,p)&&p.distanceToSqr(f.x,f.groundY,f.z)<=25){p.hurt(p.damageSources().onFire(),5);p.setSecondsOnFire(4);}
-            finishMarker(f.level,f.marker,DropType.FIREBALL);
+            finishMarker(f.level,f.marker);
         }
     }
 
     private static void spawnHealVisual(Warning w){
         ArmorStand visual=EntityType.ARMOR_STAND.create(w.level);
-        if(visual==null){finishMarker(w.level,w.marker,w.type);return;}
+        if(visual==null){finishMarker(w.level,w.marker);return;}
         visual.moveTo(w.x,w.y+10,w.z,0,0);
         visual.setInvisible(true);
         visual.setNoGravity(true);
         visual.setInvulnerable(true);
-        visual.setSmall(true);
+        visual.setGlowingTag(false);
         visual.setItemSlot(EquipmentSlot.HEAD,new ItemStack(Items.EMERALD_BLOCK));
         visual.addTag("gunnerarena_heal_drop_visual");
         w.level.addFreshEntity(visual);
@@ -219,7 +238,7 @@ public final class HazardDropSystem {
                 else if(d<=5.0) p.setHealth(Math.min(p.getMaxHealth(),p.getHealth()+10.0f));
                 else if(d<=10.0) p.setHealth(Math.min(p.getMaxHealth(),p.getHealth()+4.0f));
             }
-            finishMarker(h.level,h.marker,DropType.HEAL);
+            finishMarker(h.level,h.marker);
         }
     }
 
@@ -236,26 +255,27 @@ public final class HazardDropSystem {
         marker.setInvisible(true);
         marker.setNoGravity(true);
         marker.setInvulnerable(true);
+        marker.setGlowingTag(false);
+        marker.setCustomNameVisible(false);
         marker.addTag(type.tag);
-        styleMarker(marker,type,true);
         p.serverLevel().addFreshEntity(marker);
         long now=GunnerArenaMod.RUNTIME==null?0:GunnerArenaMod.RUNTIME.serverTick();
-        schedule(type).put(marker.getUUID(),now+randomInterval(type));
-        String msg=switch(type){case TNT->"[GGO] TNT spawn создан • примерно раз в 45–90 сек";case FIREBALL->"[GGO] Fireball spawn создан • примерно раз в 55–105 сек";case HEAL->"[GGO] Heal spawn создан • примерно раз в 65–120 сек";};
-        source.sendSuccess(()->Component.literal(msg).withStyle(type.color),false);
+        schedule(type).put(marker.getUUID(),now+randomWarningDelay());
+        source.sendSuccess(()->Component.literal("[GGO] "+type.shortName+" drop-точка создана • падение каждые 30–60 сек независимо").withStyle(type.color),false);
         return 1;
     }
 
-    private static void styleMarker(ArmorStand marker,DropType type,boolean visible){
-        marker.setCustomName(Component.literal(type.idleLabel).withStyle(type.color,ChatFormatting.BOLD));
-        marker.setCustomNameVisible(visible);
-        marker.setGlowingTag(true);
+    private static void hideMarker(ArmorStand marker){
+        marker.setInvisible(true);
+        marker.setGlowingTag(false);
+        marker.setCustomNameVisible(false);
+        marker.setCustomName(null);
     }
 
-    private static void finishMarker(ServerLevel level,UUID markerId,DropType type){
+    private static void finishMarker(ServerLevel level,UUID markerId){
         ACTIVE_MARKERS.remove(markerId);
         Entity entity=level.getEntity(markerId);
-        if(entity instanceof ArmorStand marker) styleMarker(marker,type,true);
+        if(entity instanceof ArmorStand marker) hideMarker(marker);
     }
 
     private static DropType typeOf(ArmorStand m){
@@ -266,29 +286,20 @@ public final class HazardDropSystem {
     }
 
     private static Map<UUID,Long> schedule(DropType type){return switch(type){case TNT->NEXT_TNT;case FIREBALL->NEXT_FIREBALL;case HEAL->NEXT_HEAL;};}
-    private static int randomInterval(DropType type){return switch(type){case TNT->randomTicks(45,90);case FIREBALL->randomTicks(55,105);case HEAL->randomTicks(65,120);};}
+    private static int randomWarningDelay(){return randomTicks(25,55);}
     private static int randomTicks(int minSec,int maxSec){return(minSec+RANDOM.nextInt(maxSec-minSec+1))*20;}
 
-    private static void showCountdown(MinecraftServer server,ServerPlayer p,DropType type,int seconds){
-        String color=seconds>=4?"green":seconds>=2?"yellow":"red";
-        String name=p.getGameProfile().getName();
-        run(server,"title "+name+" times 0 22 0");
-        run(server,"title "+name+" title {\"text\":\""+type.warningLabel+"\",\"color\":\"white\",\"bold\":true}");
-        run(server,"title "+name+" subtitle {\"text\":\""+seconds+"\",\"color\":\""+color+"\",\"bold\":true}");
-    }
-
-    private static void run(MinecraftServer server,String command){server.getCommands().performPrefixedCommand(server.createCommandSourceStack().withPermission(4),command);}
     private static boolean admin(CommandSourceStack s){
         if(s.hasPermission(2)) return true;
         try{ServerPlayer p=s.getPlayer();if(p==null)return false;String n=p.getGameProfile().getName();return"kvi_nella".equalsIgnoreCase(n)||"Twinida".equalsIgnoreCase(n);}catch(Exception x){return false;}
     }
 
     private enum DropType{
-        TNT(TNT_TAG,"✦ TNT DROP ✦","ДИНАМИТ УПАДЁТ ЧЕРЕЗ",ChatFormatting.RED),
-        FIREBALL(FIREBALL_TAG,"☄ FIREBALL DROP","ФАЕРБОЛ УПАДЁТ ЧЕРЕЗ",ChatFormatting.GOLD),
-        HEAL(HEAL_TAG,"✚ HEAL DROP","ХИЛКА УПАДЁТ ЧЕРЕЗ",ChatFormatting.GREEN);
-        final String tag,idleLabel,warningLabel;final ChatFormatting color;
-        DropType(String tag,String idleLabel,String warningLabel,ChatFormatting color){this.tag=tag;this.idleLabel=idleLabel;this.warningLabel=warningLabel;this.color=color;}
+        TNT(TNT_TAG,"TNT","ДИНАМИТ УПАДЁТ ЧЕРЕЗ",ChatFormatting.RED),
+        FIREBALL(FIREBALL_TAG,"FIREBALL","ФАЕРБОЛ УПАДЁТ ЧЕРЕЗ",ChatFormatting.GOLD),
+        HEAL(HEAL_TAG,"HEAL","ХИЛКА УПАДЁТ ЧЕРЕЗ",ChatFormatting.GREEN);
+        final String tag,shortName,warningLabel;final ChatFormatting color;
+        DropType(String tag,String shortName,String warningLabel,ChatFormatting color){this.tag=tag;this.shortName=shortName;this.warningLabel=warningLabel;this.color=color;}
     }
 
     private static final class Warning{
