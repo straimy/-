@@ -1,0 +1,39 @@
+name: GGO v0.4 Beta audit
+on:
+  push:
+    paths: ['.github/workflows/ggo-v04-beta-audit.yml']
+  workflow_dispatch:
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect current source and JEG catalog
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/base audit
+          mkdir -p /tmp/base audit
+          unzip -q gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip -d /tmp/base
+          ROOT="$(find /tmp/base -type d -path '*/src/main/java' | head -n1 | sed 's#/src/main/java##')"
+          echo "ROOT=$ROOT" > audit/report.txt
+          for f in WeaponCatalog.java WeaponRuntimeController.java AmmoStateController.java ArenaPlayerManager.java MinimalGameplayFixes.java ArenaNetwork.java; do
+            echo "===== $f =====" >> audit/report.txt
+            find "$ROOT" -name "$f" -print -exec sed -n '1,420p' {} \; >> audit/report.txt 2>&1 || true
+          done
+          echo '===== HOTFIX TNT/NPC/MENU =====' >> audit/report.txt
+          grep -Rni -C 10 -E 'setspawntnt|tnt|setnpc|npc|CompassMenuFix|requestPlay|clearCombatSlots|resetForNewRound|reload' hotfix .github/workflows/gun-glory-online-v1*.yml >> audit/report.txt 2>/dev/null || true
+          curl -fL --retry 3 -o /tmp/jeg.jar 'https://mediafilez.forgecdn.net/files/6808/139/JustEnoughGuns-0.13.2-1.20.1.jar'
+          echo '===== JEG gun resources =====' >> audit/report.txt
+          jar tf /tmp/jeg.jar | grep -Ei '(^|/)(guns?|weapons?)/.*\.json$|gun.*\.json$' | head -n 600 >> audit/report.txt || true
+          rm -rf /tmp/jeg && mkdir /tmp/jeg
+          (cd /tmp/jeg && jar xf /tmp/jeg.jar)
+          echo '===== JEG JSON ammo/reload data =====' >> audit/report.txt
+          grep -Rni -E 'ammo|reload|magazine|rate|fire|projectile|semi|auto|burst|shotgun|sniper|revolver' /tmp/jeg/data /tmp/jeg/assets 2>/dev/null | head -n 4000 >> audit/report.txt || true
+          echo '===== GGO referenced JEG IDs =====' >> audit/report.txt
+          grep -RhoE 'jeg:[a-z0-9_/-]+' "$ROOT/src/main/java" hotfix 2>/dev/null | sort -u >> audit/report.txt || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ggo-v04-beta-audit
+          path: audit/report.txt
+          retention-days: 3
