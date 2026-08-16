@@ -3,12 +3,19 @@ name: GunGloryOnline Launcher CI
 on:
   push:
     branches:
-      - launcher/**
+      - main
+    paths:
+      - 'launcher/**'
+      - '.github/workflows/ggo-launcher-ci.yml'
   pull_request:
     paths:
       - 'launcher/**'
       - '.github/workflows/ggo-launcher-ci.yml'
   workflow_dispatch:
+
+concurrency:
+  group: ggo-launcher-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   validate:
@@ -39,8 +46,8 @@ jobs:
       - name: TypeScript and Vite build
         run: npm run build
 
-      - name: Normalize Rust formatting
-        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all
+      - name: Rust formatting
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
 
       - name: Rust check
         run: cargo check --manifest-path src-tauri/Cargo.toml
