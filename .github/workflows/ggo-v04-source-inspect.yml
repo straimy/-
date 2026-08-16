@@ -1,0 +1,20 @@
+name: GGO v0.4 source inspect
+on:
+  push:
+    paths: ['.github/workflows/ggo-v04-source-inspect.yml']
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          set -e
+          rm -rf /tmp/x out; mkdir -p /tmp/x out
+          unzip -q gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip -d /tmp/x
+          find /tmp/x -type f | sort > out/files.txt
+          find /tmp/x -type f -name '*.zip' -print >> out/files.txt
+          grep -Rni -E 'class WeaponCatalog|class WeaponRuntimeController|class AmmoStateController|class ArenaPlayerManager|record Weapon|pump_shotgun|bolt_action_rifle' /tmp/x > out/hits.txt || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ggo-v04-source-inspect
+          path: out/**
