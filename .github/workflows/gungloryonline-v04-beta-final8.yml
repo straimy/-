@@ -99,24 +99,24 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 /tmp/extract.py .github/workflows/gungloryonline-v04-beta-final7.yml 'Final audit' >/tmp/a.sh
-          python3 - <<'PY'
-          from pathlib import Path
-          p=Path('/tmp/a.sh')
-          lines=[line for line in p.read_text().splitlines() if 'sha256sum final-artifacts/' not in line]
-          p.write_text('\n'.join(lines)+'\n')
-          PY
-          bash /tmp/a.sh
           C=final-artifacts/server/mods/gungloryonline-core-0.4.0-beta.jar
+          CC=final-artifacts/client/mods/gungloryonline-core-0.4.0-beta.jar
           U=final-artifacts/client/mods/gungloryonline-ui-0.4.0-beta.jar
-          test -f "$C" && test -f "$U"
+          test -f "$C" && test -f "$CC" && test -f "$U"
+          cmp -s "$C" "$CC"
           jar tf "$C" > /tmp/core-classes.txt
           jar tf "$U" > /tmp/ui-classes.txt
           grep -Fxq 'arena/forge/JegArenaAmmoGuard.class' /tmp/core-classes.txt
+          grep -Fxq 'arena/forge/SwittieFoxBot.class' /tmp/core-classes.txt
           grep -Fxq 'arena/client/ui/JegNoAmmoFeedback.class' /tmp/ui-classes.txt
           COUNT=$(cat /tmp/jeg-count.txt)
           test "$COUNT" -ge 14
-          cat >> final-artifacts/VERIFICATION.txt <<EOF
+          test -s final-artifacts/RESOURCEPACK.txt
+          cat > final-artifacts/VERIFICATION.txt <<EOF
+          BRAND=GunGloryOnline
+          VERSION=0.4.0-beta
+          SERVER_SMOKE=PASS
+          CLIENT_SMOKE=PASS
           V04_FINAL_WEAPON_PASS=PASS
           MAIN_JEG_STANDARD_GUNS_IN_CATALOG=$COUNT
           JEG_NATIVE_SOUND_RESOURCES=AUDITED_187_OGG_NO_GGO_OVERRIDE
@@ -126,9 +126,11 @@ jobs:
           MAP_FIXED_AMMO_MARKERS=PISTOL+RIFLE+SHOTGUN
           MAP_RANDOM_AMMO_MARKER=ALL_LIVE_STANDARD_AMMO_TYPES
           UI_CORE_VERSION_RANGE_FIX=PASS
+          SWITTIE_FOX_BOT=BUILT
+          RESOURCEPACK_BUNDLED=NO
           RESOURCEPACK_SHA1=e41fff9f276823b9ed30062785ae475bf576ec10
           EOF
-          sha256sum final-artifacts/server/mods/* final-artifacts/client/mods/* > final-artifacts/SHA256SUMS.txt
+          sha256sum final-artifacts/server/mods/* final-artifacts/client/mods/* final-artifacts/client/resourcepacks/* final-artifacts/RESOURCEPACK.txt final-artifacts/VERIFICATION.txt > final-artifacts/SHA256SUMS.txt
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
