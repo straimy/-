@@ -31,7 +31,9 @@ fn prepare_launch(install_dir: String, custom_java: Option<String>) -> LaunchPre
 }
 
 #[tauri::command]
-async fn microsoft_login(store: State<'_, MicrosoftSessionStore>) -> Result<MicrosoftLoginResult, String> {
+async fn microsoft_login(
+    store: State<'_, MicrosoftSessionStore>,
+) -> Result<MicrosoftLoginResult, String> {
     let http = updater::client().map_err(|err| err.to_string())?;
     microsoft_auth::login(&http, store.inner())
         .await
@@ -42,14 +44,16 @@ async fn microsoft_login(store: State<'_, MicrosoftSessionStore>) -> Result<Micr
 async fn microsoft_auth_status(store: State<'_, MicrosoftSessionStore>) -> MicrosoftLoginResult {
     match store.snapshot().await {
         Some(session) => MicrosoftLoginResult {
-            authenticated: !session.access_token.is_empty(),
+            authenticated: !session.minecraft_access_token.is_empty(),
             expires_in_seconds: session.expires_in_seconds,
             refresh_available: session.refresh_token.is_some(),
+            minecraft_profile: Some(session.minecraft_profile),
         },
         None => MicrosoftLoginResult {
             authenticated: false,
             expires_in_seconds: 0,
             refresh_available: false,
+            minecraft_profile: None,
         },
     }
 }
