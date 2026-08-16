@@ -65,19 +65,24 @@ jobs:
           python3 /tmp/extract.py .github/workflows/gun-glory-online-v22-economy-identity.yml 'Apply v12 base patch' >/tmp/s.sh
           set +e
           bash /tmp/s.sh
-          V12_RC=$?
+          echo "legacy v12 rc=$?"
           set -e
-          echo "v12 legacy step rc=$V12_RC; continuing with current source"
           cp /tmp/apply_v6_runtime_patch.py.bak hotfix/apply_v6_runtime_patch.py
 
           for step in 'Apply retained UI patches' 'Apply v21 gameplay baseline' 'Apply v22 economy identity progression'; do
             python3 /tmp/extract.py .github/workflows/gun-glory-online-v22-economy-identity.yml "$step" >/tmp/s.sh
+            set +e
             bash /tmp/s.sh
+            RC=$?
+            set -e
+            echo "$step legacy rc=$RC"
           done
+
           python3 /tmp/extract.py .github/workflows/gun-glory-online-v28-social-companion.yml 'Apply v28 gameplay social UI' >/tmp/s.sh
-          bash /tmp/s.sh
+          set +e; bash /tmp/s.sh; RC=$?; set -e; echo "v28 legacy rc=$RC"
+
           python3 /tmp/extract.py .github/workflows/gun-glory-online-v29-arena-authority-belt.yml 'Apply v29 arena authority belt fixes' >/tmp/s.sh
-          bash /tmp/s.sh
+          set +e; bash /tmp/s.sh; RC=$?; set -e; echo "v29 legacy rc=$RC"
 
       - name: Apply v30 PvP ammo cleanup
         shell: bash
