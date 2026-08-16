@@ -18,7 +18,16 @@ pub struct MinecraftForgeRuntime;
 
 impl GameRuntime for MinecraftForgeRuntime {
     type Error = MinecraftRuntimeError;
-    fn id(&self) -> &'static str { "minecraft-forge" }
-    fn verify(&self, _install_dir: &Path) -> Result<(), Self::Error> { Err(MinecraftRuntimeError::NotInstalled) }
-    fn launch(&self, _install_dir: &Path) -> Result<(), Self::Error> { Err(MinecraftRuntimeError::NotImplemented) }
+
+    fn id(&self) -> &'static str {
+        "minecraft-forge"
+    }
+
+    fn verify(&self, _install_dir: &Path) -> Result<(), Self::Error> {
+        Err(MinecraftRuntimeError::NotInstalled)
+    }
+
+    fn launch(&self, _install_dir: &Path) -> Result<(), Self::Error> {
+        Err(MinecraftRuntimeError::NotImplemented)
+    }
 }
