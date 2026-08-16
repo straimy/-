@@ -78,6 +78,13 @@ jobs:
         run: |
           python3 /tmp/extract.py .github/workflows/gungloryonline-v04-beta-final7.yml 'Prepare payload' >/tmp/payload.sh
           bash /tmp/payload.sh
+          mkdir -p final-artifacts/client/resourcepacks
+          curl -fL --retry 3 -o final-artifacts/client/resourcepacks/GunnerArena-ResourcePack-1.20.1-v2-embeddium-fix.zip \
+            'https://github.com/straimy/-/releases/download/gunner-arena-rp-v2-embeddium-fix/GunnerArena-ResourcePack-1.20.1-v2-embeddium-fix.zip'
+          echo 'e41fff9f276823b9ed30062785ae475bf576ec10  final-artifacts/client/resourcepacks/GunnerArena-ResourcePack-1.20.1-v2-embeddium-fix.zip' | sha1sum -c -
+          if unzip -Z1 final-artifacts/client/resourcepacks/GunnerArena-ResourcePack-1.20.1-v2-embeddium-fix.zip | grep -q '^assets/minecraft/shaders/core/'; then
+            echo 'Forbidden terrain shader overrides found'; exit 1
+          fi
       - name: Dedicated server smoke
         shell: bash
         run: /tmp/runold 'Dedicated server smoke'
