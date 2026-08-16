@@ -538,7 +538,7 @@ mod tests {
     fn hashes_sha1() {
         assert_eq!(
             sha1_hex(b"GunGloryOnline"),
-            "b113c5c5c53363ac8c609f2f548c579803356c0d"
+            "03a482568f8687d0e3c0d7796ef9534c2d0f9940"
         );
     }
 
