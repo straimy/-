@@ -5,12 +5,18 @@ use core::{
     bootstrap::BootstrapInfo,
     updater::{self, SyncReport, UpdatePlan},
 };
+use runtime::minecraft::{self, JavaRuntimeInfo};
 use std::path::PathBuf;
 use tauri::AppHandle;
 
 #[tauri::command]
 fn bootstrap_info() -> BootstrapInfo {
     BootstrapInfo::current()
+}
+
+#[tauri::command]
+fn detect_java(custom_java: Option<String>) -> Vec<JavaRuntimeInfo> {
+    minecraft::detect_java(custom_java.as_deref())
 }
 
 #[tauri::command]
@@ -51,6 +57,7 @@ pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             bootstrap_info,
+            detect_java,
             check_game,
             sync_game,
             repair_game
