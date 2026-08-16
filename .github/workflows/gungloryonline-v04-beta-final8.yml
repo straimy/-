@@ -36,14 +36,14 @@ jobs:
           cat >/tmp/runold <<'SH'
           #!/usr/bin/env bash
           set -euo pipefail
-          python3 /tmp/extract.py .github/workflows/gungloryonline-v04-beta-final.yml "$1" >/tmp/s.sh
-          bash /tmp/s.sh
+          python3 /tmp/extract.py .github/workflows/gungloryonline-v04-beta-final.yml "$1" >/tmp/oldstep.sh
+          bash /tmp/oldstep.sh
           SH
           cat >/tmp/run3 <<'SH'
           #!/usr/bin/env bash
           set -euo pipefail
-          python3 /tmp/extract.py .github/workflows/gungloryonline-v04-beta-final3.yml "$1" >/tmp/s.sh
-          bash /tmp/s.sh
+          python3 /tmp/extract.py .github/workflows/gungloryonline-v04-beta-final3.yml "$1" >/tmp/step3.sh
+          bash /tmp/step3.sh
           SH
           chmod +x /tmp/runold /tmp/run3
       - name: Prepare base and weapon fixes
