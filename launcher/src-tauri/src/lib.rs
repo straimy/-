@@ -8,6 +8,7 @@ use core::{
 };
 use runtime::{
     minecraft::{self, JavaRuntimeInfo, LaunchPreparation, RuntimeCheck},
+    minecraft_install::{self, RuntimeInstallReport},
     minecraft_launch::{self, LaunchCommandPreview, LaunchOptions, LaunchResult},
     minecraft_process,
 };
@@ -32,6 +33,23 @@ fn check_runtime(install_dir: String, custom_java: Option<String>) -> RuntimeChe
 #[tauri::command]
 fn prepare_launch(install_dir: String, custom_java: Option<String>) -> LaunchPreparation {
     minecraft::prepare_launch(&PathBuf::from(install_dir), custom_java.as_deref())
+}
+
+#[tauri::command]
+async fn install_runtime(
+    app: AppHandle,
+    install_dir: String,
+    custom_java: Option<String>,
+) -> Result<RuntimeInstallReport, String> {
+    let http = updater::client().map_err(|err| err.to_string())?;
+    minecraft_install::install_runtime(
+        &app,
+        &http,
+        &PathBuf::from(install_dir),
+        custom_java.as_deref(),
+    )
+    .await
+    .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -149,6 +167,7 @@ pub fn run() {
             detect_java,
             check_runtime,
             prepare_launch,
+            install_runtime,
             preview_minecraft_launch,
             launch_minecraft,
             microsoft_login,
