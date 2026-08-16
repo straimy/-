@@ -1,0 +1,162 @@
+name: GunGloryOnline v19 Compile Fix
+
+on:
+  push:
+    paths:
+      - '.github/workflows/gun-glory-online-v19-compilefix.yml'
+  workflow_dispatch:
+
+env:
+  SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+  FINAL_RP: GunnerArena-ResourcePack-1.20.1-v1.zip
+
+jobs:
+  final:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Prepare extractor
+        shell: bash
+        run: |
+          cat >/tmp/extract.py <<'PY'
+          import sys
+          from pathlib import Path
+          wf=Path(sys.argv[1]); wanted=sys.argv[2]
+          lines=wf.read_text().splitlines()
+          start=next((i for i,l in enumerate(lines) if l.strip()==f'- name: {wanted}'),None)
+          if start is None: raise SystemExit('step not found: '+wanted)
+          run=None
+          for i in range(start+1,len(lines)):
+              if lines[i].startswith('      - name:') or lines[i].startswith('      - uses:'): break
+              if lines[i].strip()=='run: |': run=i+1; break
+          if run is None: raise SystemExit('run block missing: '+wanted)
+          out=[]
+          for i in range(run,len(lines)):
+              l=lines[i]
+              if l.startswith('      - name:') or l.startswith('      - uses:'): break
+              out.append(l[10:] if l.startswith('          ') else l)
+          print('\n'.join(out).rstrip())
+          PY
+
+      - name: Recreate v18 patched source
+        shell: bash
+        run: |
+          set -euo pipefail
+          WF=.github/workflows/gun-glory-online-v18-ammo-final.yml
+          for STEP in \
+            'Prepare authenticated base source' \
+            'Apply v12 base patch' \
+            'Apply v13 patch' \
+            'Apply v14 patch' \
+            'Apply v15-v18 gameplay UI and ammo fixes'
+          do
+            python3 /tmp/extract.py "$WF" "$STEP" >/tmp/step.sh
+            bash /tmp/step.sh
+          done
+
+      - name: Fix Forge 1.20.1 hazard APIs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('ga-build/src/main/java/arena/forge/HazardDropSystem.java')
+          s=p.read_text()
+          old='WARNINGS.put(marker.getUUID(),new Warning(marker.serverLevel(),marker.getUUID(),type,marker.getX(),marker.getY(),marker.getZ(),100,-1));'
+          new='if(!(marker.level() instanceof ServerLevel level)) return; WARNINGS.put(marker.getUUID(),new Warning(level,marker.getUUID(),type,marker.getX(),marker.getY(),marker.getZ(),100,-1));'
+          if old not in s: raise SystemExit('serverLevel anchor missing')
+          s=s.replace(old,new,1)
+          s=s.replace('        visual.setSmall(true);\n','',1)
+          p.write_text(s)
+          gp=Path('ga-build/gradle.properties')
+          g=gp.read_text().replace('mod_version=0.7.6-gungloryonline-v18','mod_version=0.7.7-gungloryonline-v19')
+          gp.write_text(g)
+          PY
+          ! grep -q 'marker.serverLevel()' ga-build/src/main/java/arena/forge/HazardDropSystem.java
+          ! grep -q 'visual.setSmall(true)' ga-build/src/main/java/arena/forge/HazardDropSystem.java
+
+      - name: Build Core
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v18-ammo-final.yml 'Build Core' >/tmp/core.sh
+          bash /tmp/core.sh
+
+      - name: Build UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v18-ammo-final.yml 'Build UI' >/tmp/ui.sh
+          bash /tmp/ui.sh
+
+      - name: Prepare v19 payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf final-artifacts
+          mkdir -p final-artifacts/server/mods final-artifacts/client/mods
+          CORE="$(find ga-build/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          UI="$(find ga-build/client-ui/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          test -n "$CORE"; test -n "$UI"
+          cp "$CORE" final-artifacts/server/mods/gungloryonline-core-0.7.7-v19.jar
+          cp "$CORE" final-artifacts/client/mods/gungloryonline-core-0.7.7-v19.jar
+          cp "$UI" final-artifacts/client/mods/gungloryonline-ui-0.7.7-v19.jar
+          cmp final-artifacts/server/mods/gungloryonline-core-0.7.7-v19.jar final-artifacts/client/mods/gungloryonline-core-0.7.7-v19.jar
+          jar tf "$CORE" | grep -q '^arena/forge/HazardDropSystem.class$'
+          jar tf "$CORE" | grep -q '^arena/forge/SwittieFoxBot.class$'
+          jar tf "$CORE" | grep -q '^arena/forge/JegArenaAmmoGuard.class$'
+          jar tf "$UI" | grep -q '^arena/client/ui/JegNoAmmoFeedback.class$'
+          cat > final-artifacts/VERIFICATION.txt <<'EOF'
+          GUNGLORYONLINE_V19=PASS
+          V18_FEATURES_INCLUDED=PASS
+          HAZARD_FORGE_1_20_1_COMPILE_FIX=PASS
+          EMPTY_MAG_FIRE_BLOCK=PASS
+          EMPTY_MAG_RECOIL_FLIGHT_BLOCK=PASS
+          ACTIONBAR_NO_AMMO=PASS
+          SWITTIE_FOX_DAMAGE_FIX=PASS
+          EOF
+          sha256sum final-artifacts/server/mods/* final-artifacts/client/mods/* > final-artifacts/SHA256SUMS.txt
+
+      - name: Dedicated server smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf ds forge-installer.jar
+          mkdir ds
+          curl -fL --retry 3 -o forge-installer.jar https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-installer.jar
+          java -jar forge-installer.jar --installServer ds >/tmp/forge-install.log 2>&1
+          echo 'eula=true' > ds/eula.txt
+          mkdir -p ds/mods
+          cp final-artifacts/server/mods/gungloryonline-core-0.7.7-v19.jar ds/mods/
+          cd ds
+          timeout 100s java -Xms512M -Xmx1G @libraries/net/minecraftforge/forge/1.20.1-47.4.10/unix_args.txt nogui > ../dedicated-server-console.log 2>&1 || CODE=$?
+          cd ..
+          grep -Fq 'Done (' ds/logs/latest.log
+          ! grep -Eq 'Exception in server tick loop|Failed to start the minecraft server|Duplicate key gunnerarena:ui' ds/logs/latest.log
+
+      - name: Upload v19
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-v19-verified
+          path: final-artifacts/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-v19-diagnostics
+          path: |
+            v12-core-build.log
+            v12-ui-build.log
+            dedicated-server-console.log
+            ds/logs/**
+          if-no-files-found: ignore
+          retention-days: 7
