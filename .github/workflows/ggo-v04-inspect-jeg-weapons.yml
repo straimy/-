@@ -1,0 +1,38 @@
+name: GGO v0.4 inspect JEG weapons
+on:
+  push:
+    paths: ['.github/workflows/ggo-v04-inspect-jeg-weapons.yml']
+  workflow_dispatch:
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Inspect JEG 0.13.2 weapon/ammo implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 -o /tmp/jeg.jar 'https://mediafilez.forgecdn.net/files/6808/139/JustEnoughGuns-0.13.2-1.20.1.jar'
+          mkdir -p inspection
+          OUT=inspection/jeg-weapons.txt
+          echo '=== CLASSES ===' > "$OUT"
+          jar tf /tmp/jeg.jar | grep -Ei 'gun.*class$|shotgun|sniper|rifle|revolver|ammo|reload' | sort >> "$OUT" || true
+          echo '=== DATA/ASSETS ===' >> "$OUT"
+          jar tf /tmp/jeg.jar | grep -Ei '\.(json|toml)$' | grep -Ei 'gun|weapon|ammo|shotgun|rifle|revolver' | sort >> "$OUT" || true
+          rm -rf /tmp/jeg-unpack && mkdir /tmp/jeg-unpack && (cd /tmp/jeg-unpack && jar xf /tmp/jeg.jar)
+          echo '=== IDs/AMMO/MAG STRINGS ===' >> "$OUT"
+          grep -RInaE 'pump_shotgun|bolt_action_rifle|revolver|semi_auto_pistol|combat_pistol|custom_smg|assault_rifle|burst_rifle|light_machine_gun|shotgun_shell|handmade_shell|rifle_ammo|pistol_ammo|magazine|reload' /tmp/jeg-unpack --include='*.json' --include='*.toml' --include='*.mcmeta' 2>/dev/null | head -n 4000 >> "$OUT" || true
+          echo '=== RELEVANT JAVAP ===' >> "$OUT"
+          for C in $(jar tf /tmp/jeg.jar | grep '\.class$' | sed 's#/#.#g;s#\.class$##' | grep -Ei 'gunitem|shotgun|bolt|revolver|reload|shoot|firearm' | head -n 50); do
+            echo "--- $C ---" >> "$OUT"
+            javap -classpath /tmp/jeg.jar -p -c -s "$C" >> "$OUT" 2>&1 || true
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ggo-v04-jeg-weapon-inspection
+          path: inspection/jeg-weapons.txt
+          retention-days: 2
