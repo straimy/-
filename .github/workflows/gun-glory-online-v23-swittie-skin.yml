@@ -1,4 +1,4 @@
-name: GunGloryOnline v25 Knife Kick Fix
+name: GunGloryOnline v26 Atmosphere UI
 
 on:
   push:
@@ -8,6 +8,11 @@ on:
       - 'hotfix/ui/ClientDisconnectGuard.java'
       - 'hotfix/ui/JegMetaLoaderMixin.java'
       - 'hotfix/ui/gungloryonline.mixins.json'
+      - 'hotfix/ui/UiTheme.java'
+      - 'hotfix/ui/MainArenaScreen.java'
+      - 'hotfix/ui/LobbyShopScreen.java'
+      - 'hotfix/ui/MatchShopScreen.java'
+      - 'hotfix/ui/SwittieFoxSkinRenderer.java'
   workflow_dispatch:
 
 env:
@@ -78,7 +83,7 @@ jobs:
           python3 /tmp/extract.py .github/workflows/gun-glory-online-v22-economy-identity.yml 'Apply v22 economy identity progression' >/tmp/s.sh
           bash /tmp/s.sh
 
-      - name: Apply v25 knife and disconnect fixes
+      - name: Apply v26 knife disconnect atmosphere UI
         shell: bash
         run: |
           set -euo pipefail
@@ -86,6 +91,11 @@ jobs:
           cp hotfix/ui/ClientDisconnectGuard.java ga-build/client-ui/src/main/java/arena/client/ui/ClientDisconnectGuard.java
           cp hotfix/ui/JegMetaLoaderMixin.java ga-build/client-ui/src/main/java/arena/client/ui/JegMetaLoaderMixin.java
           cp hotfix/ui/gungloryonline.mixins.json ga-build/client-ui/src/main/resources/gungloryonline.mixins.json
+          cp hotfix/ui/UiTheme.java ga-build/client-ui/src/main/java/arena/client/ui/UiTheme.java
+          cp hotfix/ui/MainArenaScreen.java ga-build/client-ui/src/main/java/arena/client/ui/MainArenaScreen.java
+          cp hotfix/ui/LobbyShopScreen.java ga-build/client-ui/src/main/java/arena/client/ui/LobbyShopScreen.java
+          cp hotfix/ui/MatchShopScreen.java ga-build/client-ui/src/main/java/arena/client/ui/MatchShopScreen.java
+          cp hotfix/ui/SwittieFoxSkinRenderer.java ga-build/client-ui/src/main/java/arena/client/ui/SwittieFoxSkinRenderer.java
           python3 - <<'PY'
           from pathlib import Path
           import re
@@ -95,12 +105,13 @@ jobs:
               s += '\n[[mixins]]\nconfig="gungloryonline.mixins.json"\n'
               mt.write_text(s)
           gp=Path('ga-build/gradle.properties')
-          g=gp.read_text(); g=re.sub(r'mod_version=.*','mod_version=0.8.3-gungloryonline-v25',g,count=1); gp.write_text(g)
+          g=gp.read_text(); g=re.sub(r'mod_version=.*','mod_version=0.8.4-gungloryonline-v26',g,count=1); gp.write_text(g)
           PY
           grep -q 'PlayerRespawnEvent' ga-build/src/main/java/arena/forge/RoundLoadoutGuard.java
-          grep -q 'giveKnifeOnly' ga-build/src/main/java/arena/forge/RoundLoadoutGuard.java
           grep -q 'List.copyOf(registry.getValues())' ga-build/client-ui/src/main/java/arena/client/ui/JegMetaLoaderMixin.java
-          grep -q 'JegMetaLoaderMixin' ga-build/client-ui/src/main/resources/gungloryonline.mixins.json
+          grep -q 'ARENA // COMBAT NETWORK' ga-build/client-ui/src/main/java/arena/client/ui/MainArenaScreen.java
+          grep -q '✦ АРСЕНАЛ' ga-build/client-ui/src/main/java/arena/client/ui/MatchShopScreen.java
+          grep -q 'SwittieFoxSkinRenderer' ga-build/client-ui/src/main/java/arena/client/ui/SwittieFoxSkinRenderer.java
 
       - name: Build Core
         shell: bash
@@ -118,7 +129,7 @@ jobs:
           for n in 1 2 3; do (cd ga-build && bash /tmp/ui.sh) && exit 0; sleep $((n*5)); done
           exit 1
 
-      - name: Prepare v25 payload
+      - name: Prepare v26 payload
         shell: bash
         run: |
           set -euo pipefail
@@ -126,26 +137,26 @@ jobs:
           CORE="$(find ga-build/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
           UI="$(find ga-build/client-ui/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
           test -n "$CORE"; test -n "$UI"
-          cp "$CORE" final-artifacts/server/mods/gungloryonline-core-0.8.3-v25.jar
-          cp "$CORE" final-artifacts/client/mods/gungloryonline-core-0.8.3-v25.jar
-          cp "$UI" final-artifacts/client/mods/gungloryonline-ui-0.8.3-v25.jar
-          cmp final-artifacts/server/mods/gungloryonline-core-0.8.3-v25.jar final-artifacts/client/mods/gungloryonline-core-0.8.3-v25.jar
+          cp "$CORE" final-artifacts/server/mods/gungloryonline-core-0.8.4-v26.jar
+          cp "$CORE" final-artifacts/client/mods/gungloryonline-core-0.8.4-v26.jar
+          cp "$UI" final-artifacts/client/mods/gungloryonline-ui-0.8.4-v26.jar
+          cmp final-artifacts/server/mods/gungloryonline-core-0.8.4-v26.jar final-artifacts/client/mods/gungloryonline-core-0.8.4-v26.jar
           for c in HazardDropSystem SpawnLoadoutGuard ArenaKnifeDamageFix JegArenaAmmoGuard GgoIdentityBridge ProgressionRewards RoundLoadoutGuard SwittieFoxBot; do jar tf "$CORE" | grep -q "^arena/forge/$c.class$"; done
-          jar tf "$UI" | grep -q '^arena/client/ui/ClientDisconnectGuard.class$'
-          jar tf "$UI" | grep -q '^arena/client/ui/JegMetaLoaderMixin.class$'
+          for c in ClientDisconnectGuard JegMetaLoaderMixin UiTheme MainArenaScreen LobbyShopScreen MatchShopScreen SwittieFoxSkinRenderer; do jar tf "$UI" | grep -q "^arena/client/ui/$c.class$"; done
           jar tf "$UI" | grep -q '^gungloryonline.mixins.json$'
           unzip -p "$UI" META-INF/mods.toml | grep -q 'gungloryonline.mixins.json'
           cat > final-artifacts/VERIFICATION.txt <<'EOF'
-          GUNGLORYONLINE_V25=PASS
+          GUNGLORYONLINE_V26=PASS
+          ATMOSPHERE_UI=PASS
+          COMPACT_MENU_SYMBOLS=PASS
+          CALM_NEON_HIGHLIGHTS=PASS
+          SWITTIE_PLAYER_RENDERER=PASS
           RESPAWN_KNIFE_ONLY=PASS
-          OLD_REGEN_WEAPON_RESTORE_DISABLED=PASS
-          KNIFE_NO_AMMO=PASS
-          KNIFE_DAMAGE_FIX_RETAINED=PASS
-          KICK_DISCONNECT_UI_GUARD=PASS
           JEG_DISCONNECT_CME_GUARD=PASS
           V22_ECONOMY_IDENTITY_RETAINED=PASS
           V21_GAMEPLAY_FIXES_RETAINED=PASS
-          NOTE=Live kick/disconnect still requires client validation with the user's modified JEG jar.
+          RESOURCEPACK_V3_EXPECTED=GunGloryOnline-ResourcePack-1.20.1-v3-atmosphere.zip
+          NOTE=Resource pack is distributed separately from GitHub Actions artifact.
           EOF
           sha256sum final-artifacts/server/mods/* final-artifacts/client/mods/* > final-artifacts/SHA256SUMS.txt
 
@@ -157,16 +168,16 @@ jobs:
           curl -fL --retry 5 --retry-all-errors -o forge-installer.jar https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-installer.jar
           java -jar forge-installer.jar --installServer ds >/tmp/forge-install.log 2>&1
           echo 'eula=true' > ds/eula.txt; mkdir -p ds/mods
-          cp final-artifacts/server/mods/gungloryonline-core-0.8.3-v25.jar ds/mods/
+          cp final-artifacts/server/mods/gungloryonline-core-0.8.4-v26.jar ds/mods/
           cd ds; timeout 100s java -Xms512M -Xmx1G @libraries/net/minecraftforge/forge/1.20.1-47.4.10/unix_args.txt nogui > ../dedicated-server-console.log 2>&1 || true; cd ..
           test -f ds/logs/latest.log
           grep -Fq 'Done (' ds/logs/latest.log
           ! grep -Eq 'Exception in server tick loop|Failed to start the minecraft server|Duplicate key gunnerarena:ui' ds/logs/latest.log
 
-      - name: Upload v25
+      - name: Upload v26
         uses: actions/upload-artifact@v4
         with:
-          name: GunGloryOnline-v25-verified
+          name: GunGloryOnline-v26-atmosphere
           path: final-artifacts/**
           if-no-files-found: error
           retention-days: 30
@@ -175,7 +186,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: GunGloryOnline-v25-diagnostics
+          name: GunGloryOnline-v26-diagnostics
           path: |
             v12-core-build.log
             v12-ui-build.log
