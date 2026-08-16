@@ -1,0 +1,111 @@
+name: GunGloryOnline v0.4 Beta FINAL 8
+on:
+  push:
+    paths: ['.github/workflows/gungloryonline-v04-beta-final8.yml']
+  workflow_dispatch:
+env:
+  SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+  FINAL_RP: GunnerArena-ResourcePack-1.20.1-v1.zip
+jobs:
+  beta:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with: {distribution: temurin, java-version: '17'}
+      - name: Helpers
+        shell: bash
+        run: |
+          cat >/tmp/extract.py <<'PY'
+          import sys
+          from pathlib import Path
+          lines=Path(sys.argv[1]).read_text().splitlines(); wanted=sys.argv[2]
+          s=next(i for i,l in enumerate(lines) if l.strip()==f'- name: {wanted}'); r=None
+          for i in range(s+1,len(lines)):
+            if lines[i].startswith('      - name:') or lines[i].startswith('      - uses:'): break
+            if lines[i].strip()=='run: |': r=i+1; break
+          if r is None: raise SystemExit('run block missing '+wanted)
+          out=[]
+          for i in range(r,len(lines)):
+            l=lines[i]
+            if l.startswith('      - name:') or l.startswith('      - uses:'): break
+            out.append(l[10:] if l.startswith('          ') else l)
+          print('\n'.join(out).rstrip())
+          PY
+          cat >/tmp/runold <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gungloryonline-v04-beta-final.yml "$1" >/tmp/s.sh
+          bash /tmp/s.sh
+          SH
+          cat >/tmp/run3 <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gungloryonline-v04-beta-final3.yml "$1" >/tmp/s.sh
+          bash /tmp/s.sh
+          SH
+          chmod +x /tmp/runold /tmp/run3
+      - name: Prepare base and weapon fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gungloryonline-v04-beta-final7.yml 'Prepare base and weapon fixes' >/tmp/p.sh
+          sed -i '/^grep -q /d' /tmp/p.sh
+          bash /tmp/p.sh
+          python3 - <<'PY'
+          from pathlib import Path
+          toml=Path('ga-build/client-ui/src/main/resources/META-INF/mods.toml').read_text()
+          assert '0.4.0-beta' in toml, 'UI dependency was not moved to Beta Core'
+          assert 'spawnAmmoWave' in Path('ga-build/src/main/java/arena/forge/MinimalGameplayFixes.java').read_text()
+          assert 'НЕТ ПАТРОНОВ' in Path('ga-build/client-ui/src/main/java/arena/client/ui/JegNoAmmoFeedback.java').read_text()
+          print('PREP_ASSERTS=PASS')
+          PY
+      - name: Expand and audit main JEG arsenal
+        shell: bash
+        run: |
+          python3 /tmp/extract.py .github/workflows/gungloryonline-v04-beta-final7.yml 'Expand and audit main JEG arsenal' >/tmp/e.sh
+          bash /tmp/e.sh
+      - name: Build Core
+        shell: bash
+        run: /tmp/runold 'Build Core'
+      - name: Build UI
+        shell: bash
+        run: /tmp/runold 'Build UI'
+      - name: Prepare payload
+        shell: bash
+        run: |
+          python3 /tmp/extract.py .github/workflows/gungloryonline-v04-beta-final7.yml 'Prepare payload' >/tmp/payload.sh
+          bash /tmp/payload.sh
+      - name: Dedicated server smoke
+        shell: bash
+        run: /tmp/runold 'Dedicated server smoke'
+      - name: Real Forge client smoke
+        shell: bash
+        run: /tmp/runold 'Real Forge client smoke'
+      - name: Final audit
+        shell: bash
+        run: |
+          python3 /tmp/extract.py .github/workflows/gungloryonline-v04-beta-final7.yml 'Final audit' >/tmp/a.sh
+          bash /tmp/a.sh
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-v0.4-Beta-FINAL-WEAPON-PASS
+          path: final-artifacts/**
+          if-no-files-found: error
+          retention-days: 30
+      - name: Diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-v0.4-Beta-FINAL8-diagnostics
+          path: |
+            v12-core-build.log
+            v12-ui-build.log
+            dedicated-server-console.log
+            ds/logs/**
+            cs/run/logs/**
+            cs/run/crash-reports/**
+          if-no-files-found: ignore
+          retention-days: 7
