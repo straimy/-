@@ -1,0 +1,30 @@
+name: GGO patch beta env
+on:
+  push:
+    paths: ['.github/workflows/ggo-v04-patch-final-rp.yml']
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Add FINAL_RP default to beta workflow
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('.github/workflows/gungloryonline-v04-beta-final.yml')
+          s=p.read_text()
+          needle='  SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip\n'
+          if '  FINAL_RP:' not in s:
+              if needle not in s: raise SystemExit('env anchor missing')
+              s=s.replace(needle,needle+'  FINAL_RP: GunnerArena-ResourcePack-1.20.1-v1.zip\n',1)
+              p.write_text(s)
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/workflows/gungloryonline-v04-beta-final.yml
+          git diff --cached --quiet || git commit -m 'ci: set FINAL_RP for v0.4 beta build'
+          git push
