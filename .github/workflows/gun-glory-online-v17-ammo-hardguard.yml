@@ -1,0 +1,159 @@
+name: GunGloryOnline v17 Ammo Hard Guard
+
+on:
+  push:
+    paths:
+      - '.github/workflows/gun-glory-online-v17-ammo-hardguard.yml'
+      - 'hotfix/JegArenaAmmoGuard.java'
+      - 'hotfix/ui/JegNoAmmoFeedback.java'
+  workflow_dispatch:
+
+env:
+  SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+  FINAL_RP: GunnerArena-ResourcePack-1.20.1-v1.zip
+
+jobs:
+  final:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Prepare extractor
+        shell: bash
+        run: |
+          cat >/tmp/extract.py <<'PY'
+          import sys
+          from pathlib import Path
+          wf=Path(sys.argv[1]); wanted=sys.argv[2]
+          lines=wf.read_text().splitlines()
+          start=next((i for i,l in enumerate(lines) if l.strip()==f'- name: {wanted}'),None)
+          if start is None: raise SystemExit('step not found: '+wanted)
+          run=None
+          for i in range(start+1,len(lines)):
+              if lines[i].startswith('      - name:') or lines[i].startswith('      - uses:'): break
+              if lines[i].strip()=='run: |': run=i+1; break
+          if run is None: raise SystemExit('run block missing: '+wanted)
+          out=[]
+          for i in range(run,len(lines)):
+              l=lines[i]
+              if l.startswith('      - name:') or l.startswith('      - uses:'): break
+              out.append(l[10:] if l.startswith('          ') else l)
+          print('\n'.join(out).rstrip())
+          PY
+
+      - name: Recreate v16 patched source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v16-swittie-fix.yml 'Recreate v15 patched source' >/tmp/base.sh
+          bash /tmp/base.sh
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v16-swittie-fix.yml 'Apply Swittie Fox combat and skin fix' >/tmp/swittie.sh
+          bash /tmp/swittie.sh
+
+      - name: Apply hard no-ammo guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp hotfix/JegArenaAmmoGuard.java ga-build/src/main/java/arena/forge/JegArenaAmmoGuard.java
+          cp hotfix/ui/JegNoAmmoFeedback.java ga-build/client-ui/src/main/java/arena/client/ui/JegNoAmmoFeedback.java
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          gp=Path('ga-build/gradle.properties')
+          s=gp.read_text()
+          s=re.sub(r'mod_version=0\.7\.4-gungloryonline-v16','mod_version=0.7.5-gungloryonline-v17',s)
+          gp.write_text(s)
+          PY
+          grep -q 'InteractionKeyMappingTriggered' ga-build/client-ui/src/main/java/arena/client/ui/JegNoAmmoFeedback.java
+          grep -q 'e.setCanceled(true)' ga-build/client-ui/src/main/java/arena/client/ui/JegNoAmmoFeedback.java
+          grep -q 'mc.options.keyAttack.setDown(false)' ga-build/client-ui/src/main/java/arena/client/ui/JegNoAmmoFeedback.java
+          grep -q 'НЕТ ПАТРОНОВ' ga-build/client-ui/src/main/java/arena/client/ui/JegNoAmmoFeedback.java
+          grep -q 'tag.remove(IGNORE)' ga-build/src/main/java/arena/forge/JegArenaAmmoGuard.java
+
+      - name: Build Core
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v15-hazards-shop.yml 'Build Core' >/tmp/core.sh
+          bash /tmp/core.sh
+
+      - name: Build UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v15-hazards-shop.yml 'Build UI' >/tmp/ui.sh
+          bash /tmp/ui.sh
+
+      - name: Prepare v17 payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf final-artifacts
+          mkdir -p final-artifacts/server/mods final-artifacts/client/mods
+          CORE="$(find ga-build/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          UI="$(find ga-build/client-ui/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          test -n "$CORE"; test -n "$UI"
+          cp "$CORE" final-artifacts/server/mods/gungloryonline-core-0.7.5-v17.jar
+          cp "$CORE" final-artifacts/client/mods/gungloryonline-core-0.7.5-v17.jar
+          cp "$UI" final-artifacts/client/mods/gungloryonline-ui-0.7.5-v17.jar
+          jar tf "$CORE" | grep -q '^arena/forge/JegArenaAmmoGuard.class$'
+          jar tf "$CORE" | grep -q '^arena/forge/SwittieFoxBot.class$'
+          jar tf "$CORE" | grep -q '^arena/forge/HazardDropSystem.class$'
+          jar tf "$UI" | grep -q '^arena/client/ui/JegNoAmmoFeedback.class$'
+          jar tf "$UI" | grep -q '^arena/client/ui/MatchShopScreen.class$'
+          unzip -p "$UI" arena/client/ui/JegNoAmmoFeedback.class | strings | grep -q 'НЕТ ПАТРОНОВ'
+          cat > final-artifacts/VERIFICATION.txt <<'EOF'
+          GUNGLORYONLINE_V17=PASS
+          V16_SWITTIE_FIX_INCLUDED=PASS
+          V15_HAZARDS_SHOP_COMPASS_INCLUDED=PASS
+          EMPTY_MAG_FIRE_INPUT_CANCELLED=PASS
+          HELD_EMPTY_FIRE_INPUT_CANCELLED_EVERY_TICK=PASS
+          DRY_SHOT_RECOIL_FLIGHT_GUARD=PASS
+          ACTIONBAR_NO_AMMO_MESSAGE=PASS
+          ACTIONBAR_RELOAD_HINT=PASS
+          SERVER_IGNORE_AMMO_STRIPPED=PASS
+          EOF
+          sha256sum final-artifacts/server/mods/* final-artifacts/client/mods/* > final-artifacts/SHA256SUMS.txt
+
+      - name: Dedicated server smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf ds forge-installer.jar
+          mkdir ds
+          curl -fL --retry 3 -o forge-installer.jar https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-installer.jar
+          java -jar forge-installer.jar --installServer ds >/tmp/forge-install.log 2>&1
+          echo 'eula=true' > ds/eula.txt
+          mkdir -p ds/mods
+          cp final-artifacts/server/mods/gungloryonline-core-0.7.5-v17.jar ds/mods/
+          cd ds
+          timeout 100s java -Xms512M -Xmx1G @libraries/net/minecraftforge/forge/1.20.1-47.4.10/unix_args.txt nogui > ../dedicated-server-console.log 2>&1 || CODE=$?
+          cd ..
+          grep -Fq 'Done (' ds/logs/latest.log
+          ! grep -Eq 'Exception in server tick loop|Failed to start the minecraft server|Duplicate key gunnerarena:ui' ds/logs/latest.log
+
+      - name: Upload v17
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-v17-ammo-hardguard-verified
+          path: final-artifacts/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-v17-diagnostics
+          path: |
+            v12-core-build.log
+            v12-ui-build.log
+            dedicated-server-console.log
+            ds/logs/**
+          if-no-files-found: ignore
+          retention-days: 7
