@@ -1,0 +1,20 @@
+name: GGO v0.4 JEG entity inspect
+on:
+  push:
+    paths: ['.github/workflows/ggo-v04-jeg-entity-inspect.yml']
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          set -e
+          mkdir out
+          curl -fL --retry 3 -o /tmp/jeg.jar 'https://mediafilez.forgecdn.net/files/6808/139/JustEnoughGuns-0.13.2-1.20.1.jar'
+          jar tf /tmp/jeg.jar | grep -Ei 'entity|gunner|mob' > out/files.txt || true
+          for C in $(jar tf /tmp/jeg.jar | grep -Ei '/entity/.*class$|gunner.*class$' | sed 's#/#.#g;s#.class$##' | head -n 80); do echo "===== $C =====" >> out/javap.txt; javap -classpath /tmp/jeg.jar -p "$C" >> out/javap.txt 2>&1 || true; done
+          unzip -p /tmp/jeg.jar | strings | grep -Ei 'gunner|entity\.jeg|spawn_egg|phantom' | sort -u | head -n 2000 > out/strings.txt || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ggo-v04-jeg-entities
+          path: out/**
