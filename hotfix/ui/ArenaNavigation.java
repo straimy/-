@@ -13,6 +13,8 @@ final class ArenaNavigation {
         add(screen,current,UiRoute.PROFILE,new UiLayout.Rect(start+(w+gap)*2,y,w,19),"ПРОФИЛЬ");
         add(screen,current,UiRoute.SKILLS,new UiLayout.Rect(start+(w+gap)*3,y,w,19),"НАВЫКИ");
     }
-    private static void add(AbstractArenaScreen s,UiRoute cur,UiRoute target,UiLayout.Rect r,String text){ArenaButton b=new ArenaButton(r,Component.literal(text),x->navigate(target));b.active=cur!=target;s.addRenderableWidget(b);}
+    private static void add(AbstractArenaScreen s,UiRoute cur,UiRoute target,UiLayout.Rect r,String text){
+        ArenaButton b=new ArenaButton(r,Component.literal(text),x->navigate(target));b.active=cur!=target;s.addArenaWidget(b);
+    }
     static void navigate(UiRoute target){Minecraft mc=Minecraft.getInstance();if(mc.player==null||target==null)return;switch(target){case MAIN->mc.setScreen(new MainArenaScreen());case SHOP->mc.setScreen(new LobbyShopScreen());case PROFILE->mc.setScreen(new ProfileScreen());case SKILLS->mc.setScreen(new SkillsScreen());}}
 }
