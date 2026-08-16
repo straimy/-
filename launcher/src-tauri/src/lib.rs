@@ -14,11 +14,47 @@ use runtime::{
     minecraft_process,
 };
 use std::path::PathBuf;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
+use tauri_plugin_dialog::DialogExt;
 
 #[tauri::command]
 fn bootstrap_info() -> BootstrapInfo {
     BootstrapInfo::current()
+}
+
+#[tauri::command]
+fn default_install_dir(app: AppHandle) -> Result<String, String> {
+    app.path()
+        .app_local_data_dir()
+        .map(|path| path.join("game").to_string_lossy().into_owned())
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn pick_install_dir(app: AppHandle) -> Result<Option<String>, String> {
+    app.dialog()
+        .file()
+        .blocking_pick_folder()
+        .map(|path| {
+            path.into_path()
+                .map(|value| value.to_string_lossy().into_owned())
+                .map_err(|error| error.to_string())
+        })
+        .transpose()
+}
+
+#[tauri::command]
+async fn pick_zip_file(app: AppHandle) -> Result<Option<String>, String> {
+    app.dialog()
+        .file()
+        .add_filter("ZIP archive", &["zip"])
+        .blocking_pick_file()
+        .map(|path| {
+            path.into_path()
+                .map(|value| value.to_string_lossy().into_owned())
+                .map_err(|error| error.to_string())
+        })
+        .transpose()
 }
 
 #[tauri::command]
@@ -183,9 +219,13 @@ async fn repair_game(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(MicrosoftSessionStore::default())
         .invoke_handler(tauri::generate_handler![
             bootstrap_info,
+            default_install_dir,
+            pick_install_dir,
+            pick_zip_file,
             detect_java,
             check_runtime,
             prepare_launch,
