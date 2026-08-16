@@ -7,7 +7,8 @@ type UpdatePlan = { gameVersion: string; runtime: string; files: Array<{ path: s
 type SyncReport = { gameVersion: string; updatedFiles: number; downloadedBytes: number; elapsedMs: number };
 type UpdateProgress = { stage: string; currentFile: string; downloadedBytes: number; totalBytes: number; speedBytesPerSecond: number };
 type RuntimeCheck = { ready: boolean; minecraftVersion: string; forgeVersion: string; java: null | { path: string; version: string; major: number; compatible: boolean; source: string }; missing: string[]; versionProfile: string; gameDirectory: string };
-type MicrosoftAuthStatus = { authenticated: boolean; expiresInSeconds: number; refreshAvailable: boolean };
+type MinecraftProfile = { id: string; name: string };
+type MicrosoftAuthStatus = { authenticated: boolean; expiresInSeconds: number; refreshAvailable: boolean; minecraftProfile: MinecraftProfile | null };
 
 const nav = ["Главная", "Новости", "Настройки"] as const;
 const STORAGE_INSTALL_DIR = "ggo.installDir";
@@ -22,6 +23,8 @@ function formatBytes(value: number) {
   return `${amount.toFixed(unit === 0 ? 0 : amount >= 100 ? 0 : 1)} ${units[unit]}`;
 }
 
+const emptyAuth: MicrosoftAuthStatus = { authenticated: false, expiresInSeconds: 0, refreshAvailable: false, minecraftProfile: null };
+
 export default function App() {
   const [page, setPage] = useState<(typeof nav)[number]>("Главная");
   const [status, setStatus] = useState("Запуск launcher core…");
@@ -29,7 +32,7 @@ export default function App() {
   const [plan, setPlan] = useState<UpdatePlan | null>(null);
   const [progress, setProgress] = useState<UpdateProgress | null>(null);
   const [runtime, setRuntime] = useState<RuntimeCheck | null>(null);
-  const [auth, setAuth] = useState<MicrosoftAuthStatus>({ authenticated: false, expiresInSeconds: 0, refreshAvailable: false });
+  const [auth, setAuth] = useState<MicrosoftAuthStatus>(emptyAuth);
   const [installDir, setInstallDir] = useState(() => localStorage.getItem(STORAGE_INSTALL_DIR) ?? "");
   const [manifestUrl, setManifestUrl] = useState(() => localStorage.getItem(STORAGE_MANIFEST_URL) ?? "");
   const [javaPath, setJavaPath] = useState(() => localStorage.getItem(STORAGE_JAVA) ?? "");
@@ -64,7 +67,7 @@ export default function App() {
     try {
       const next = await invoke<MicrosoftAuthStatus>("microsoft_login");
       setAuth(next);
-      setStatus("Microsoft авторизация выполнена · готово к Xbox/Minecraft обмену");
+      setStatus(next.minecraftProfile ? `Minecraft подключён · ${next.minecraftProfile.name}` : "Microsoft вход выполнен");
     } catch (error) {
       setStatus(`Ошибка входа: ${String(error)}`);
     } finally {
@@ -74,8 +77,8 @@ export default function App() {
 
   async function logoutMicrosoft() {
     await invoke("microsoft_logout");
-    setAuth({ authenticated: false, expiresInSeconds: 0, refreshAvailable: false });
-    setStatus("Microsoft сессия удалена из памяти лаунчера");
+    setAuth(emptyAuth);
+    setStatus("Microsoft/Minecraft сессия удалена из памяти лаунчера");
   }
 
   async function inspectRuntime() {
@@ -105,17 +108,19 @@ export default function App() {
       setProgress({ stage: "complete", currentFile: "", downloadedBytes: report.downloadedBytes, totalBytes: report.downloadedBytes, speedBytesPerSecond: 0 });
       const next = await invoke<RuntimeCheck>("check_runtime", { installDir: installDir.trim(), customJava: javaPath.trim() || null });
       setRuntime(next);
-      setStatus(next.ready ? "Игра и runtime готовы" : `Файлы синхронизированы, runtime неполный: ${next.missing.length}`);
+      if (!next.ready) setStatus(`Файлы синхронизированы, runtime неполный: ${next.missing.length}`);
+      else if (!auth.authenticated) setStatus("Runtime готов · осталось войти в Microsoft/Minecraft");
+      else setStatus(`Игра готова · профиль ${auth.minecraftProfile?.name ?? "Minecraft"}`);
     } catch (error) { setStatus(`Ошибка: ${String(error)}`); } finally { setBusy(false); }
   }
 
   return <main className="shell">
     <aside className="sidebar"><div className="brandMark">GGO</div><div className="nav">{nav.map((item) => <button key={item} className={page === item ? "navButton active" : "navButton"} onClick={() => setPage(item)}>{item}</button>)}</div><div className="channel">CHANNEL / {info.channel.toUpperCase()}</div></aside>
     <section className="content">
-      <header className="topbar"><span>GUNGLORYONLINE</span><span>{auth.authenticated ? "MICROSOFT / CONNECTED" : "MICROSOFT / OFFLINE"}</span><a href="https://t.me/GunGloryOnline" target="_blank" rel="noreferrer">TELEGRAM ↗</a></header>
-      {page === "Главная" && <section className="hero"><div className="heroNoise"/><div className="eyebrow">GUNGLORY RUNTIME v1</div><h1>GUN<br/>GLORY<br/><span>ONLINE</span></h1><p className="version">{info.gameVersion} · Forge 47.4.10 · Java 17</p><div className="playRow"><button className="playButton" disabled={busy} onClick={() => void syncFiles(false)}>{busy ? "ПОДГОТОВКА…" : "ИГРАТЬ"}</button><div className="serverCard"><span className="dot"/><div><small>СЕРВЕР</small><strong>{info.server}</strong></div></div></div><div className="actionsRow"><button className="secondaryButton" disabled={busy} onClick={() => void checkFiles()}>Проверить файлы</button><button className="secondaryButton" disabled={busy} onClick={() => void syncFiles(true)}>Починить игру</button><button className="secondaryButton" disabled={busy} onClick={() => void inspectRuntime()}>Проверить runtime</button>{auth.authenticated ? <button className="secondaryButton" disabled={busy} onClick={() => void logoutMicrosoft()}>Выйти Microsoft</button> : <button className="secondaryButton" disabled={busy} onClick={() => void loginMicrosoft()}>Войти Microsoft</button>}</div>{(busy || progress) && <div className="progressWrap"><div className="progressTrack"><span style={{width:`${progressPercent}%`}}/></div><div className="progressMeta"><span>{progressPercent}% {progress?.currentFile ?? ""}</span><span>{progress?.speedBytesPerSecond ? `${formatBytes(progress.speedBytesPerSecond)}/s` : ""}</span></div></div>}{plan && plan.files.length > 0 && <div className="planHint">К обновлению: {plan.files.length} · {formatBytes(plan.totalBytes)}</div>}{runtime && <div className="newsCard"><small>RUNTIME STATUS</small><strong>{runtime.ready ? "Готов к запуску" : "Требуется подготовка"}</strong><p>Java: {runtime.java ? `${runtime.java.version} (${runtime.java.source})` : "Java 17 не найдена"}. Microsoft: {auth.authenticated ? "вход выполнен" : "не выполнен"}.{runtime.missing.length > 0 ? ` Не хватает runtime-компонентов: ${runtime.missing.length}.` : ""}</p></div>}</section>}
-      {page === "Новости" && <section className="panel"><p className="eyebrow">НОВОСТИ</p><h2>Лента обновлений</h2><article><time>16.08.2026</time><strong>Microsoft PKCE authentication</strong><p>Вход вынесен в Rust auth-layer: системный браузер, localhost callback, PKCE и токены вне React UI.</p></article></section>}
-      {page === "Настройки" && <section className="panel"><p className="eyebrow">НАСТРОЙКИ</p><h2>Клиент</h2><div className="setting"><span>Runtime</span><b>{info.runtime}</b></div><div className="setting"><span>Microsoft</span><b>{auth.authenticated ? "Подключён" : "Не подключён"}</b></div><label className="field"><span>Путь установки</span><input value={installDir} onChange={(e)=>setInstallDir(e.target.value)} placeholder="C:\\Games\\GunGloryOnline"/></label><label className="field"><span>Java 17 (необязательно)</span><input value={javaPath} onChange={(e)=>setJavaPath(e.target.value)} placeholder="Автопоиск через JAVA_HOME / PATH"/></label><label className="field"><span>Beta manifest URL</span><input value={manifestUrl} onChange={(e)=>setManifestUrl(e.target.value)} placeholder="https://…/beta.json"/></label><p className="muted">Для Microsoft входа launcher ожидает GGO_MICROSOFT_CLIENT_ID. Client secret не используется и не должен попадать в desktop-приложение.</p></section>}
+      <header className="topbar"><span>GUNGLORYONLINE</span><span>{auth.minecraftProfile ? `MC / ${auth.minecraftProfile.name}` : auth.authenticated ? "MICROSOFT / CONNECTED" : "MICROSOFT / OFFLINE"}</span><a href="https://t.me/GunGloryOnline" target="_blank" rel="noreferrer">TELEGRAM ↗</a></header>
+      {page === "Главная" && <section className="hero"><div className="heroNoise"/><div className="eyebrow">GUNGLORY RUNTIME v1</div><h1>GUN<br/>GLORY<br/><span>ONLINE</span></h1><p className="version">{info.gameVersion} · Forge 47.4.10 · Java 17</p><div className="playRow"><button className="playButton" disabled={busy} onClick={() => void syncFiles(false)}>{busy ? "ПОДГОТОВКА…" : "ИГРАТЬ"}</button><div className="serverCard"><span className="dot"/><div><small>СЕРВЕР</small><strong>{info.server}</strong></div></div></div><div className="actionsRow"><button className="secondaryButton" disabled={busy} onClick={() => void checkFiles()}>Проверить файлы</button><button className="secondaryButton" disabled={busy} onClick={() => void syncFiles(true)}>Починить игру</button><button className="secondaryButton" disabled={busy} onClick={() => void inspectRuntime()}>Проверить runtime</button>{auth.authenticated ? <button className="secondaryButton" disabled={busy} onClick={() => void logoutMicrosoft()}>Выйти {auth.minecraftProfile?.name ?? "Microsoft"}</button> : <button className="secondaryButton" disabled={busy} onClick={() => void loginMicrosoft()}>Войти Microsoft</button>}</div>{(busy || progress) && <div className="progressWrap"><div className="progressTrack"><span style={{width:`${progressPercent}%`}}/></div><div className="progressMeta"><span>{progressPercent}% {progress?.currentFile ?? ""}</span><span>{progress?.speedBytesPerSecond ? `${formatBytes(progress.speedBytesPerSecond)}/s` : ""}</span></div></div>}{plan && plan.files.length > 0 && <div className="planHint">К обновлению: {plan.files.length} · {formatBytes(plan.totalBytes)}</div>}{runtime && <div className="newsCard"><small>RUNTIME STATUS</small><strong>{runtime.ready && auth.minecraftProfile ? `Готов · ${auth.minecraftProfile.name}` : runtime.ready ? "Runtime готов, нужен аккаунт" : "Требуется подготовка"}</strong><p>Java: {runtime.java ? `${runtime.java.version} (${runtime.java.source})` : "Java 17 не найдена"}. Minecraft: {auth.minecraftProfile ? `${auth.minecraftProfile.name} · ${auth.minecraftProfile.id}` : "не авторизован"}.{runtime.missing.length > 0 ? ` Не хватает runtime-компонентов: ${runtime.missing.length}.` : ""}</p></div>}</section>}
+      {page === "Новости" && <section className="panel"><p className="eyebrow">НОВОСТИ</p><h2>Лента обновлений</h2><article><time>16.08.2026</time><strong>Microsoft → Xbox → Minecraft</strong><p>Лаунчер получает Xbox User Token, XSTS, Minecraft access token и Java-профиль. Игровые токены остаются внутри Rust runtime.</p></article></section>}
+      {page === "Настройки" && <section className="panel"><p className="eyebrow">НАСТРОЙКИ</p><h2>Клиент</h2><div className="setting"><span>Runtime</span><b>{info.runtime}</b></div><div className="setting"><span>Minecraft</span><b>{auth.minecraftProfile ? auth.minecraftProfile.name : "Не подключён"}</b></div><label className="field"><span>Путь установки</span><input value={installDir} onChange={(e)=>setInstallDir(e.target.value)} placeholder="C:\\Games\\GunGloryOnline"/></label><label className="field"><span>Java 17 (необязательно)</span><input value={javaPath} onChange={(e)=>setJavaPath(e.target.value)} placeholder="Автопоиск через JAVA_HOME / PATH"/></label><label className="field"><span>Beta manifest URL</span><input value={manifestUrl} onChange={(e)=>setManifestUrl(e.target.value)} placeholder="https://…/beta.json"/></label><p className="muted">Для входа требуется GGO_MICROSOFT_CLIENT_ID зарегистрированного desktop/native приложения. Client secret в launcher не используется.</p></section>}
       <footer className="statusbar"><div><span className={busy ? "statusDot busy" : "statusDot"}/><span>{status}</span></div><span>Launcher {info.launcherVersion}</span></footer>
     </section>
   </main>;
