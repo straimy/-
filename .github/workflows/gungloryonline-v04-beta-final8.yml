@@ -65,6 +65,7 @@ jobs:
         shell: bash
         run: |
           python3 /tmp/extract.py .github/workflows/gungloryonline-v04-beta-final7.yml 'Expand and audit main JEG arsenal' >/tmp/e.sh
+          sed -i 's/if len(rows)<15:/if len(rows)<14:/' /tmp/e.sh
           bash /tmp/e.sh
       - name: Build Core
         shell: bash
