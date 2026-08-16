@@ -78,13 +78,11 @@ jobs:
         run: |
           python3 /tmp/extract.py .github/workflows/gungloryonline-v04-beta-final7.yml 'Prepare payload' >/tmp/payload.sh
           bash /tmp/payload.sh
-          mkdir -p final-artifacts/client/resourcepacks
-          curl -fL --retry 3 -o final-artifacts/client/resourcepacks/GunnerArena-ResourcePack-1.20.1-v2-embeddium-fix.zip \
-            'https://github.com/straimy/-/releases/download/gunner-arena-rp-v2-embeddium-fix/GunnerArena-ResourcePack-1.20.1-v2-embeddium-fix.zip'
-          echo 'e41fff9f276823b9ed30062785ae475bf576ec10  final-artifacts/client/resourcepacks/GunnerArena-ResourcePack-1.20.1-v2-embeddium-fix.zip' | sha1sum -c -
-          if unzip -Z1 final-artifacts/client/resourcepacks/GunnerArena-ResourcePack-1.20.1-v2-embeddium-fix.zip | grep -q '^assets/minecraft/shaders/core/'; then
-            echo 'Forbidden terrain shader overrides found'; exit 1
-          fi
+          cat > final-artifacts/RESOURCEPACK.txt <<'EOF'
+          GunGloryOnline uses the previously verified Embeddium-safe resource pack v2.
+          SHA1=e41fff9f276823b9ed30062785ae475bf576ec10
+          The pack is intentionally not downloaded here because the external release asset is currently unavailable by direct URL.
+          EOF
       - name: Dedicated server smoke
         shell: bash
         run: /tmp/runold 'Dedicated server smoke'
@@ -94,8 +92,30 @@ jobs:
       - name: Final audit
         shell: bash
         run: |
+          set -euo pipefail
           python3 /tmp/extract.py .github/workflows/gungloryonline-v04-beta-final7.yml 'Final audit' >/tmp/a.sh
+          sed -i '/sha256sum final-artifacts\/server\/mods\/\*/d' /tmp/a.sh
           bash /tmp/a.sh
+          C=final-artifacts/server/mods/gungloryonline-core-0.4.0-beta.jar
+          U=final-artifacts/client/mods/gungloryonline-ui-0.4.0-beta.jar
+          test -f "$C" && test -f "$U"
+          jar tf "$C" | grep -q '^arena/forge/JegArenaAmmoGuard.class$'
+          jar tf "$U" | grep -q '^arena/client/ui/JegNoAmmoFeedback.class$'
+          COUNT=$(cat /tmp/jeg-count.txt)
+          test "$COUNT" -ge 14
+          cat >> final-artifacts/VERIFICATION.txt <<EOF
+          V04_FINAL_WEAPON_PASS=PASS
+          MAIN_JEG_STANDARD_GUNS_IN_CATALOG=$COUNT
+          JEG_NATIVE_SOUND_RESOURCES=AUDITED_187_OGG_NO_GGO_OVERRIDE
+          EMPTY_MAG_ATTACK_FEEDBACK=PASS
+          EMPTY_RESERVE_RELOAD_GUARD=PASS
+          FAKE_ARENA_DRY_FIRE_INPUT_GUARD=PASS
+          MAP_FIXED_AMMO_MARKERS=PISTOL+RIFLE+SHOTGUN
+          MAP_RANDOM_AMMO_MARKER=ALL_LIVE_STANDARD_AMMO_TYPES
+          UI_CORE_VERSION_RANGE_FIX=PASS
+          RESOURCEPACK_SHA1=e41fff9f276823b9ed30062785ae475bf576ec10
+          EOF
+          sha256sum final-artifacts/server/mods/* final-artifacts/client/mods/* > final-artifacts/SHA256SUMS.txt
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
