@@ -81,7 +81,13 @@ jobs:
           cat > final-artifacts/RESOURCEPACK.txt <<'EOF'
           GunGloryOnline uses the previously verified Embeddium-safe resource pack v2.
           SHA1=e41fff9f276823b9ed30062785ae475bf576ec10
-          The pack is intentionally not downloaded here because the external release asset is currently unavailable by direct URL.
+          The resource pack itself is intentionally not bundled in this artifact.
+          Keep using your existing GunGloryOnline-ResourcePack-1.20.1-v2-embeddium-fix.zip.
+          EOF
+          mkdir -p final-artifacts/client/resourcepacks
+          cat > final-artifacts/client/resourcepacks/README.txt <<'EOF'
+          RESOURCE PACK NOT INCLUDED — unchanged from previous verified v2.
+          Required SHA1: e41fff9f276823b9ed30062785ae475bf576ec10
           EOF
       - name: Dedicated server smoke
         shell: bash
