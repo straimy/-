@@ -328,11 +328,8 @@ fn write_local_state(install_dir: &Path) -> Result<(), io::Error> {
             {"path": format!("resourcepacks/{RESOURCE_PACK_FILE_NAME}"), "sha256": RESOURCE_PACK_SHA256, "size": RESOURCE_PACK_SIZE}
         ]
     });
-    fs::write(
-        install_dir.join(".ggo-local-state.json"),
-        serde_json::to_vec_pretty(&state)?,
-    )
-    .map_err(io::Error::other)
+    let bytes = serde_json::to_vec_pretty(&state).map_err(io::Error::other)?;
+    fs::write(install_dir.join(".ggo-local-state.json"), bytes)
 }
 
 fn relative_label(path: &Path) -> String {
