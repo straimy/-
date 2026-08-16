@@ -16,8 +16,9 @@ public final class MainArenaScreen extends AbstractArenaScreen {
         playButton=new ArenaButton(l.primaryButton(0),Component.literal("▶  ИГРАТЬ"),b->{if(minecraft!=null&&minecraft.player!=null&&UiAccessPolicy.canPlay(ClientSnapshotStore.get(),ClientSnapshotStore.fresh(System.currentTimeMillis()))){minecraft.player.connection.sendCommand("play");onClose();}});playButton.active=UiAccessPolicy.canPlay(s,fresh);addRenderableWidget(playButton);
         addRenderableWidget(new ArenaButton(l.primaryButton(1),Component.literal("◇  МАГАЗИН"),b->Minecraft.getInstance().setScreen(new LobbyShopScreen())));
         addRenderableWidget(new ArenaButton(l.primaryButton(2),Component.literal("⌁  ПРОФИЛЬ"),b->Minecraft.getInstance().setScreen(new ProfileScreen())));
-        int w=Math.min(132,Math.max(104,l.panelWidth()/4)),y=Math.min(Math.max(l.primaryButton(2).y()+l.primaryButton(2).height()+8,height-43),height-31);
-        addRenderableWidget(new ArenaButton(new UiLayout.Rect(l.centerX()-w/2,y,w,18),Component.literal("↗  TELEGRAM"),b->Util.getPlatform().openUri(TELEGRAM_URI)));
+        addRenderableWidget(new ArenaButton(l.primaryButton(3),Component.literal("✦  ДРУЗЬЯ"),b->Minecraft.getInstance().setScreen(new FriendsScreen())));
+        int w=Math.min(132,Math.max(104,l.panelWidth()/4)),y=Math.min(Math.max(l.primaryButton(3).y()+l.primaryButton(3).height()+7,height-35),height-27);
+        addRenderableWidget(new ArenaButton(new UiLayout.Rect(l.centerX()-w/2,y,w,17),Component.literal("↗  TELEGRAM"),b->Util.getPlatform().openUri(TELEGRAM_URI)));
     }
     @Override public void tick(){super.tick();if(playButton!=null)playButton.active=UiAccessPolicy.canPlay(ClientSnapshotStore.get(),ClientSnapshotStore.fresh(System.currentTimeMillis()));}
     @Override public void render(GuiGraphics g,int mx,int my,float pt){
