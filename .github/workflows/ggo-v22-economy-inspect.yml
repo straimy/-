@@ -9,20 +9,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Inspect source economy round profile
+      - name: Inspect core economy round profile
         shell: bash
         run: |
           set -euo pipefail
           rm -rf srcx; mkdir srcx
           unzip -q gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip -d srcx
-          ROOT="$(find srcx -type d -path '*/src/main/java' | head -n1)"
-          echo "ROOT=$ROOT"
+          find srcx -maxdepth 5 -type d -path '*/src/main/java' -print
+          ROOT="$(find srcx -type d -path '*/src/main/java' ! -path '*client-ui*' | head -n1)"
+          echo "CORE_ROOT=$ROOT"
           echo '=== ROUND FILES ==='
-          grep -RniE 'class .*Round|300L|300\)|600L|600\)|duration|remainingSeconds|roundEnd|winner' "$ROOT/arena" | head -n 220 || true
+          grep -RniE 'class .*Round|300L|300\)|600L|600\)|duration|remainingTicks|roundEnd|winner|PLAYING_TICKS' "$ROOT/arena" | head -n 280 || true
           echo '=== ECONOMY ==='
-          grep -RniE 'roundCredits|credits|killReward|reward|addCredits|spendCredits|resetForNewRound' "$ROOT/arena" | head -n 260 || true
+          grep -RniE 'roundCredits|credits|killReward|reward|addCredits|spendCredits|resetForNewRound|RoundSession' "$ROOT/arena" | head -n 340 || true
           echo '=== PROFILE CRYSTALS UUID ==='
-          grep -RniE 'class .*Profile|crystals|wins|kills|UUID|playerId|accountId|profileId' "$ROOT/arena" | head -n 320 || true
+          grep -RniE 'class .*Profile|crystals|roundsWon|kills|UUID|playerId|accountId|profileId' "$ROOT/arena" | head -n 380 || true
           echo '=== TARGET FILES ==='
-          for f in $(grep -RlE 'resetForNewRound|roundCredits|remainingSeconds|crystals' "$ROOT/arena" | head -n 30); do
-            echo "--- $f ---"; sed -n '1,260p' "$f"; done
+          for f in $(grep -RlE 'resetForNewRound|roundCredits|remainingTicks|crystals|class RoundSession' "$ROOT/arena" | head -n 40); do
+            echo "--- $f ---"; sed -n '1,320p' "$f"; done
