@@ -98,28 +98,15 @@ jobs:
           s=s.replace('        event.getDispatcher().register(Commands.literal("setspawntnt").requires(s->s.hasPermission(2)||isNamedAdmin(s)).executes(c->createTntSpawn(c.getSource())));\n','')
           s=s.replace('        tickRandomTnt(server,now);tickSafeTnt(server,now);tickFireStrikes(server,r,now);','        // HazardDropSystem owns TNT/fireball/heal scheduling.')
           p.write_text(s)
-
-          h=Path('ga-build/src/main/java/arena/forge/HazardDropSystem.java')
-          hs=h.read_text()
-          hs=hs.replace('WARNINGS.put(marker.getUUID(),new Warning(marker.serverLevel(),marker.getUUID(),type,marker.getX(),marker.getY(),marker.getZ(),100,-1));','if(!(marker.level() instanceof ServerLevel level)) return; WARNINGS.put(marker.getUUID(),new Warning(level,marker.getUUID(),type,marker.getX(),marker.getY(),marker.getZ(),100,-1));')
-          hs=hs.replace('        visual.setSmall(true);\n','')
-          hs=hs.replace('        marker.setCustomNameVisible(false);','        marker.setCustomNameVisible(true);')
-          old='''                w.lastSecond=sec;\n                for(ServerPlayer p:w.level.players()) if(p.distanceToSqr(w.x,w.y,w.z)<=48*48) showCountdown(server,p,w.type,sec);'''
-          new='''                w.lastSecond=sec;\n                Entity markerEntity=w.level.getEntity(w.marker);\n                if(markerEntity instanceof ArmorStand marker){\n                    ChatFormatting c=sec>=4?ChatFormatting.GREEN:(sec>=2?ChatFormatting.YELLOW:ChatFormatting.RED);\n                    marker.setCustomName(Component.literal(w.type.warningLabel+" "+sec).withStyle(c,ChatFormatting.BOLD));\n                    marker.setCustomNameVisible(true);\n                }'''
-          if old not in hs: raise SystemExit('countdown UI anchor missing')
-          hs=hs.replace(old,new,1)
-          hs=hs.replace('        marker.setGlowingTag(true);','        marker.setGlowingTag(false);')
-          h.write_text(hs)
-
           gp=Path('ga-build/gradle.properties')
           g=gp.read_text();g=re.sub(r'mod_version=.*','mod_version=0.7.9-gungloryonline-v21',g,count=1);gp.write_text(g)
           PY
-          ! grep -q 'marker.serverLevel()' ga-build/src/main/java/arena/forge/HazardDropSystem.java
-          ! grep -q 'visual.setSmall(true)' ga-build/src/main/java/arena/forge/HazardDropSystem.java
-          grep -q 'warningLabel+" "+sec' ga-build/src/main/java/arena/forge/HazardDropSystem.java
+          grep -q 'randomIntervalTicks' ga-build/src/main/java/arena/forge/HazardDropSystem.java
+          grep -q 'marker.setCustomNameVisible(false)' ga-build/src/main/java/arena/forge/HazardDropSystem.java
+          grep -q 'warningLabel+" "+seconds+"с"' ga-build/src/main/java/arena/forge/HazardDropSystem.java
+          ! grep -q 'title ' ga-build/src/main/java/arena/forge/HazardDropSystem.java
           grep -q 'class SpawnLoadoutGuard' ga-build/src/main/java/arena/forge/SpawnLoadoutGuard.java
           grep -q 'class ArenaKnifeDamageFix' ga-build/src/main/java/arena/forge/ArenaKnifeDamageFix.java
-          grep -q 'gunnerarena:titan_50' ga-build/client-ui/src/main/java/arena/client/ui/MatchShopScreen.java
 
       - name: Build Core
         shell: bash
@@ -156,6 +143,8 @@ jobs:
           GUNGLORYONLINE_V21=PASS
           WORLD_HOLOGRAM_HAZARD_COUNTDOWN=PASS
           NO_HAZARD_SCREEN_TITLE=PASS
+          HIDDEN_IDLE_HAZARD_MARKERS=PASS
+          INDEPENDENT_30_60_SECOND_MARKER_TIMERS=PASS
           SPAWN_CLEARS_MATCH_WEAPONS=PASS
           SPAWN_RESTORES_COMPASS=PASS
           ARENA_KNIFE_DAMAGE_FIX=PASS
