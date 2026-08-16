@@ -1,0 +1,19 @@
+name: GGO v0.4 spawn api inspect
+on:
+  push:
+    paths: ['.github/workflows/ggo-v04-spawn-api-inspect.yml']
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          set -e
+          rm -rf /tmp/x out; mkdir -p /tmp/x out
+          unzip -q gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip -d /tmp/x
+          cp /tmp/x/src/main/java/arena/forge/spawn/ArenaPoint.java out/ArenaPoint.java
+          cp /tmp/x/src/main/java/arena/forge/spawn/SpawnManager.java out/SpawnManager.java
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ggo-v04-spawn-api
+          path: out/**
