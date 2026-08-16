@@ -1,3 +1,4 @@
+pub mod ggo_local_install;
 pub mod minecraft;
 pub mod minecraft_install;
 pub mod minecraft_launch;
