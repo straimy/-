@@ -1,0 +1,221 @@
+name: GunGloryOnline v0.4 Beta RUNNER2
+on:
+  push:
+    paths:
+      - '.github/workflows/gungloryonline-v04-beta-runner2.yml'
+      - 'hotfix/WeaponCatalog.java'
+      - 'hotfix/ForgeLoadoutService.java'
+      - 'hotfix/MinimalGameplayFixes.java'
+      - 'hotfix/SwittieFoxBot.java'
+      - 'hotfix/ui/GunnerArenaUiMod.java'
+      - 'hotfix/ui/ArenaNavigation.java'
+      - 'hotfix/ui/MatchShopScreen.java'
+  workflow_dispatch:
+env:
+  SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+  FINAL_RP: GunnerArena-ResourcePack-1.20.1-v1.zip
+jobs:
+  beta:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Prepare extractor
+        run: |
+          cat >/tmp/extract.py <<'PY'
+          import sys
+          from pathlib import Path
+          wf=Path(sys.argv[1]); wanted=sys.argv[2]; lines=wf.read_text().splitlines()
+          start=next((i for i,l in enumerate(lines) if l.strip()==f'- name: {wanted}'),None)
+          if start is None: raise SystemExit('step not found: '+wanted)
+          run=None
+          for i in range(start+1,len(lines)):
+              if lines[i].startswith('      - name:') or lines[i].startswith('      - uses:'): break
+              if lines[i].strip()=='run: |': run=i+1; break
+          if run is None: raise SystemExit('run block missing: '+wanted)
+          out=[]
+          for i in range(run,len(lines)):
+              l=lines[i]
+              if l.startswith('      - name:') or l.startswith('      - uses:'): break
+              out.append(l[10:] if l.startswith('          ') else l)
+          print('\n'.join(out).rstrip())
+          PY
+
+      - name: Prepare authenticated source
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v12.yml 'Prepare authenticated base source' >/tmp/prep.sh
+          bash /tmp/prep.sh
+
+      - name: Apply v12 directly
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v12.yml 'Apply GunGloryOnline v12 patch' >/tmp/v12.sh
+          bash /tmp/v12.sh
+
+      - name: Apply v13 directly
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v13.yml 'Apply v13 responsive cosmetics disconnect patch' >/tmp/v13.sh
+          bash /tmp/v13.sh
+
+      - name: Apply v0.4 Beta direct patch
+        run: |
+          set -euo pipefail
+          mkdir -p ga-build/src/main/java/arena/forge/loadout ga-build/src/main/java/arena/weapon ga-build/client-ui/src/main/java/arena/client/ui
+          cp hotfix/CosmeticSkinRuntime.java ga-build/src/main/java/arena/forge/CosmeticSkinRuntime.java
+          cp hotfix/CosmeticCommands.java ga-build/src/main/java/arena/forge/CosmeticCommands.java
+          cp hotfix/CompassMenuFix.java ga-build/src/main/java/arena/forge/CompassMenuFix.java
+          cp hotfix/WeaponCatalog.java ga-build/src/main/java/arena/weapon/WeaponCatalog.java
+          cp hotfix/ForgeLoadoutService.java ga-build/src/main/java/arena/forge/loadout/ForgeLoadoutService.java
+          cp hotfix/MinimalGameplayFixes.java ga-build/src/main/java/arena/forge/MinimalGameplayFixes.java
+          cp hotfix/SwittieFoxBot.java ga-build/src/main/java/arena/forge/SwittieFoxBot.java
+          cp hotfix/ui/UiLayout.java ga-build/client-ui/src/main/java/arena/client/ui/UiLayout.java
+          cp hotfix/ui/MainArenaScreen.java ga-build/client-ui/src/main/java/arena/client/ui/MainArenaScreen.java
+          cp hotfix/ui/LobbyShopScreen.java ga-build/client-ui/src/main/java/arena/client/ui/LobbyShopScreen.java
+          cp hotfix/ui/SkillsScreen.java ga-build/client-ui/src/main/java/arena/client/ui/SkillsScreen.java
+          cp hotfix/ui/GunnerArenaUiMod.java ga-build/client-ui/src/main/java/arena/client/ui/GunnerArenaUiMod.java
+          cp hotfix/ui/ArenaNavigation.java ga-build/client-ui/src/main/java/arena/client/ui/ArenaNavigation.java
+          cp hotfix/ui/MatchShopScreen.java ga-build/client-ui/src/main/java/arena/client/ui/MatchShopScreen.java
+          cp hotfix/ui/JegMetaLoaderMixin.java ga-build/client-ui/src/main/java/arena/client/ui/JegMetaLoaderMixin.java
+          cp hotfix/ui/gungloryonline.mixins.json ga-build/client-ui/src/main/resources/gungloryonline.mixins.json
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          gp=Path('ga-build/gradle.properties'); s=gp.read_text(); s=re.sub(r'^mod_version=.*$', 'mod_version=0.4.0-beta', s, flags=re.M); gp.write_text(s)
+          ap=Path('ga-build/src/main/java/arena/forge/player/ArenaPlayerManager.java'); t=ap.read_text(); t=t.replace('20L * 3L','20L * 5L').replace('[GA] Spawn protection: 3s','[GGO] Бессмертие 5с • G — магазин оружия'); ap.write_text(t)
+          PY
+
+      - name: Audit native JEG catalog
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 -o /tmp/jeg.jar 'https://mediafilez.forgecdn.net/files/6808/139/JustEnoughGuns-0.13.2-1.20.1.jar'
+          rm -rf /tmp/jeg && mkdir /tmp/jeg && (cd /tmp/jeg && jar xf /tmp/jeg.jar data/jeg/guns)
+          python3 - <<'PY'
+          import json,re
+          from pathlib import Path
+          expected={'semi_auto_pistol':('jeg:pistol_ammo',10),'combat_pistol':('jeg:pistol_ammo',15),'revolver':('jeg:pistol_ammo',8),'custom_smg':('jeg:pistol_ammo',24),'assault_rifle':('jeg:rifle_ammo',30),'burst_rifle':('jeg:rifle_ammo',30),'pump_shotgun':('jeg:shotgun_shell',6),'bolt_action_rifle':('jeg:rifle_ammo',4),'light_machine_gun':('jeg:rifle_ammo',100)}
+          src=Path('ga-build/src/main/java/arena/weapon/WeaponCatalog.java').read_text()
+          for gun,(ammo,cap) in expected.items():
+              p=Path('/tmp/jeg/data/jeg/guns')/(gun+'.json'); data=json.loads(p.read_text()); raw=p.read_text()
+              native_cap=None
+              def walk(x):
+                  nonlocal_holder=[]
+              m=re.search(r'"maxAmmo"\s*:\s*(\d+)',raw); native_cap=int(m.group(1)) if m else None
+              if native_cap!=cap or ammo not in raw: raise SystemExit(f'native mismatch {gun}: {native_cap} {ammo in raw}')
+              line=next((x for x in src.splitlines() if f'"jeg:{gun}"' in x),None); compact=line.replace(' ','') if line else ''
+              if not line or f'"{ammo}"' not in line or f',{cap},' not in compact: raise SystemExit(f'GGO mismatch {gun}: {line}')
+              print('PASS',gun,ammo,cap)
+          print('ALL_9_JEG_WEAPONS_CATALOG_AUDIT=PASS')
+          PY
+
+      - name: Build Core
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v12.yml 'Bootstrap ForgeGradle and build Core' >/tmp/core.sh
+          (cd ga-build && bash /tmp/core.sh)
+
+      - name: Build UI
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v12.yml 'Build UI against real Core' >/tmp/ui.sh
+          (cd ga-build && bash /tmp/ui.sh)
+
+      - name: Prepare payload
+        run: |
+          set -euo pipefail
+          rm -rf final-artifacts; mkdir -p final-artifacts/server/mods final-artifacts/client/mods final-artifacts/client/resourcepacks
+          CORE="$(find ga-build/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"; UI="$(find ga-build/client-ui/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          cp "$CORE" final-artifacts/server/mods/gungloryonline-core-0.4.0-beta.jar
+          cp "$CORE" final-artifacts/client/mods/gungloryonline-core-0.4.0-beta.jar
+          cp "$UI" final-artifacts/client/mods/gungloryonline-ui-0.4.0-beta.jar
+          cmp final-artifacts/server/mods/gungloryonline-core-0.4.0-beta.jar final-artifacts/client/mods/gungloryonline-core-0.4.0-beta.jar
+          curl -fL --retry 3 -o final-artifacts/client/resourcepacks/GunGloryOnline-ResourcePack-v0.4-Beta.zip 'https://github.com/straimy/-/releases/download/gunner-arena-rp-v2-embeddium-fix/GunnerArena-ResourcePack-1.20.1-v2-embeddium-fix.zip'
+          test "$(sha1sum final-artifacts/client/resourcepacks/GunGloryOnline-ResourcePack-v0.4-Beta.zip | awk '{print $1}')" = 'e41fff9f276823b9ed30062785ae475bf576ec10'
+
+      - name: Dedicated server smoke
+        run: |
+          set -euo pipefail
+          rm -rf ds forge-installer.jar; mkdir ds
+          curl -fL --retry 3 -o forge-installer.jar https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-installer.jar
+          java -jar forge-installer.jar --installServer ds >/tmp/forge-install.log 2>&1
+          echo 'eula=true' > ds/eula.txt; mkdir -p ds/mods; cp final-artifacts/server/mods/gungloryonline-core-0.4.0-beta.jar ds/mods/
+          cd ds; timeout 100s java -Xms512M -Xmx1G @libraries/net/minecraftforge/forge/1.20.1-47.4.10/unix_args.txt nogui > ../dedicated-server-console.log 2>&1 || CODE=$?; cd ..
+          test -f ds/logs/latest.log; grep -Fq 'Done (' ds/logs/latest.log; ! grep -Eq 'Exception in server tick loop|Failed to start the minecraft server|Duplicate key gunnerarena:ui' ds/logs/latest.log
+
+      - name: Real Forge client smoke
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 -o /tmp/mdk.zip https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-mdk.zip
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v12.yml 'Real Forge client smoke' >/tmp/client.sh
+          bash /tmp/client.sh
+
+      - name: Final audit and docs
+        run: |
+          set -euo pipefail
+          CORE=final-artifacts/server/mods/gungloryonline-core-0.4.0-beta.jar; UI=final-artifacts/client/mods/gungloryonline-ui-0.4.0-beta.jar
+          jar tf "$CORE" | grep -q '^arena/forge/SwittieFoxBot.class$'; jar tf "$CORE" | grep -q '^arena/forge/MinimalGameplayFixes.class$'; jar tf "$CORE" | grep -q '^arena/forge/loadout/ForgeLoadoutService.class$'; jar tf "$UI" | grep -q '^arena/client/ui/MatchShopScreen.class$'
+          unzip -p "$CORE" arena/forge/loadout/ForgeLoadoutService.class | strings | grep -q 'AmmoCount'; unzip -p "$CORE" arena/forge/loadout/ForgeLoadoutService.class | strings | grep -q 'IgnoreAmmo'
+          cat > final-artifacts/VERIFICATION.txt <<'EOF'
+          GUNGLORYONLINE_VERSION=0.4.0-beta
+          CORE_BUILD=PASS
+          UI_BUILD=PASS
+          DEDICATED_SERVER_SMOKE=PASS
+          REAL_FORGE_CLIENT_SMOKE=PASS
+          JEG_9_WEAPON_NATIVE_DATA_AUDIT=PASS
+          JEG_ARENA_AMMO_SANITY=REMOVE_IgnoreAmmo+SET_AmmoCount
+          PUMP_SHOTGUN_NATIVE_MAG=6
+          BOLT_ACTION_NATIVE_MAG=4
+          REVOLVER_NATIVE_MAG=8
+          LMG_NATIVE_MAG=100
+          RANDOM_TNT_PER_MARKER=6-30_SECONDS
+          TNT_TERRAIN_DAMAGE=NONE
+          FIRE_STRIKE_RADIUS=5
+          FIRE_STRIKE_TERRAIN_DAMAGE=NONE
+          SPAWN_COMPASS_FALLBACK=PASS
+          LEGACY_NPC_CLEANUP=/clearnpcs
+          MATCH_SHOP=G_ISOLATED
+          MAIN_MENU=M
+          SWITTIE=/switiie start|stop|status
+          SWITTIE_HP=20
+          SWITTIE_BOT_AMMO=INFINITE
+          RESOURCE_PACK_SHA1=e41fff9f276823b9ed30062785ae475bf576ec10
+          IMPORTANT=Live multiplayer shooting/reload, exact bot TAB behavior, kick/resource reload and visuals still need one real-server validation.
+          EOF
+          cat > final-artifacts/INSTALL-RU.txt <<'EOF'
+          GunGloryOnline v0.4 Beta
+          Удали все старые gunnerarena/gungloryonline Core/UI JAR.
+          SERVER: server/mods/gungloryonline-core-0.4.0-beta.jar
+          CLIENT: client/mods/gungloryonline-core-0.4.0-beta.jar + client/mods/gungloryonline-ui-0.4.0-beta.jar
+          M = главное меню. G = отдельный боевой магазин. R = родная перезарядка JEG.
+          /clearnpcs = убрать старые NPC/хитбоксы. /switiie start = включить Свитти Фокс.
+          RP SHA1: e41fff9f276823b9ed30062785ae475bf576ec10
+          EOF
+          sha256sum final-artifacts/server/mods/* final-artifacts/client/mods/* final-artifacts/client/resourcepacks/* > final-artifacts/SHA256SUMS.txt
+
+      - name: Upload final Beta
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-v0.4-Beta-final
+          path: final-artifacts/**
+          if-no-files-found: error
+          retention-days: 30
+      - name: Diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-v0.4-Beta-runner2-diagnostics
+          path: |
+            v12-core-build.log
+            v12-ui-build.log
+            dedicated-server-console.log
+            ds/logs/**
+            cs/run/logs/**
+            cs/run/crash-reports/**
+          if-no-files-found: ignore
+          retention-days: 7
