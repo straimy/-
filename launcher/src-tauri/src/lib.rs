@@ -103,8 +103,10 @@ async fn microsoft_login(
 }
 
 #[tauri::command]
-async fn microsoft_auth_status(store: State<'_, MicrosoftSessionStore>) -> MicrosoftLoginResult {
-    match store.snapshot().await {
+async fn microsoft_auth_status(
+    store: State<'_, MicrosoftSessionStore>,
+) -> Result<MicrosoftLoginResult, String> {
+    Ok(match store.snapshot().await {
         Some(session) => MicrosoftLoginResult {
             authenticated: !session.minecraft_access_token.is_empty(),
             expires_in_seconds: session.expires_in_seconds,
@@ -117,12 +119,13 @@ async fn microsoft_auth_status(store: State<'_, MicrosoftSessionStore>) -> Micro
             refresh_available: false,
             minecraft_profile: None,
         },
-    }
+    })
 }
 
 #[tauri::command]
-async fn microsoft_logout(store: State<'_, MicrosoftSessionStore>) {
+async fn microsoft_logout(store: State<'_, MicrosoftSessionStore>) -> Result<(), String> {
     store.clear().await;
+    Ok(())
 }
 
 #[tauri::command]
