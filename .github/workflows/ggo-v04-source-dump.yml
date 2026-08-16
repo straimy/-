@@ -1,0 +1,30 @@
+name: GGO v0.4 source dump
+on:
+  push:
+    paths: ['.github/workflows/ggo-v04-source-dump.yml']
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          set -e
+          rm -rf /tmp/x out; mkdir -p /tmp/x out
+          unzip -q gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip -d /tmp/x
+          for f in \
+            src/main/java/arena/weapon/WeaponCatalog.java \
+            src/main/java/arena/weapon/WeaponDefinition.java \
+            src/main/java/arena/weapon/AmmoStateController.java \
+            src/main/java/arena/weapon/WeaponRuntimeController.java \
+            src/main/java/arena/forge/player/ArenaPlayerManager.java \
+            src/main/java/arena/forge/loadout/ForgeLoadoutService.java \
+            src/main/java/arena/forge/net/ArenaNetwork.java \
+            client-ui/src/main/java/arena/client/ui/ShopScreen.java \
+            client-ui/src/main/java/arena/client/ui/AbstractArenaScreen.java \
+            client-ui/src/main/java/arena/client/ui/ArenaNavigation.java; do
+              mkdir -p "out/$(dirname "$f")"; cp "/tmp/x/$f" "out/$f"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ggo-v04-source-dump
+          path: out/**
