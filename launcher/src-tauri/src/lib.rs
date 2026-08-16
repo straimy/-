@@ -3,11 +3,12 @@ mod runtime;
 
 use core::{
     bootstrap::BootstrapInfo,
+    microsoft_auth::{self, MicrosoftLoginResult, MicrosoftSessionStore},
     updater::{self, SyncReport, UpdatePlan},
 };
 use runtime::minecraft::{self, JavaRuntimeInfo, LaunchPreparation, RuntimeCheck};
 use std::path::PathBuf;
-use tauri::AppHandle;
+use tauri::{AppHandle, State};
 
 #[tauri::command]
 fn bootstrap_info() -> BootstrapInfo {
@@ -27,6 +28,35 @@ fn check_runtime(install_dir: String, custom_java: Option<String>) -> RuntimeChe
 #[tauri::command]
 fn prepare_launch(install_dir: String, custom_java: Option<String>) -> LaunchPreparation {
     minecraft::prepare_launch(&PathBuf::from(install_dir), custom_java.as_deref())
+}
+
+#[tauri::command]
+async fn microsoft_login(store: State<'_, MicrosoftSessionStore>) -> Result<MicrosoftLoginResult, String> {
+    let http = updater::client().map_err(|err| err.to_string())?;
+    microsoft_auth::login(&http, store.inner())
+        .await
+        .map_err(|err| err.to_string())
+}
+
+#[tauri::command]
+async fn microsoft_auth_status(store: State<'_, MicrosoftSessionStore>) -> MicrosoftLoginResult {
+    match store.snapshot().await {
+        Some(session) => MicrosoftLoginResult {
+            authenticated: !session.access_token.is_empty(),
+            expires_in_seconds: session.expires_in_seconds,
+            refresh_available: session.refresh_token.is_some(),
+        },
+        None => MicrosoftLoginResult {
+            authenticated: false,
+            expires_in_seconds: 0,
+            refresh_available: false,
+        },
+    }
+}
+
+#[tauri::command]
+async fn microsoft_logout(store: State<'_, MicrosoftSessionStore>) {
+    store.clear().await;
 }
 
 #[tauri::command]
@@ -65,11 +95,15 @@ async fn repair_game(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(MicrosoftSessionStore::default())
         .invoke_handler(tauri::generate_handler![
             bootstrap_info,
             detect_java,
             check_runtime,
             prepare_launch,
+            microsoft_login,
+            microsoft_auth_status,
+            microsoft_logout,
             check_game,
             sync_game,
             repair_game
