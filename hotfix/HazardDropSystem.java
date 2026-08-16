@@ -38,11 +38,7 @@ import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 
-/**
- * Independent marker-based arena drops.
- * Spawn markers are completely hidden while idle. Only during the final five seconds
- * a small world-space hologram appears directly above the configured drop point.
- */
+/** Hidden marker-based arena drops with independent 30-60s timers per marker. */
 @Mod.EventBusSubscriber(modid="gunnerarena",bus=Mod.EventBusSubscriber.Bus.FORGE)
 public final class HazardDropSystem {
     public static final String TNT_TAG="gunnerarena_tnt_spawn";
@@ -89,20 +85,13 @@ public final class HazardDropSystem {
                 if(!(entity instanceof ArmorStand marker)) continue;
                 DropType type=typeOf(marker);
                 if(type==null) continue;
-                UUID id=marker.getUUID();
-                switch(type){case TNT->liveTnt.add(id);case FIREBALL->liveFire.add(id);case HEAL->liveHeal.add(id);}
-
-                // Old versions left glowing/name-visible armor stands everywhere. Clear that state
-                // continuously unless this exact marker is in its five-second warning window.
-                if(!ACTIVE_MARKERS.contains(id)) hideMarker(marker);
-
+                switch(type){case TNT->liveTnt.add(marker.getUUID());case FIREBALL->liveFire.add(marker.getUUID());case HEAL->liveHeal.add(marker.getUUID());}
+                if(!ACTIVE_MARKERS.contains(marker.getUUID())) hideMarker(marker);
                 Map<UUID,Long> schedule=schedule(type);
-                // 25..55 seconds idle + 5 second warning = actual drop every ~30..60 seconds.
-                // The schedule is keyed by marker UUID, so every configured point is independent.
-                long due=schedule.computeIfAbsent(id,u->now+randomWarningDelay());
-                if(now>=due&&!ACTIVE_MARKERS.contains(id)){
+                long due=schedule.computeIfAbsent(marker.getUUID(),u->now+randomIntervalTicks());
+                if(now>=due&&!ACTIVE_MARKERS.contains(marker.getUUID())){
                     startWarning(marker,type);
-                    schedule.put(id,now+randomWarningDelay());
+                    schedule.put(marker.getUUID(),now+randomIntervalTicks());
                 }
             }
         }
@@ -115,11 +104,8 @@ public final class HazardDropSystem {
     private static void startWarning(ArmorStand marker,DropType type){
         if(!(marker.level() instanceof ServerLevel level)) return;
         ACTIVE_MARKERS.add(marker.getUUID());
-        marker.setGlowingTag(false);
-        marker.setInvisible(true);
-        marker.setCustomName(Component.literal(type.warningLabel+" 5с").withStyle(type.color,ChatFormatting.BOLD));
-        marker.setCustomNameVisible(true);
         WARNINGS.put(marker.getUUID(),new Warning(level,marker.getUUID(),type,marker.getX(),marker.getY(),marker.getZ(),100,-1));
+        updateMarkerText(marker,type,5);
     }
 
     private static void tickWarnings(long now){
@@ -130,12 +116,7 @@ public final class HazardDropSystem {
             if(sec!=w.lastSecond){
                 w.lastSecond=sec;
                 Entity entity=w.level.getEntity(w.marker);
-                if(entity instanceof ArmorStand marker){
-                    marker.setGlowingTag(false);
-                    marker.setInvisible(true);
-                    marker.setCustomName(Component.literal(w.type.warningLabel+" "+sec+"с").withStyle(w.type.color,ChatFormatting.BOLD));
-                    marker.setCustomNameVisible(true);
-                }
+                if(entity instanceof ArmorStand marker) updateMarkerText(marker,w.type,sec);
             }
             w.ticks--;
             if(w.ticks>0) continue;
@@ -148,6 +129,22 @@ public final class HazardDropSystem {
                 case HEAL->spawnHealVisual(w);
             }
         }
+    }
+
+    private static void updateMarkerText(ArmorStand marker,DropType type,int seconds){
+        ChatFormatting color=seconds>=4?ChatFormatting.GREEN:(seconds>=2?ChatFormatting.YELLOW:ChatFormatting.RED);
+        marker.setCustomName(Component.literal(type.warningLabel+" "+seconds+"с").withStyle(color,ChatFormatting.BOLD));
+        marker.setCustomNameVisible(true);
+        marker.setGlowingTag(false);
+        marker.setInvisible(true);
+    }
+
+    private static void hideMarker(ArmorStand marker){
+        marker.setCustomNameVisible(false);
+        marker.setGlowingTag(false);
+        marker.setInvisible(true);
+        marker.setNoGravity(true);
+        marker.setInvulnerable(true);
     }
 
     private static void spawnTnt(Warning w,long now){
@@ -208,7 +205,6 @@ public final class HazardDropSystem {
         visual.setInvisible(true);
         visual.setNoGravity(true);
         visual.setInvulnerable(true);
-        visual.setGlowingTag(false);
         visual.setItemSlot(EquipmentSlot.HEAD,new ItemStack(Items.EMERALD_BLOCK));
         visual.addTag("gunnerarena_heal_drop_visual");
         w.level.addFreshEntity(visual);
@@ -252,24 +248,13 @@ public final class HazardDropSystem {
         ArmorStand marker=EntityType.ARMOR_STAND.create(p.serverLevel());
         if(marker==null) return 0;
         marker.moveTo(p.getX(),p.getY(),p.getZ(),0,0);
-        marker.setInvisible(true);
-        marker.setNoGravity(true);
-        marker.setInvulnerable(true);
-        marker.setGlowingTag(false);
-        marker.setCustomNameVisible(false);
         marker.addTag(type.tag);
+        hideMarker(marker);
         p.serverLevel().addFreshEntity(marker);
         long now=GunnerArenaMod.RUNTIME==null?0:GunnerArenaMod.RUNTIME.serverTick();
-        schedule(type).put(marker.getUUID(),now+randomWarningDelay());
-        source.sendSuccess(()->Component.literal("[GGO] "+type.shortName+" drop-точка создана • падение каждые 30–60 сек независимо").withStyle(type.color),false);
+        schedule(type).put(marker.getUUID(),now+randomIntervalTicks());
+        source.sendSuccess(()->Component.literal("[GGO] "+type.shortName+" spawn создан • случайно каждые 30–60 сек").withStyle(type.color),false);
         return 1;
-    }
-
-    private static void hideMarker(ArmorStand marker){
-        marker.setInvisible(true);
-        marker.setGlowingTag(false);
-        marker.setCustomNameVisible(false);
-        marker.setCustomName(null);
     }
 
     private static void finishMarker(ServerLevel level,UUID markerId){
@@ -286,8 +271,7 @@ public final class HazardDropSystem {
     }
 
     private static Map<UUID,Long> schedule(DropType type){return switch(type){case TNT->NEXT_TNT;case FIREBALL->NEXT_FIREBALL;case HEAL->NEXT_HEAL;};}
-    private static int randomWarningDelay(){return randomTicks(25,55);}
-    private static int randomTicks(int minSec,int maxSec){return(minSec+RANDOM.nextInt(maxSec-minSec+1))*20;}
+    private static int randomIntervalTicks(){return(30+RANDOM.nextInt(31))*20;}
 
     private static boolean admin(CommandSourceStack s){
         if(s.hasPermission(2)) return true;
