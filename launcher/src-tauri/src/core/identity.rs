@@ -18,7 +18,10 @@ pub struct ExternalIdentity {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum IdentityProviderKind { Minecraft, Steam }
+pub enum IdentityProviderKind {
+    Minecraft,
+    Steam,
+}
 
 pub trait IdentityProvider {
     type Error;
