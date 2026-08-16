@@ -1,6 +1,7 @@
 pub mod minecraft;
 pub mod minecraft_launch;
 pub mod minecraft_natives;
+pub mod minecraft_process;
 use std::path::Path;
 
 pub trait GameRuntime {
