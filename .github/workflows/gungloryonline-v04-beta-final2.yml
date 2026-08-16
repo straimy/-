@@ -1,0 +1,141 @@
+name: GunGloryOnline v0.4 Beta FINAL 2
+
+on:
+  push:
+    paths:
+      - '.github/workflows/gungloryonline-v04-beta-final2.yml'
+      - 'hotfix/JegArenaAmmoGuard.java'
+      - 'hotfix/LegacyNpcCleanupV04.java'
+      - 'hotfix/ui/SpawnCompassClientFix.java'
+      - 'hotfix/ui/UiLayout.java'
+  workflow_dispatch:
+
+env:
+  SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+  FINAL_RP: GunnerArena-ResourcePack-1.20.1-v1.zip
+
+jobs:
+  beta:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Prepare step extractor
+        shell: bash
+        run: |
+          cat >/tmp/extract.py <<'PY'
+          import sys
+          from pathlib import Path
+          lines=Path(sys.argv[1]).read_text().splitlines(); wanted=sys.argv[2]
+          start=next((i for i,l in enumerate(lines) if l.strip()==f'- name: {wanted}'),None)
+          if start is None: raise SystemExit('step not found: '+wanted)
+          run=None
+          for i in range(start+1,len(lines)):
+              if lines[i].startswith('      - name:') or lines[i].startswith('      - uses:'): break
+              if lines[i].strip()=='run: |': run=i+1; break
+          if run is None: raise SystemExit('run block missing: '+wanted)
+          out=[]
+          for i in range(run,len(lines)):
+              l=lines[i]
+              if l.startswith('      - name:') or l.startswith('      - uses:'): break
+              out.append(l[10:] if l.startswith('          ') else l)
+          print('\n'.join(out).rstrip())
+          PY
+          cat >/tmp/runstep <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gungloryonline-v04-beta-final.yml "$1" >/tmp/current-step.sh
+          bash /tmp/current-step.sh
+          SH
+          chmod +x /tmp/runstep
+
+      - name: Prepare and apply v0.4 sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          /tmp/runstep 'Prepare authenticated base source'
+          /tmp/runstep 'Apply v12 base'
+          /tmp/runstep 'Apply v13 base'
+          /tmp/runstep 'Apply v14 cosmetics and v0.4 beta fixes'
+          cp hotfix/JegArenaAmmoGuard.java ga-build/src/main/java/arena/forge/JegArenaAmmoGuard.java
+          cp hotfix/LegacyNpcCleanupV04.java ga-build/src/main/java/arena/forge/LegacyNpcCleanupV04.java
+          cp hotfix/ui/SpawnCompassClientFix.java ga-build/client-ui/src/main/java/arena/client/ui/SpawnCompassClientFix.java
+          cp hotfix/ui/UiLayout.java ga-build/client-ui/src/main/java/arena/client/ui/UiLayout.java
+          grep -q 'GGOJEGAmmoInitialized' ga-build/src/main/java/arena/forge/JegArenaAmmoGuard.java
+          grep -q 'ServerStartedEvent' ga-build/src/main/java/arena/forge/LegacyNpcCleanupV04.java
+          grep -q 'RightClickEmpty' ga-build/client-ui/src/main/java/arena/client/ui/SpawnCompassClientFix.java
+
+      - name: Audit all 9 native JEG definitions
+        shell: bash
+        run: /tmp/runstep 'Audit all advertised JEG weapon definitions'
+
+      - name: Build Core
+        shell: bash
+        run: /tmp/runstep 'Build Core'
+
+      - name: Build UI
+        shell: bash
+        run: /tmp/runstep 'Build UI'
+
+      - name: Prepare payload
+        shell: bash
+        run: |
+          /tmp/runstep 'Prepare v0.4 Beta payload'
+          CORE=final-artifacts/server/mods/gungloryonline-core-0.4.0-beta.jar
+          UI=final-artifacts/client/mods/gungloryonline-ui-0.4.0-beta.jar
+          jar tf "$CORE" | grep -q '^arena/forge/JegArenaAmmoGuard.class$'
+          jar tf "$CORE" | grep -q '^arena/forge/LegacyNpcCleanupV04.class$'
+          jar tf "$UI" | grep -q '^arena/client/ui/SpawnCompassClientFix.class$'
+
+      - name: Dedicated server smoke
+        shell: bash
+        run: /tmp/runstep 'Dedicated server smoke'
+
+      - name: Real Forge client smoke
+        shell: bash
+        run: /tmp/runstep 'Real Forge client smoke'
+
+      - name: Final v0.4 Beta audit
+        shell: bash
+        run: |
+          /tmp/runstep 'Final v0.4 Beta audit'
+          CORE=final-artifacts/server/mods/gungloryonline-core-0.4.0-beta.jar
+          UI=final-artifacts/client/mods/gungloryonline-ui-0.4.0-beta.jar
+          unzip -p "$CORE" arena/forge/JegArenaAmmoGuard.class | strings | grep -q 'IgnoreAmmo'
+          unzip -p "$CORE" arena/forge/JegArenaAmmoGuard.class | strings | grep -q 'AmmoCount'
+          unzip -p "$UI" arena/client/ui/SpawnCompassClientFix.class | strings | grep -q 'gunnerarena_menu_compass'
+          cat >> final-artifacts/VERIFICATION.txt <<'EOF'
+          JEG_ARENA_AMMO_RUNTIME_GUARD=PASS
+          LEGACY_NPC_STARTUP_CLEANUP=PASS
+          SPAWN_COMPASS_RIGHT_CLICK_EMPTY_FALLBACK=PASS
+          UI_LAYOUT_COMPACT_V04=PASS
+          EOF
+          sha256sum final-artifacts/server/mods/* final-artifacts/client/mods/* final-artifacts/client/resourcepacks/* > final-artifacts/SHA256SUMS.txt
+
+      - name: Upload final v0.4 Beta
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-v0.4-Beta-FINAL
+          path: final-artifacts/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-v0.4-Beta-FINAL-diagnostics
+          path: |
+            v12-core-build.log
+            v12-ui-build.log
+            dedicated-server-console.log
+            ds/logs/**
+            cs/run/logs/**
+            cs/run/crash-reports/**
+          if-no-files-found: ignore
+          retention-days: 7
