@@ -12,232 +12,49 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import org.lwjgl.glfw.GLFW;
-
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
-/** Dedicated in-match weapon shop opened by G. Gameplay/network behavior stays server-authoritative. */
 final class MatchShopScreen extends Screen {
-    private static final String[] CATEGORIES={"ALL","PISTOL","SMG","RIFLE","SHOTGUN","SNIPER","HEAVY"};
+    private static final String[] CATEGORIES={"ALL","PISTOL","RIFLE","HEAVY"};
+    private static final Set<String> HIDDEN=Set.of(
+        "gunnerarena:p9","gunnerarena:px18","gunnerarena:pdw50","gunnerarena:vector_x",
+        "gunnerarena:vkr47","gunnerarena:arx3","gunnerarena:raven_m96","gunnerarena:titan_50");
     private final List<ArenaButton> buttons=new ArrayList<>();
     private final List<RowHit> rowHits=new ArrayList<>();
-    private String category="ALL";
-    private int selectedIndex;
-    private int page;
-    private long seen=-1;
+    private String category="ALL"; private int selectedIndex,page; private long seen=-1;
+    MatchShopScreen(){super(Component.literal("Оружие"));}
 
-    MatchShopScreen(){super(Component.literal("GunGloryOnline • Оружие"));}
-
-    @Override protected void init(){
-        ArenaClientNetwork.requestSnapshot();
-        ArenaClientNetwork.requestCatalog();
-        rebuild();
-    }
-
+    @Override protected void init(){ArenaClientNetwork.requestSnapshot();ArenaClientNetwork.requestCatalog();rebuild();}
     private void rebuild(){
-        for(ArenaButton b:buttons) removeWidget(b);
-        buttons.clear(); rowHits.clear();
-        UiLayout.Rect p=panel();
-        int pad=12;
-        int categoryY=p.y()+38;
-        int available=p.width()-pad*2-(CATEGORIES.length-1)*3;
-        int cw=Math.max(36,available/CATEGORIES.length);
-        int cx=p.x()+pad;
-        for(String c:CATEGORIES){
-            final String value=c;
-            ArenaButton b=new ArenaButton(new UiLayout.Rect(cx,categoryY,cw,18),Component.literal(label(c)),q->{category=value;page=0;selectedIndex=0;rebuild();});
-            buttons.add(addRenderableWidget(b));
-            cx+=cw+3;
-        }
-
-        Layout l=layout(p);
-        List<ArenaClientShopItem> filtered=filtered();
-        if(selectedIndex>=filtered.size()) selectedIndex=Math.max(0,filtered.size()-1);
-        int maxPage=Math.max(0,(filtered.size()-1)/Math.max(1,l.rows));
-        page=Math.max(0,Math.min(page,maxPage));
-        int start=page*l.rows;
-        for(int i=0;i<l.rows&&start+i<filtered.size();i++){
-            int idx=start+i;
-            UiLayout.Rect rr=new UiLayout.Rect(l.listX,l.listY+i*l.rowH,l.listW,l.rowH-3);
-            ArenaButton hit=new ArenaButton(rr,Component.empty(),q->{selectedIndex=idx;rebuild();});
-            buttons.add(addRenderableWidget(hit));
-            rowHits.add(new RowHit(rr,idx));
-        }
-
-        if(!filtered.isEmpty()){
-            ArenaClientShopItem it=filtered.get(Math.min(selectedIndex,filtered.size()-1));
-            var snap=ClientSnapshotStore.get();
-            boolean canAfford=snap.roundCredits()>=it.price();
-            String text=!it.available()?"НЕДОСТУПНО":(!canAfford?"НЕДОСТАТОЧНО СРЕДСТВ":"✦ КУПИТЬ ЗА $"+it.price());
-            ArenaButton buy=new ArenaButton(new UiLayout.Rect(l.detailX,l.buyY,l.detailW,22),Component.literal(text),q->ArenaClientNetwork.buy(it.id()));
-            buy.active=it.available()&&canAfford&&UiAccessPolicy.canShop(snap,ClientSnapshotStore.fresh(System.currentTimeMillis()));
-            buttons.add(addRenderableWidget(buy));
-        }
+        for(ArenaButton b:buttons)removeWidget(b);buttons.clear();rowHits.clear();UiLayout.Rect p=panel();
+        int pad=10,cy=p.y()+30,avail=p.width()-pad*2-(CATEGORIES.length-1)*4,cw=avail/CATEGORIES.length,cx=p.x()+pad;
+        for(String c:CATEGORIES){final String v=c;buttons.add(addRenderableWidget(new ArenaButton(new UiLayout.Rect(cx,cy,cw,18),Component.literal(label(c)),q->{category=v;page=0;selectedIndex=0;rebuild();})));cx+=cw+4;}
+        Layout l=layout(p);List<ArenaClientShopItem> f=filtered();if(selectedIndex>=f.size())selectedIndex=Math.max(0,f.size()-1);
+        int maxPage=Math.max(0,(f.size()-1)/Math.max(1,l.rows));page=Math.max(0,Math.min(page,maxPage));int start=page*l.rows;
+        for(int i=0;i<l.rows&&start+i<f.size();i++){int idx=start+i;UiLayout.Rect rr=new UiLayout.Rect(l.listX,l.listY+i*l.rowH,l.listW,l.rowH-2);buttons.add(addRenderableWidget(new ArenaButton(rr,Component.empty(),q->{selectedIndex=idx;rebuild();})));rowHits.add(new RowHit(rr,idx));}
+        if(!f.isEmpty()){ArenaClientShopItem it=f.get(Math.min(selectedIndex,f.size()-1));var s=ClientSnapshotStore.get();boolean afford=s.roundCredits()>=it.price();ArenaButton buy=new ArenaButton(new UiLayout.Rect(l.detailX,l.buyY,l.detailW,20),Component.literal(!it.available()?"НЕДОСТУПНО":(!afford?"НЕ ХВАТАЕТ $":"КУПИТЬ  $"+it.price())),q->ArenaClientNetwork.buy(it.id()));buy.active=it.available()&&afford&&UiAccessPolicy.canShop(s,ClientSnapshotStore.fresh(System.currentTimeMillis()));buttons.add(addRenderableWidget(buy));}
     }
-
-    private UiLayout.Rect panel(){
-        UiLayout.Rect base=UiLayout.of(width,height).contentPanel();
-        int desired=Math.min(base.height(),Math.max(190,height-64));
-        return new UiLayout.Rect(base.x(),base.y(),base.width(),desired);
-    }
-
-    private Layout layout(UiLayout.Rect p){
-        int pad=12;
-        int bodyY=p.y()+64;
-        int footer=31;
-        int bodyH=Math.max(92,p.height()-64-footer);
-        int gap=9;
-        int bodyW=p.width()-pad*2;
-        int listW=Math.max(146,(bodyW-gap)*55/100);
-        int detailW=Math.max(118,bodyW-gap-listW);
-        if(listW+gap+detailW>bodyW) listW=Math.max(130,bodyW-gap-detailW);
-        int rowH=39;
-        int rows=Math.max(2,Math.min(7,bodyH/rowH));
-        return new Layout(p.x()+pad,bodyY,listW,p.x()+pad+listW+gap,detailW,rowH,rows,p.y()+p.height()-27);
-    }
-
-    private List<ArenaClientShopItem> filtered(){return ClientShopStore.items().stream().filter(e->"ALL".equals(category)||category.equals(e.category())).toList();}
-    private static String label(String c){return switch(c){case"ALL"->"ВСЕ";case"PISTOL"->"ПИСТ.";case"SMG"->"ПП";case"RIFLE"->"ВИНТ.";case"SHOTGUN"->"ДРОБ.";case"SNIPER"->"СНАЙП.";case"HEAVY"->"ТЯЖ.";default->c;};}
-
+    private UiLayout.Rect panel(){UiLayout.Rect b=UiLayout.of(width,height).contentPanel();return new UiLayout.Rect(b.x(),b.y(),b.width(),Math.min(b.height(),Math.max(176,height-74)));}
+    private Layout layout(UiLayout.Rect p){int pad=10,bodyY=p.y()+55,footer=25,bodyH=Math.max(90,p.height()-55-footer),gap=8,bodyW=p.width()-pad*2,listW=Math.max(150,(bodyW-gap)*58/100),detailW=bodyW-gap-listW,rowH=34,rows=Math.max(2,Math.min(7,bodyH/rowH));return new Layout(p.x()+pad,bodyY,listW,p.x()+pad+listW+gap,detailW,rowH,rows,p.y()+p.height()-23);}
+    private List<ArenaClientShopItem> filtered(){return ClientShopStore.items().stream().filter(i->!HIDDEN.contains(i.id())).filter(i->"ALL".equals(category)||merged(i.category()).equals(category)).toList();}
+    private static String merged(String c){if("SMG".equals(c))return"PISTOL";if("SNIPER".equals(c))return"RIFLE";if("SHOTGUN".equals(c))return"HEAVY";return c;}
+    private static String label(String c){return switch(c){case"ALL"->"ВСЕ";case"PISTOL"->"ПИСТОЛЕТЫ";case"RIFLE"->"ВИНТОВКИ";case"HEAVY"->"ТЯЖЁЛОЕ";default->c;};}
     @Override public void tick(){long s=ClientShopStore.resultSerial();if(s!=seen){seen=s;rebuild();}}
 
     @Override public void render(GuiGraphics g,int mx,int my,float pt){
-        UiLayout.Rect p=panel();
-        g.fill(0,0,width,height,0xA60A0F1A);
-        g.fill(p.x(),p.y(),p.x()+p.width(),p.y()+p.height(),0xF0121828);
-        g.renderOutline(p.x(),p.y(),p.width(),p.height(),UiTheme.BLUE);
-
-        g.drawString(font,Component.literal("✦ ОРУЖИЕ • G"),p.x()+12,p.y()+12,UiTheme.PINK);
-        var snap=ClientSnapshotStore.get();
-        String money="$"+snap.roundCredits();
-        int walletW=font.width(money)+14,wx=p.x()+p.width()-12-walletW;
-        g.fill(wx,p.y()+7,wx+walletW,p.y()+25,0xC0182136);
-        g.renderOutline(wx,p.y()+7,walletW,18,UiTheme.ACCENT_2);
-        g.drawCenteredString(font,Component.literal(money),wx+walletW/2,p.y()+12,UiTheme.ACCENT_2);
-
-        super.render(g,mx,my,pt);
-
-        int pad=12,categoryY=p.y()+38;
-        int available=p.width()-pad*2-(CATEGORIES.length-1)*3;
-        int cw=Math.max(36,available/CATEGORIES.length),cx=p.x()+pad;
-        for(String c:CATEGORIES){
-            if(c.equals(category)){
-                g.renderOutline(cx,categoryY,cw,18,UiTheme.BLUE);
-                g.fill(cx+2,categoryY+16,cx+cw-2,categoryY+18,UiTheme.ACCENT);
-            }
-            cx+=cw+3;
-        }
-
-        Layout l=layout(p);
-        g.fill(l.detailX-4,l.listY-4,l.detailX+l.detailW+4,l.buyY-6,0x6E0C1220);
-        g.renderOutline(l.detailX-4,l.listY-4,l.detailW+8,Math.max(34,l.buyY-l.listY-2),0x804FD6FF);
-
-        List<ArenaClientShopItem> filtered=filtered();
-        int start=page*l.rows;
-        for(RowHit hit:rowHits){
-            if(hit.index<0||hit.index>=filtered.size()) continue;
-            ArenaClientShopItem it=filtered.get(hit.index);
-            UiLayout.Rect r=hit.rect;
-            boolean selected=hit.index==selectedIndex;
-            boolean hover=r.contains(mx,my);
-            int bg=selected?0xE01A2A43:(hover?0xC8182438:0xAE101827);
-            g.fill(r.x(),r.y(),r.x()+r.width(),r.y()+r.height(),bg);
-            if(selected) g.fill(r.x(),r.y(),r.x()+3,r.y()+r.height(),UiTheme.ACCENT);
-            int iconX=r.x()+7,iconY=r.y()+8;
-            g.fill(iconX-3,iconY-3,iconX+19,iconY+19,0xA00A101C);
-            ItemStack stack=itemStack(it);
-            if(!stack.isEmpty()) g.renderItem(stack,iconX,iconY);
-            int tx=r.x()+31;
-            String en=fit(it.displayName(),Math.max(44,r.width()-76));
-            String ru=fit(WeaponNames.russianFor(it.id(),it.category()),Math.max(44,r.width()-76));
-            g.drawString(font,Component.literal(en),tx,r.y()+6,selected?0xFFFFFFFF:UiTheme.TEXT);
-            g.drawString(font,Component.literal(ru),tx,r.y()+19,UiTheme.MUTED);
-            String price="$"+it.price();
-            g.drawString(font,Component.literal(price),r.x()+r.width()-6-font.width(price),r.y()+6,it.available()?UiTheme.ACCENT_2:UiTheme.MUTED);
-        }
-
-        if(!filtered.isEmpty()){
-            ArenaClientShopItem it=filtered.get(Math.min(selectedIndex,filtered.size()-1));
-            drawSelected(g,it,l);
-        } else {
-            g.drawCenteredString(font,Component.literal("Каталог пуст"),p.x()+p.width()/2,p.y()+p.height()/2,UiTheme.MUTED);
-        }
-
-        if(filtered.size()>l.rows){
-            int maxPage=Math.max(0,(filtered.size()-1)/l.rows);
-            String pg=(page+1)+" / "+(maxPage+1)+"  •  колесо мыши";
-            g.drawString(font,Component.literal(pg),l.listX,l.buyY+6,UiTheme.MUTED);
-        }
-
-        String footer="ESC — закрыть   •   G — закрыть магазин";
-        g.drawCenteredString(font,Component.literal(footer),p.x()+p.width()/2,p.y()+p.height()-13,UiTheme.MUTED);
-        String result=ClientShopStore.resultMessage();
-        if(!result.isBlank()) g.drawString(font,Component.literal(fit(result,p.width()-24)),p.x()+12,p.y()+p.height()-24,ClientShopStore.resultOk()?UiTheme.ACCENT:0xFFFF7373);
+        UiLayout.Rect p=panel();g.fill(0,0,width,height,0xA60A0F1A);g.fill(p.x(),p.y(),p.x()+p.width(),p.y()+p.height(),0xF0121828);g.renderOutline(p.x(),p.y(),p.width(),p.height(),UiTheme.BLUE);
+        var snap=ClientSnapshotStore.get();g.drawString(font,Component.literal("ОРУЖИЕ"),p.x()+10,p.y()+10,UiTheme.PINK);String money="$"+snap.roundCredits();g.drawString(font,Component.literal(money),p.x()+p.width()-10-font.width(money),p.y()+10,UiTheme.ACCENT_2);super.render(g,mx,my,pt);
+        int pad=10,cy=p.y()+30,avail=p.width()-pad*2-(CATEGORIES.length-1)*4,cw=avail/CATEGORIES.length,cx=p.x()+pad;for(String c:CATEGORIES){if(c.equals(category))g.renderOutline(cx,cy,cw,18,UiTheme.ACCENT);cx+=cw+4;}
+        Layout l=layout(p);List<ArenaClientShopItem> f=filtered();for(RowHit hit:rowHits){if(hit.index>=f.size())continue;ArenaClientShopItem it=f.get(hit.index);UiLayout.Rect r=hit.rect;boolean sel=hit.index==selectedIndex;g.fill(r.x(),r.y(),r.x()+r.width(),r.y()+r.height(),sel?0xE01A2A43:0xAE101827);if(sel)g.fill(r.x(),r.y(),r.x()+3,r.y()+r.height(),UiTheme.ACCENT);ItemStack st=itemStack(it);if(!st.isEmpty())g.renderItem(st,r.x()+7,r.y()+8);int tx=r.x()+30;g.drawString(font,Component.literal(fit(it.displayName(),r.width()-78)),tx,r.y()+6,UiTheme.TEXT);g.drawString(font,Component.literal("$"+it.price()),r.x()+r.width()-6-font.width("$"+it.price()),r.y()+6,UiTheme.ACCENT_2);g.drawString(font,Component.literal(fit(WeaponNames.russianFor(it.id(),it.category()),r.width()-42)),tx,r.y()+18,UiTheme.MUTED);}
+        if(!f.isEmpty())drawSelected(g,f.get(Math.min(selectedIndex,f.size()-1)),l);String result=ClientShopStore.resultMessage();if(!result.isBlank())g.drawString(font,Component.literal(fit(result,p.width()-20)),p.x()+10,p.y()+p.height()-12,ClientShopStore.resultOk()?UiTheme.ACCENT:0xFFFF7373);
     }
-
-    private void drawSelected(GuiGraphics g,ArenaClientShopItem it,Layout l){
-        int cx=l.detailX+l.detailW/2;
-        int previewY=l.listY+4;
-        ItemStack stack=itemStack(it);
-        g.fill(cx-27,previewY,cx+27,previewY+50,0xB00A101C);
-        g.renderOutline(cx-27,previewY,54,50,UiTheme.PINK);
-        if(!stack.isEmpty()){
-            g.pose().pushPose();g.pose().translate(cx-16,previewY+9,120);g.pose().scale(2.0F,2.0F,2.0F);g.renderItem(stack,0,0);g.pose().popPose();
-        }
-        int y=previewY+57;
-        g.drawCenteredString(font,Component.literal(fit(it.displayName(),l.detailW-8)),cx,y,UiTheme.TEXT);
-        g.drawCenteredString(font,Component.literal(fit(WeaponNames.russianFor(it.id(),it.category()),l.detailW-8)),cx,y+12,UiTheme.PINK);
-        y+=30;
-        int gap=4,sw=(l.detailW-gap)/2,sh=27;
-        stat(g,l.detailX,y,sw,sh,"МАГАЗИН",String.valueOf(it.magazineSize()));
-        stat(g,l.detailX+sw+gap,y,sw,sh,"ЗАПАС",String.valueOf(it.startingReserve()));
-        stat(g,l.detailX,y+sh+gap,sw,sh,"РЕЖИМ",fit(it.fireModes(),sw-8));
-        stat(g,l.detailX+sw+gap,y+sh+gap,sw,sh,"ПРИЦЕЛ",fit(it.scope(),sw-8));
-        int priceY=Math.min(l.buyY-25,y+(sh+gap)*2+7);
-        String price="Цена  $"+it.price();
-        g.drawString(font,Component.literal(price),l.detailX,priceY,UiTheme.ACCENT_2);
-    }
-
-    private void stat(GuiGraphics g,int x,int y,int w,int h,String k,String v){
-        g.fill(x,y,x+w,y+h,0x9A151D2D);
-        g.renderOutline(x,y,w,h,0x603A5675);
-        g.drawString(font,Component.literal(k),x+5,y+4,UiTheme.MUTED);
-        g.drawString(font,Component.literal(v),x+5,y+15,UiTheme.TEXT);
-    }
-
-    private ItemStack itemStack(ArenaClientShopItem it){
-        ResourceLocation id=ResourceLocation.tryParse(it.id());
-        if(id==null||!BuiltInRegistries.ITEM.containsKey(id)) return ItemStack.EMPTY;
-        var item=BuiltInRegistries.ITEM.get(id);
-        return item==Items.AIR?ItemStack.EMPTY:new ItemStack(item);
-    }
-
-    private String fit(String text,int widthPx){
-        if(text==null||text.isBlank()) return "—";
-        if(font.width(text)<=widthPx) return text;
-        String ell="…";int limit=Math.max(0,widthPx-font.width(ell));
-        return font.plainSubstrByWidth(text,limit)+ell;
-    }
-
-    @Override public boolean mouseScrolled(double mx,double my,double delta){
-        Layout l=layout(panel());
-        if(new UiLayout.Rect(l.listX,l.listY,l.listW,l.rows*l.rowH).contains(mx,my)){
-            int maxPage=Math.max(0,(filtered().size()-1)/Math.max(1,l.rows));
-            int old=page;
-            if(delta<0) page=Math.min(maxPage,page+1); else if(delta>0) page=Math.max(0,page-1);
-            if(page!=old){rebuild();return true;}
-        }
-        return super.mouseScrolled(mx,my,delta);
-    }
-
-    @Override public boolean keyPressed(int keyCode,int scanCode,int modifiers){
-        if(keyCode==GLFW.GLFW_KEY_G||keyCode==GLFW.GLFW_KEY_ESCAPE){onClose();return true;}
-        return super.keyPressed(keyCode,scanCode,modifiers);
-    }
-
-    @Override public void onClose(){if(minecraft!=null)minecraft.setScreen(null);}
-    @Override public boolean isPauseScreen(){return false;}
-
-    private record Layout(int listX,int listY,int listW,int detailX,int detailW,int rowH,int rows,int buyY){}
-    private record RowHit(UiLayout.Rect rect,int index){}
+    private void drawSelected(GuiGraphics g,ArenaClientShopItem it,Layout l){int cx=l.detailX+l.detailW/2,y=l.listY+5;ItemStack st=itemStack(it);if(!st.isEmpty()){g.pose().pushPose();g.pose().translate(cx-16,y,100);g.pose().scale(2,2,2);g.renderItem(st,0,0);g.pose().popPose();}y+=38;g.drawCenteredString(font,Component.literal(fit(it.displayName(),l.detailW-4)),cx,y,UiTheme.TEXT);y+=15;g.drawString(font,Component.literal("Маг: "+it.magazineSize()+"   Запас: "+it.startingReserve()),l.detailX,y,UiTheme.MUTED);y+=13;g.drawString(font,Component.literal("Режим: "+fit(it.fireModes(),Math.max(30,l.detailW-48))),l.detailX,y,UiTheme.MUTED);}
+    private ItemStack itemStack(ArenaClientShopItem it){ResourceLocation id=ResourceLocation.tryParse(it.id());if(id==null||!BuiltInRegistries.ITEM.containsKey(id))return ItemStack.EMPTY;var item=BuiltInRegistries.ITEM.get(id);return item==Items.AIR?ItemStack.EMPTY:new ItemStack(item);}
+    private String fit(String t,int w){if(t==null||t.isBlank())return"—";if(font.width(t)<=w)return t;String e="…";return font.plainSubstrByWidth(t,Math.max(0,w-font.width(e)))+e;}
+    @Override public boolean mouseScrolled(double mx,double my,double d){Layout l=layout(panel());if(new UiLayout.Rect(l.listX,l.listY,l.listW,l.rows*l.rowH).contains(mx,my)){int max=Math.max(0,(filtered().size()-1)/Math.max(1,l.rows)),old=page;if(d<0)page=Math.min(max,page+1);else if(d>0)page=Math.max(0,page-1);if(page!=old){rebuild();return true;}}return super.mouseScrolled(mx,my,d);}
+    @Override public boolean keyPressed(int k,int s,int m){if(k==GLFW.GLFW_KEY_G||k==GLFW.GLFW_KEY_ESCAPE){onClose();return true;}return super.keyPressed(k,s,m);}
+    @Override public void onClose(){if(minecraft!=null)minecraft.setScreen(null);}@Override public boolean isPauseScreen(){return false;}
+    private record Layout(int listX,int listY,int listW,int detailX,int detailW,int rowH,int rows,int buyY){} private record RowHit(UiLayout.Rect rect,int index){}
 }
