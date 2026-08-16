@@ -110,8 +110,10 @@ jobs:
           C=final-artifacts/server/mods/gungloryonline-core-0.4.0-beta.jar
           U=final-artifacts/client/mods/gungloryonline-ui-0.4.0-beta.jar
           test -f "$C" && test -f "$U"
-          jar tf "$C" | grep -q '^arena/forge/JegArenaAmmoGuard.class$'
-          jar tf "$U" | grep -q '^arena/client/ui/JegNoAmmoFeedback.class$'
+          jar tf "$C" > /tmp/core-classes.txt
+          jar tf "$U" > /tmp/ui-classes.txt
+          grep -Fxq 'arena/forge/JegArenaAmmoGuard.class' /tmp/core-classes.txt
+          grep -Fxq 'arena/client/ui/JegNoAmmoFeedback.class' /tmp/ui-classes.txt
           COUNT=$(cat /tmp/jeg-count.txt)
           test "$COUNT" -ge 14
           cat >> final-artifacts/VERIFICATION.txt <<EOF
