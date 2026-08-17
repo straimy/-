@@ -14,7 +14,7 @@ impl BootstrapInfo {
     pub fn current() -> Self {
         Self {
             launcher_version: env!("CARGO_PKG_VERSION"),
-            game_version: "v0.4 Beta",
+            game_version: "v34",
             channel: "beta",
             runtime: "minecraft-forge",
             server: "31.77.232.254:24842",
