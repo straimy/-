@@ -23,12 +23,15 @@ public final class MainArenaScreen extends AbstractArenaScreen {
     }
     @Override public void tick(){super.tick();if(playButton!=null)playButton.active=UiAccessPolicy.canPlay(ClientSnapshotStore.get(),ClientSnapshotStore.fresh(System.currentTimeMillis()));}
     @Override public void render(GuiGraphics g,int mx,int my,float pt){
-        drawBackdrop(g);UiLayout l=UiLayout.of(width,height);int cx=l.centerX(),ty=l.titleY()+7;
-        g.fill(cx-104,ty-5,cx+104,ty+18,0x4A111A2A);g.fill(cx-58,ty+19,cx+58,ty+20,UiTheme.GLOW);
+        drawBackdrop(g);UiLayout l=UiLayout.of(width,height);int cx=l.centerX(),ty=l.titleY()+7;long now=System.currentTimeMillis();
+        UiEffects.verticalGradient(g,cx-114,ty-9,cx+114,ty+25,0x6A1B2C4A,0x20101725);
+        UiEffects.animatedSheen(g,cx-114,ty-9,228,34,now,UiTheme.PINK);
+        UiEffects.pulseBorder(g,cx-114,ty-9,228,34,now,UiTheme.ACCENT);
+        g.fill(cx-58,ty+19,cx+58,ty+20,UiTheme.GLOW);
         g.drawCenteredString(font,Component.literal("✦  GUN GLORY ONLINE  ✦"),cx,ty,UiTheme.PINK);
         g.drawCenteredString(font,Component.literal("ARENA // COMBAT NETWORK"),cx,ty+12,UiTheme.DIM);
-        var s=ClientSnapshotStore.get();boolean fresh=ClientSnapshotStore.fresh(System.currentTimeMillis());String status=fresh&&s.authenticated()&&s.initialized()?"$"+s.roundCredits()+"   ◇ "+s.coins()+"   ◆ "+s.crystals():UiAccessPolicy.status(s,fresh);
-        int sw=font.width(status)+16;g.fill(7,height-18,7+sw,height-5,0xA4101725);g.renderOutline(7,height-18,sw,13,UiTheme.HAIRLINE);g.drawString(font,Component.literal(status),14,height-15,fresh&&s.initialized()?UiTheme.ACCENT:UiTheme.ACCENT_2);
+        var s=ClientSnapshotStore.get();boolean fresh=ClientSnapshotStore.fresh(now);String status=fresh&&s.authenticated()&&s.initialized()?"$"+s.roundCredits()+"   ◇ "+s.coins()+"   ◆ "+s.crystals():UiAccessPolicy.status(s,fresh);
+        int sw=font.width(status)+16;UiEffects.verticalGradient(g,7,height-18,7+sw,height-5,0xC41A2A40,0xA4101725);g.renderOutline(7,height-18,sw,13,UiTheme.HAIRLINE);g.drawString(font,Component.literal(status),14,height-15,fresh&&s.initialized()?UiTheme.ACCENT:UiTheme.ACCENT_2);
         super.render(g,mx,my,pt);
     }
     @Override public boolean isPauseScreen(){return false;}
