@@ -1,4 +1,4 @@
-name: GunGloryOnline v35 Auth HUD Fixes
+name: GunGloryOnline v35 Client Shell
 
 on:
   push:
@@ -7,6 +7,7 @@ on:
       - 'hotfix/LegacyAuthSyncGuard.java'
       - 'hotfix/ui/InventoryPolish.java'
       - 'hotfix/ui/ArenaBeltOverlay.java'
+      - 'hotfix/ui/GgoShellScreens.java'
   workflow_dispatch:
 
 env:
@@ -59,13 +60,14 @@ jobs:
           bash /tmp/v34.sh
           test -f ga-build/gradle.properties
 
-      - name: Apply v35 auth HUD fixes
+      - name: Apply v35 auth HUD and client shell
         shell: bash
         run: |
           set -euo pipefail
           cp hotfix/LegacyAuthSyncGuard.java ga-build/src/main/java/arena/forge/LegacyAuthSyncGuard.java
           cp hotfix/ui/InventoryPolish.java ga-build/client-ui/src/main/java/arena/client/ui/InventoryPolish.java
           cp hotfix/ui/ArenaBeltOverlay.java ga-build/client-ui/src/main/java/arena/client/ui/ArenaBeltOverlay.java
+          cp hotfix/ui/GgoShellScreens.java ga-build/client-ui/src/main/java/arena/client/ui/GgoShellScreens.java
           python3 - <<'PY'
           from pathlib import Path
           import re
@@ -76,6 +78,11 @@ jobs:
           grep -q 'sendCommands(player)' ga-build/src/main/java/arena/forge/LegacyAuthSyncGuard.java
           grep -q 'instanceof ChatScreen' ga-build/client-ui/src/main/java/arena/client/ui/ArenaBeltOverlay.java
           ! grep -q 'БОЕВОЙ КОМПЛЕКТ' ga-build/client-ui/src/main/java/arena/client/ui/InventoryPolish.java
+          grep -q 'ScreenEvent.Opening' ga-build/client-ui/src/main/java/arena/client/ui/GgoShellScreens.java
+          grep -q 'instanceof TitleScreen' ga-build/client-ui/src/main/java/arena/client/ui/GgoShellScreens.java
+          grep -q 'instanceof PauseScreen' ga-build/client-ui/src/main/java/arena/client/ui/GgoShellScreens.java
+          ! grep -q 'MultiplayerScreen' ga-build/client-ui/src/main/java/arena/client/ui/GgoShellScreens.java
+          ! grep -q 'Realms' ga-build/client-ui/src/main/java/arena/client/ui/GgoShellScreens.java
 
       - name: Build Core
         shell: bash
@@ -91,7 +98,7 @@ jobs:
           python3 /tmp/extract.py .github/workflows/gun-glory-online-v12.yml 'Build UI against real Core' >/tmp/ui.sh
           (cd ga-build && bash /tmp/ui.sh)
 
-      - name: Prepare v35 payloads
+      - name: Prepare v35 client-shell payloads
         shell: bash
         run: |
           set -euo pipefail
@@ -101,34 +108,39 @@ jobs:
           UI="$(find ga-build/client-ui/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
           cp "$CORE" final-artifacts/server/mods/gungloryonline-core-0.9.2-v35.jar
           cp "$CORE" final-artifacts/client/mods/gungloryonline-core-0.9.2-v35.jar
-          cp "$UI" final-artifacts/client/mods/gungloryonline-ui-0.9.2-v35.jar
+          cp "$UI" final-artifacts/client/mods/gungloryonline-ui-0.9.2-v35-client-shell.jar
           cp final-artifacts/server/mods/* ready-pack/server/mods/
           cp final-artifacts/client/mods/* ready-pack/client/mods/
           for c in LegacyAuthSyncGuard GgoIdentityBridge FriendService FriendNetwork ClanService ClanNetwork ArenaBeltGuard SpawnLoadoutGuard; do jar tf "$CORE" | grep -q "^arena/forge/$c.class$"; done
-          for c in InventoryPolish ArenaBeltOverlay FriendsScreen ClanScreen MainArenaScreen UiEffects JegNoAmmoFeedback; do jar tf "$UI" | grep -q "^arena/client/ui/$c.class$"; done
+          for c in InventoryPolish ArenaBeltOverlay FriendsScreen ClanScreen MainArenaScreen UiEffects JegNoAmmoFeedback GgoShellScreens; do jar tf "$UI" | grep -q "^arena/client/ui/$c.class$"; done
+          jar tf "$UI" | grep -q '^arena/client/ui/GgoShellScreens\$GgoTitleScreen.class$'
+          jar tf "$UI" | grep -q '^arena/client/ui/GgoShellScreens\$GgoPauseScreen.class$'
           cat > final-artifacts/VERIFICATION.txt <<'EOF'
-          GUNGLORYONLINE_V35=PASS
-          V34_INVENTORY_POLISH_RETAINED=PASS
-          LEGACY_LOGIN_TO_GGO_AUTH_BRIDGE=PASS
-          COMMAND_TREE_REFRESH_AFTER_LOGIN=PASS
-          MENU_AND_PLAY_COMMAND_VISIBILITY_AFTER_AUTH=PASS
-          CHAT_KEEPS_GGO_BELT_VISIBLE=PASS
-          INVENTORY_EFFECTS_RIGHT_SIDE_CLEAR=PASS
-          THREE_SLOT_INVENTORY_RETAINED=PASS
+          GUNGLORYONLINE_V35_CLIENT_SHELL=PASS
+          V35_AUTH_HUD_FIXES_RETAINED=PASS
+          VANILLA_TITLE_SCREEN_REPLACED=PASS
+          VANILLA_PAUSE_SCREEN_REPLACED=PASS
+          SINGLEPLAYER_BUTTON_REMOVED=PASS
+          MULTIPLAYER_BUTTON_REMOVED=PASS
+          MODS_BUTTON_REMOVED=PASS
+          REALMS_BUTTON_REMOVED=PASS
+          GAME_FILES_BUTTON=PASS
+          SETTINGS_BUTTON=PASS
+          EXIT_GAME_BUTTON=PASS
+          BACK_TO_GAME_BUTTON=PASS
+          SERVER_SELECTION_OWNED_BY_LAUNCHER=PASS
           EOF
           cat > ready-pack/INSTALL.txt <<'EOF'
-          GunGloryOnline v35
-          1) STOP THE SERVER.
-          2) Remove ALL older gungloryonline/gunnerarena Core/UI jars from server and client mods folders.
-          3) Server: copy only server/mods/gungloryonline-core-0.9.2-v35.jar.
-          4) Client: copy BOTH jars from client/mods.
-          5) Keep using the current GunGloryOnline resource pack.
-          Never mix v29/v30/v31/v33/v34/v35 jars.
+          GunGloryOnline v35 client shell
+          Client-only shell change: vanilla Minecraft title/pause navigation is replaced by GGO screens.
+          Server logic is unchanged by GgoShellScreens.
+          Client: use both jars from client/mods.
+          Server: use the matching v35 Core from your server build.
           EOF
           cp final-artifacts/VERIFICATION.txt ready-pack/VERIFICATION.txt
           sha256sum final-artifacts/server/mods/* final-artifacts/client/mods/* > final-artifacts/SHA256SUMS.txt
           cp final-artifacts/SHA256SUMS.txt ready-pack/SHA256SUMS.txt
-          (cd ready-pack && zip -qr ../GunGloryOnline-v35-READY-PACK.zip .)
+          (cd ready-pack && zip -qr ../GunGloryOnline-v35-CLIENT-SHELL.zip .)
 
       - name: Dedicated server smoke
         shell: bash
@@ -144,19 +156,19 @@ jobs:
           grep -Fq 'Done (' ds/logs/latest.log
           ! grep -Eq 'Exception in server tick loop|Failed to start the minecraft server|Duplicate key gunnerarena:ui|Duplicate key gunnerarena:friends|Duplicate key gunnerarena:clans' ds/logs/latest.log
 
-      - name: Upload v35 build
+      - name: Upload v35 client-shell build
         uses: actions/upload-artifact@v4
         with:
-          name: GunGloryOnline-v35-build
+          name: GunGloryOnline-v35-client-shell-build
           path: final-artifacts/**
           if-no-files-found: error
           retention-days: 30
 
-      - name: Upload v35 ready pack
+      - name: Upload v35 client-shell ready pack
         uses: actions/upload-artifact@v4
         with:
-          name: GunGloryOnline-v35-ready-pack
-          path: GunGloryOnline-v35-READY-PACK.zip
+          name: GunGloryOnline-v35-client-shell
+          path: GunGloryOnline-v35-CLIENT-SHELL.zip
           if-no-files-found: error
           retention-days: 30
 
@@ -164,7 +176,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: GunGloryOnline-v35-diagnostics
+          name: GunGloryOnline-v35-client-shell-diagnostics
           path: |
             v12-core-build.log
             v12-ui-build.log
