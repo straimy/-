@@ -24,11 +24,11 @@ import org.slf4j.Logger;
  * Direct server-side generator for the recovered 8x8 Classic Arena.
  *
  * This replaces the legacy redstone/command-block/scoreboard generator. Templates remain map
- * content under world/generated/minecraft/structures, but selection, quotas, rotations, cleanup and
- * placement are owned by versioned GGO Java code.
+ * content under world/generated/minecraft/structures, but selection, quotas, rotations, cleanup,
+ * ammo-slot assignment and placement are owned by versioned GGO Java code.
  */
 public final class ClassicArenaMapGenerator {
-    public static final String VERSION = "GGO-CLASSIC-GEN-V1";
+    public static final String VERSION = "GGO-CLASSIC-GEN-V2";
     public static final int GRID_SIZE = 8;
     public static final int TOTAL_CELLS = GRID_SIZE * GRID_SIZE;
     public static final int EMPTY_CELLS = 16;
@@ -91,6 +91,7 @@ public final class ClassicArenaMapGenerator {
                 counts.merge(kind, 1, Integer::sum);
                 placed++;
             }
+            assignAmmoSlots(level);
             state = State.READY;
             LOG.info("[{}] Generated Classic Arena cells={} flat={} empty={} gun={} health={}",
                 VERSION, placed, count(CellKind.FLAT), count(CellKind.EMPTY), count(CellKind.GUN), count(CellKind.HEALTH));
@@ -211,6 +212,26 @@ public final class ClassicArenaMapGenerator {
 
         boolean placed = template.placeInWorld(level, origin, origin, settings, level.getRandom(), Block.UPDATE_CLIENTS);
         if (!placed) throw new IllegalStateException("template placement returned false for " + templateId + " at " + origin);
+    }
+
+    /**
+     * Legacy command graph assigned the ten random ammo markers as 4× gun_1, 3× gun_2, 3× gun_3.
+     * The templates themselves only contain the semantic random_gun_ammo marker, so this assignment
+     * now happens directly after placement and no scoreboard/tag command chain is needed.
+     */
+    private static void assignAmmoSlots(ServerLevel level) {
+        List<Marker> markers = new ArrayList<>(level.getEntities(EntityType.MARKER, ARENA_ENTITIES,
+            marker -> marker.getTags().contains("random_gun_ammo")));
+        if (markers.size() != GUN_CELLS) {
+            throw new IllegalStateException("expected " + GUN_CELLS + " random ammo markers, found " + markers.size());
+        }
+        shuffle(level, markers);
+        for (int i = 0; i < markers.size(); i++) {
+            Marker marker = markers.get(i);
+            marker.removeTag("random_gun_ammo");
+            marker.addTag(i < 4 ? "gun_1_ammo" : i < 7 ? "gun_2_ammo" : "gun_3_ammo");
+            marker.addTag("item_spawner");
+        }
     }
 
     private static void cleanupLegacyEntities(ServerLevel level) {
