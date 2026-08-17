@@ -64,7 +64,8 @@ jobs:
           for f in hotfix/GgoIdentityBridge.java hotfix/FriendService.java hotfix/FriendNetwork.java hotfix/ClanService.java hotfix/ClanNetwork.java; do cp "$f" "/tmp/v33-new/$f"; done
           for f in hotfix/ui/FriendsScreen.java hotfix/ui/ClanScreen.java hotfix/ui/MainArenaScreen.java hotfix/ui/UiTheme.java hotfix/ui/UiEffects.java hotfix/ui/JegNoAmmoFeedback.java; do cp "$f" "/tmp/v33-new/$f"; done
           git fetch --no-tags --depth=1 origin "$V31_BASE_SHA"
-          git checkout "$V31_BASE_SHA" -- .
+          git reset --hard "$V31_BASE_SHA"
+          git clean -fd
           python3 /tmp/extract.py .github/workflows/gun-glory-online-v31-inventory-commandblock-fence.yml 'Prepare v30 source' >/tmp/base.sh
           bash /tmp/base.sh
           python3 /tmp/extract.py .github/workflows/gun-glory-online-v31-inventory-commandblock-fence.yml 'Apply v31 consistency fence UI admin' >/tmp/v31.sh
