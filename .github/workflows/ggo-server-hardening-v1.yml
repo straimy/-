@@ -10,8 +10,11 @@ on:
       - 'hotfix/GgoServerRulesGuard.java'
       - 'hotfix/GgoGameModeRegistry.java'
       - 'hotfix/GgoLootSpawnService.java'
+      - 'hotfix/ClassicArenaMapGenerator.java'
+      - 'hotfix/CGBetaForgeAdapter.java'
       - 'docs/command-block-migration.md'
       - 'docs/current-server-build-audit-2026-08-17.md'
+      - 'docs/runtime-mod-cleanup-plan-2026-08-17.md'
       - 'tools/world_command_audit.py'
   workflow_dispatch:
 
@@ -78,10 +81,15 @@ jobs:
           cp hotfix/GgoServerRulesGuard.java ga-build/src/main/java/arena/forge/GgoServerRulesGuard.java
           cp hotfix/GgoGameModeRegistry.java ga-build/src/main/java/arena/forge/GgoGameModeRegistry.java
           cp hotfix/GgoLootSpawnService.java ga-build/src/main/java/arena/forge/GgoLootSpawnService.java
+          cp hotfix/ClassicArenaMapGenerator.java ga-build/src/main/java/arena/forge/ClassicArenaMapGenerator.java
+          cp hotfix/CGBetaForgeAdapter.java ga-build/src/main/java/arena/forge/CGBetaForgeAdapter.java
           grep -q 'GGO-AC-V1' ga-build/src/main/java/arena/forge/GgoAntiCheatTelemetry.java
           grep -q 'GGO-RULES-V1' ga-build/src/main/java/arena/forge/GgoServerRulesGuard.java
           grep -q 'Classic Arena' ga-build/src/main/java/arena/forge/GgoGameModeRegistry.java
           grep -q 'GGO-LOOT-V1' ga-build/src/main/java/arena/forge/GgoLootSpawnService.java
+          grep -q 'GGO-CLASSIC-GEN-V1' ga-build/src/main/java/arena/forge/ClassicArenaMapGenerator.java
+          grep -q 'generator.generate(level)' ga-build/src/main/java/arena/forge/CGBetaForgeAdapter.java
+          ! grep -q 'setBlock.*REDSTONE\|Scoreboard\|#cg_chunk_count' ga-build/src/main/java/arena/forge/CGBetaForgeAdapter.java
           grep -q 'v1 intentionally does not kick or ban' ga-build/src/main/java/arena/forge/GgoAntiCheatTelemetry.java
 
       - name: Build Core
@@ -101,6 +109,8 @@ jobs:
           jar tf "$CORE" | grep -q '^arena/forge/GgoServerRulesGuard.class$'
           jar tf "$CORE" | grep -q '^arena/forge/GgoGameModeRegistry.class$'
           jar tf "$CORE" | grep -q '^arena/forge/GgoLootSpawnService.class$'
+          jar tf "$CORE" | grep -q '^arena/forge/ClassicArenaMapGenerator.class$'
+          jar tf "$CORE" | grep -q '^arena/forge/CGBetaForgeAdapter.class$'
           mkdir -p server-hardening/server/mods
           cp "$CORE" server-hardening/server/mods/gungloryonline-core-0.9.7-v40-server-hardening1.jar
           sha256sum server-hardening/server/mods/* > server-hardening/SHA256SUMS.txt
@@ -111,8 +121,9 @@ jobs:
           /play is backed by the server-owned GGO game mode registry.
           Classic Arena is registered as MIGRATING from the recovered legacy command-block game.
           GgoLootSpawnService provides typed server-owned AMMO/HEALTH/WEAPON/UTILITY points without command execution.
-          Command-block migration is documented separately and will be implemented service-by-service.
-          tools/world_command_audit.py can inventory command blocks/datapack functions in imported worlds.
+          ClassicArenaMapGenerator directly places the recovered 8x8 cg.pregen templates from Java.
+          CGBetaForgeAdapter no longer toggles the old redstone generator or reads scoreboard progress.
+          Command-block migration continues service-by-service until the clean production world has command blocks disabled/removed.
           EOF
 
       - name: Dedicated server smoke
