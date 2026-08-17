@@ -2,217 +2,70 @@ import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
+type Lang = "en" | "ru" | "uk";
+type Page = "home" | "servers" | "news" | "settings";
 type BootstrapInfo = { launcherVersion: string; gameVersion: string; channel: string; runtime: string; server: string };
-type UpdatePlan = { gameVersion: string; runtime: string; files: Array<{ path: string; url: string; size: number; reason: string }>; totalBytes: number; checkedFiles: number };
-type SyncReport = { gameVersion: string; updatedFiles: number; downloadedBytes: number; elapsedMs: number };
 type UpdateProgress = { stage: string; currentFile: string; downloadedBytes: number; totalBytes: number; speedBytesPerSecond: number };
-type RuntimeCheck = { ready: boolean; minecraftVersion: string; forgeVersion: string; java: null | { path: string; version: string; major: number; compatible: boolean; source: string }; missing: string[]; versionProfile: string; gameDirectory: string };
-type RuntimeInstallReport = { installed: boolean; downloadedBytes: number; minecraftVersion: string; forgeVersion: string; runtime: RuntimeCheck };
 type RuntimeInstallProgress = { stage: string; currentFile: string; downloadedBytes: number; totalBytes: number };
-type LocalInstallReport = { version: string; installedFiles: string[]; skippedFiles: string[]; resourcePackEnabled: boolean };
+type RuntimeCheck = { ready: boolean; java: null | { path: string; version: string }; missing: string[] };
+type RuntimeInstallReport = { runtime: RuntimeCheck };
+type LocalInstallReport = { version: string; installedFiles: string[]; skippedFiles: string[]; removedLegacyFiles: string[]; resourcePackEnabled: boolean };
 type MinecraftProfile = { id: string; name: string };
-type MicrosoftAuthStatus = { authenticated: boolean; expiresInSeconds: number; refreshAvailable: boolean; minecraftProfile: MinecraftProfile | null };
-type LaunchResult = { started: boolean; pid: number; profileName: string; profileId: string };
+type MicrosoftAuthStatus = { authenticated: boolean; minecraftProfile: MinecraftProfile | null };
+type LaunchResult = { pid: number; profileName: string };
 type LaunchOptions = { ramMb: number; width: number; height: number; fullscreen: boolean };
 
-const nav = ["Главная", "Новости", "Настройки"] as const;
+const SERVER = { id: "server-1", name: "Server 1", address: "31.77.232.254:24842" };
+const RESOLUTIONS = [[1280,720],[1366,768],[1600,900],[1920,1080],[2560,1440],[3840,2160]] as const;
 const STORAGE_INSTALL_DIR = "ggo.installDir";
-const STORAGE_MANIFEST_URL = "ggo.manifestUrl";
-const STORAGE_LOCAL_PACKAGE = "ggo.localPackageZip";
-const STORAGE_LOCAL_RESOURCE_PACK = "ggo.localResourcePackZip";
+const STORAGE_PACKAGE = "ggo.fullInstallZip";
 const STORAGE_JAVA = "ggo.javaPath";
 const STORAGE_RAM = "ggo.ramMb";
-const STORAGE_WIDTH = "ggo.width";
-const STORAGE_HEIGHT = "ggo.height";
+const STORAGE_RESOLUTION = "ggo.resolution";
 const STORAGE_FULLSCREEN = "ggo.fullscreen";
 
-function formatBytes(value: number) {
-  if (!Number.isFinite(value) || value <= 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB"];
-  const unit = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
-  const amount = value / Math.pow(1024, unit);
-  return `${amount.toFixed(unit === 0 ? 0 : amount >= 100 ? 0 : 1)} ${units[unit]}`;
-}
+const copy = {
+  en:{home:"Home",servers:"Servers",news:"News",settings:"Settings",play:"PLAY",preparing:"PREPARING…",player:"Player",signIn:"Sign in with Microsoft",signOut:"Sign out",installed:"Game ready",notInstalled:"Game needs installation",install:"INSTALL GUNGLORYONLINE",installHint:"One package installs v34, mods and the required resource pack automatically.",choosePackage:"Choose FULL-INSTALL ZIP",serverList:"Choose a server",connect:"CONNECT",back:"Back",refresh:"Refresh",online:"Online",offline:"Offline",ram:"Memory",resolution:"Resolution",fullscreen:"Fullscreen",gameFolder:"Game folder",openFolder:"Open folder",java:"Java 17",auto:"Automatic",language:"Language",restart:"Restart launcher",version:"Version",requiredRp:"Required resource pack is installed and enabled automatically.",noServer:"Select a server first",doubleClick:"Double-click a server to connect",msRequired:"Microsoft account is required for the online game.",packageMissing:"Choose the v34 FULL-INSTALL package first.",runtimeInstalling:"Installing Minecraft 1.20.1 + Forge 47.4.10…",latest:"GunGloryOnline v34",newsBody:"Launcher v0.2 focuses on a simpler install, server selection and cleaner game settings."},
+  ru:{home:"Главная",servers:"Серверы",news:"Новости",settings:"Настройки",play:"ИГРАТЬ",preparing:"ПОДГОТОВКА…",player:"Игрок",signIn:"Войти через Microsoft",signOut:"Выйти",installed:"Игра готова",notInstalled:"Нужно установить игру",install:"УСТАНОВИТЬ GUNGLORYONLINE",installHint:"Один архив сам установит v34, моды и обязательный ресурс-пак.",choosePackage:"Выбрать FULL-INSTALL ZIP",serverList:"Выберите сервер",connect:"ПОДКЛЮЧИТЬСЯ",back:"Назад",refresh:"Обновить",online:"Онлайн",offline:"Оффлайн",ram:"Оперативная память",resolution:"Разрешение",fullscreen:"Полный экран",gameFolder:"Папка игры",openFolder:"Открыть папку",java:"Java 17",auto:"Автоматически",language:"Язык",restart:"Перезапустить лаунчер",version:"Версия",requiredRp:"Обязательный ресурс-пак устанавливается и включается автоматически.",noServer:"Сначала выберите сервер",doubleClick:"Двойной клик по серверу — подключиться",msRequired:"Для онлайн-игры нужен Microsoft-аккаунт.",packageMissing:"Сначала выберите FULL-INSTALL архив v34.",runtimeInstalling:"Устанавливаю Minecraft 1.20.1 + Forge 47.4.10…",latest:"GunGloryOnline v34",newsBody:"Launcher v0.2 делает установку проще, добавляет выбор серверов и удобные игровые настройки."},
+  uk:{home:"Головна",servers:"Сервери",news:"Новини",settings:"Налаштування",play:"ГРАТИ",preparing:"ПІДГОТОВКА…",player:"Гравець",signIn:"Увійти через Microsoft",signOut:"Вийти",installed:"Гра готова",notInstalled:"Потрібно встановити гру",install:"ВСТАНОВИТИ GUNGLORYONLINE",installHint:"Один архів сам встановить v34, моди та обов'язковий ресурс-пак.",choosePackage:"Обрати FULL-INSTALL ZIP",serverList:"Оберіть сервер",connect:"ПІДКЛЮЧИТИСЯ",back:"Назад",refresh:"Оновити",online:"Онлайн",offline:"Офлайн",ram:"Оперативна пам'ять",resolution:"Роздільна здатність",fullscreen:"Повний екран",gameFolder:"Папка гри",openFolder:"Відкрити папку",java:"Java 17",auto:"Автоматично",language:"Мова",restart:"Перезапустити лаунчер",version:"Версія",requiredRp:"Обов'язковий ресурс-пак встановлюється та вмикається автоматично.",noServer:"Спочатку оберіть сервер",doubleClick:"Подвійний клік по серверу — підключитися",msRequired:"Для онлайн-гри потрібен Microsoft-акаунт.",packageMissing:"Спочатку оберіть FULL-INSTALL архів v34.",runtimeInstalling:"Встановлюю Minecraft 1.20.1 + Forge 47.4.10…",latest:"GunGloryOnline v34",newsBody:"Launcher v0.2 спрощує встановлення, додає вибір серверів та зручні ігрові налаштування."}
+};
 
-const emptyAuth: MicrosoftAuthStatus = { authenticated: false, expiresInSeconds: 0, refreshAvailable: false, minecraftProfile: null };
+function bytes(value:number){if(!value)return"0 MB";return`${(value/1048576).toFixed(value>104857600?0:1)} MB`;}
+const emptyAuth:MicrosoftAuthStatus={authenticated:false,minecraftProfile:null};
 
-export default function App() {
-  const [page, setPage] = useState<(typeof nav)[number]>("Главная");
-  const [status, setStatus] = useState("Запуск launcher core…");
-  const [busy, setBusy] = useState(false);
-  const [plan, setPlan] = useState<UpdatePlan | null>(null);
-  const [progress, setProgress] = useState<UpdateProgress | null>(null);
-  const [runtime, setRuntime] = useState<RuntimeCheck | null>(null);
-  const [auth, setAuth] = useState<MicrosoftAuthStatus>(emptyAuth);
-  const [installDir, setInstallDir] = useState(() => localStorage.getItem(STORAGE_INSTALL_DIR) ?? "");
-  const [manifestUrl, setManifestUrl] = useState(() => localStorage.getItem(STORAGE_MANIFEST_URL) ?? "");
-  const [localPackageZip, setLocalPackageZip] = useState(() => localStorage.getItem(STORAGE_LOCAL_PACKAGE) ?? "");
-  const [localResourcePackZip, setLocalResourcePackZip] = useState(() => localStorage.getItem(STORAGE_LOCAL_RESOURCE_PACK) ?? "");
-  const [javaPath, setJavaPath] = useState(() => localStorage.getItem(STORAGE_JAVA) ?? "");
-  const [ramMb, setRamMb] = useState(() => Number(localStorage.getItem(STORAGE_RAM) ?? 4096));
-  const [width, setWidth] = useState(() => Number(localStorage.getItem(STORAGE_WIDTH) ?? 1280));
-  const [height, setHeight] = useState(() => Number(localStorage.getItem(STORAGE_HEIGHT) ?? 720));
-  const [fullscreen, setFullscreen] = useState(() => localStorage.getItem(STORAGE_FULLSCREEN) === "true");
-  const [info, setInfo] = useState<BootstrapInfo>({ launcherVersion: "0.1.0", gameVersion: "v29", channel: "beta", runtime: "minecraft-forge", server: "31.77.232.254:24842" });
+export default function App(){
+  const[lang,setLang]=useState<Lang>("en"); const t=copy[lang];
+  const[page,setPage]=useState<Page>("home"),[busy,setBusy]=useState(false),[status,setStatus]=useState("Ready");
+  const[progress,setProgress]=useState<UpdateProgress|null>(null),[runtime,setRuntime]=useState<RuntimeCheck|null>(null),[auth,setAuth]=useState<MicrosoftAuthStatus>(emptyAuth),[nickname,setNickname]=useState("");
+  const[installDir,setInstallDir]=useState(()=>localStorage.getItem(STORAGE_INSTALL_DIR)??"");
+  const[packageZip,setPackageZip]=useState(()=>localStorage.getItem(STORAGE_PACKAGE)??"");
+  const[javaPath,setJavaPath]=useState(()=>localStorage.getItem(STORAGE_JAVA)??"");
+  const[ramMb,setRamMb]=useState(()=>Math.max(512,Number(localStorage.getItem(STORAGE_RAM)??4096)));
+  const saved=(localStorage.getItem(STORAGE_RESOLUTION)??"1920x1080").split("x").map(Number);
+  const[resolution,setResolution]=useState<[number,number]>([saved[0]||1920,saved[1]||1080]);
+  const[fullscreen,setFullscreen]=useState(()=>localStorage.getItem(STORAGE_FULLSCREEN)==="true");
+  const[selectedServer,setSelectedServer]=useState<string|null>(null),[ping,setPing]=useState<number|null>(null),[serverReachable,setServerReachable]=useState<boolean|null>(null),[gameInstalled,setGameInstalled]=useState(false);
+  const[info,setInfo]=useState<BootstrapInfo>({launcherVersion:"0.2.0",gameVersion:"v34",channel:"beta",runtime:"minecraft-forge",server:SERVER.address});
+  const percent=useMemo(()=>!busy?(progress?100:0):!progress?.totalBytes?12:Math.max(2,Math.min(99,Math.round(progress.downloadedBytes/progress.totalBytes*100))),[busy,progress]);
 
-  const progressPercent = useMemo(() => !progress?.totalBytes ? (busy ? 2 : 0) : Math.min(100, Math.round((progress.downloadedBytes / progress.totalBytes) * 100)), [progress, busy]);
-  const launchOptions: LaunchOptions = { ramMb, width, height, fullscreen };
+  useEffect(()=>{void invoke<BootstrapInfo>("bootstrap_info").then(setInfo).catch(()=>undefined);void invoke<MicrosoftAuthStatus>("microsoft_auth_status").then(a=>{setAuth(a);if(a.minecraftProfile)setNickname(a.minecraftProfile.name);}).catch(()=>undefined);if(!localStorage.getItem(STORAGE_INSTALL_DIR))void invoke<string>("default_install_dir").then(setInstallDir).catch(()=>undefined);let u1:(()=>void)|undefined,u2:(()=>void)|undefined;void listen<UpdateProgress>("ggo-update-progress",e=>{setProgress(e.payload);setStatus(e.payload.stage);}).then(v=>u1=v);void listen<RuntimeInstallProgress>("ggo-runtime-install-progress",e=>{setProgress({...e.payload,speedBytesPerSecond:0});setStatus("Runtime…");}).then(v=>u2=v);return()=>{u1?.();u2?.();};},[]);
+  useEffect(()=>{if(installDir)localStorage.setItem(STORAGE_INSTALL_DIR,installDir);},[installDir]);useEffect(()=>localStorage.setItem(STORAGE_PACKAGE,packageZip),[packageZip]);useEffect(()=>localStorage.setItem(STORAGE_JAVA,javaPath),[javaPath]);useEffect(()=>localStorage.setItem(STORAGE_RAM,String(ramMb)),[ramMb]);useEffect(()=>localStorage.setItem(STORAGE_RESOLUTION,`${resolution[0]}x${resolution[1]}`),[resolution]);useEffect(()=>localStorage.setItem(STORAGE_FULLSCREEN,String(fullscreen)),[fullscreen]);
 
-  useEffect(() => {
-    void invoke<BootstrapInfo>("bootstrap_info").then((next) => { setInfo(next); setStatus("Launcher core готов"); }).catch(() => setStatus("UI preview: backend недоступен"));
-    void invoke<MicrosoftAuthStatus>("microsoft_auth_status").then(setAuth).catch(() => undefined);
-    if (!localStorage.getItem(STORAGE_INSTALL_DIR)) {
-      void invoke<string>("default_install_dir").then((path) => setInstallDir(path)).catch(() => undefined);
-    }
-    let stopUpdate: (() => void) | undefined;
-    let stopRuntime: (() => void) | undefined;
-    void listen<UpdateProgress>("ggo-update-progress", (event) => {
-      setProgress(event.payload);
-      const file = event.payload.currentFile ? ` · ${event.payload.currentFile}` : "";
-      setStatus(`${event.payload.stage}${file}`);
-    }).then((unlisten) => { stopUpdate = unlisten; });
-    void listen<RuntimeInstallProgress>("ggo-runtime-install-progress", (event) => {
-      const payload = event.payload;
-      setProgress({ ...payload, speedBytesPerSecond: 0 });
-      const file = payload.currentFile ? ` · ${payload.currentFile}` : "";
-      setStatus(`Runtime: ${payload.stage}${file}`);
-    }).then((unlisten) => { stopRuntime = unlisten; });
-    return () => { stopUpdate?.(); stopRuntime?.(); };
-  }, []);
+  async function choosePackage(){const p=await invoke<string|null>("pick_zip_file");if(p)setPackageZip(p);} async function chooseFolder(){const p=await invoke<string|null>("pick_install_dir");if(p)setInstallDir(p);}
+  async function login(){setBusy(true);try{const a=await invoke<MicrosoftAuthStatus>("microsoft_login");setAuth(a);if(a.minecraftProfile)setNickname(a.minecraftProfile.name);setStatus(a.minecraftProfile?.name??"Microsoft connected");}catch(e){setStatus(String(e));}finally{setBusy(false);}}
+  async function logout(){await invoke("microsoft_logout");setAuth(emptyAuth);setStatus("Signed out");}
+  async function refreshServer(){setPing(null);setServerReachable(null);try{const ms=await invoke<number>("ping_server",{address:SERVER.address});setPing(ms);setServerReachable(true);}catch{setServerReachable(false);}}
+  async function installGame(){if(!packageZip){setStatus(t.packageMissing);return false;}setBusy(true);setProgress(null);setStatus("Verifying v34…");try{const r=await invoke<LocalInstallReport>("install_local_ggo",{packageZip,installDir});setGameInstalled(true);setProgress({stage:"complete",currentFile:"",downloadedBytes:1,totalBytes:1,speedBytesPerSecond:0});setStatus(`${r.version} · RP ${r.resourcePackEnabled?"✓":""} · ${r.installedFiles.length} files`);return true;}catch(e){setStatus(String(e));return false;}finally{setBusy(false);}}
+  async function ensureRuntime(){let c=await invoke<RuntimeCheck>("check_runtime",{installDir,customJava:javaPath||null});setRuntime(c);if(c.ready)return true;setStatus(t.runtimeInstalling);setBusy(true);try{const r=await invoke<RuntimeInstallReport>("install_runtime",{installDir,customJava:javaPath||null});c=r.runtime;setRuntime(c);return c.ready;}catch(e){setStatus(String(e));return false;}finally{setBusy(false);}}
+  async function launch(){if(!selectedServer){setStatus(t.noServer);setPage("servers");return;}if(!auth.minecraftProfile){setStatus(t.msRequired);await login();return;}if(!gameInstalled){const ok=await installGame();if(!ok)return;}if(!(await ensureRuntime()))return;setBusy(true);setStatus("Launching GunGloryOnline…");try{const options:LaunchOptions={ramMb,width:resolution[0],height:resolution[1],fullscreen};const r=await invoke<LaunchResult>("launch_minecraft",{installDir,customJava:javaPath||null,options});setStatus(`${r.profileName} · PID ${r.pid}`);}catch(e){setStatus(String(e));}finally{setBusy(false);}}
+  const nav:[Page,string][]=[["home",t.home],["servers",t.servers],["news",t.news],["settings",t.settings]];
 
-  useEffect(() => { if (installDir) localStorage.setItem(STORAGE_INSTALL_DIR, installDir); }, [installDir]);
-  useEffect(() => { localStorage.setItem(STORAGE_MANIFEST_URL, manifestUrl); }, [manifestUrl]);
-  useEffect(() => { localStorage.setItem(STORAGE_LOCAL_PACKAGE, localPackageZip); }, [localPackageZip]);
-  useEffect(() => { localStorage.setItem(STORAGE_LOCAL_RESOURCE_PACK, localResourcePackZip); }, [localResourcePackZip]);
-  useEffect(() => { localStorage.setItem(STORAGE_JAVA, javaPath); }, [javaPath]);
-  useEffect(() => { localStorage.setItem(STORAGE_RAM, String(ramMb)); }, [ramMb]);
-  useEffect(() => { localStorage.setItem(STORAGE_WIDTH, String(width)); }, [width]);
-  useEffect(() => { localStorage.setItem(STORAGE_HEIGHT, String(height)); }, [height]);
-  useEffect(() => { localStorage.setItem(STORAGE_FULLSCREEN, String(fullscreen)); }, [fullscreen]);
-
-  function ensureInstallDir() {
-    if (!installDir.trim()) { setStatus("Выбери папку установки"); setPage("Настройки"); return false; }
-    return true;
-  }
-
-  async function pickInstallDir() {
-    const selected = await invoke<string | null>("pick_install_dir");
-    if (selected) setInstallDir(selected);
-  }
-
-  async function pickZip(setter: (value: string) => void) {
-    const selected = await invoke<string | null>("pick_zip_file");
-    if (selected) setter(selected);
-  }
-
-  async function loginMicrosoft() {
-    setBusy(true);
-    setStatus("Открываю вход Microsoft в системном браузере…");
-    try {
-      const next = await invoke<MicrosoftAuthStatus>("microsoft_login");
-      setAuth(next);
-      setStatus(next.minecraftProfile ? `Minecraft подключён · ${next.minecraftProfile.name}` : "Microsoft вход выполнен");
-    } catch (error) { setStatus(`Ошибка входа: ${String(error)}`); }
-    finally { setBusy(false); }
-  }
-
-  async function logoutMicrosoft() {
-    await invoke("microsoft_logout");
-    setAuth(emptyAuth);
-    setStatus("Microsoft/Minecraft сессия удалена из памяти лаунчера");
-  }
-
-  async function inspectRuntime() {
-    if (!ensureInstallDir()) return null;
-    const next = await invoke<RuntimeCheck>("check_runtime", { installDir: installDir.trim(), customJava: javaPath.trim() || null });
-    setRuntime(next);
-    setStatus(next.ready ? `Runtime готов · Java ${next.java?.version}` : `Runtime не готов · отсутствует ${next.missing.length}`);
-    return next;
-  }
-
-  async function installRuntime() {
-    if (!ensureInstallDir()) return null;
-    setProgress(null);
-    setStatus("Устанавливаю GunGlory Runtime v1…");
-    try {
-      const report = await invoke<RuntimeInstallReport>("install_runtime", { installDir: installDir.trim(), customJava: javaPath.trim() || null });
-      setRuntime(report.runtime);
-      setStatus(`Runtime готов · Minecraft ${report.minecraftVersion} · Forge ${report.forgeVersion}`);
-      return report.runtime;
-    } catch (error) { setStatus(`Ошибка установки runtime: ${String(error)}`); return null; }
-  }
-
-  async function installLocalGgo(showMissing = true) {
-    if (!ensureInstallDir()) return false;
-    if (!localPackageZip.trim() || !localResourcePackZip.trim()) {
-      if (showMissing) { setStatus("Выбери ZIP сборки v29 и ZIP Resource Pack v5"); setPage("Настройки"); }
-      return false;
-    }
-    setStatus("Проверяю и устанавливаю локальную GGO v29…");
-    try {
-      const report = await invoke<LocalInstallReport>("install_local_ggo", { packageZip: localPackageZip.trim(), resourcePackZip: localResourcePackZip.trim(), installDir: installDir.trim() });
-      setStatus(`GGO ${report.version} готова · установлено ${report.installedFiles.length} · уже актуально ${report.skippedFiles.length}${report.resourcePackEnabled ? " · RP включён" : ""}`);
-      return true;
-    } catch (error) { setStatus(`Ошибка локальной установки GGO: ${String(error)}`); return false; }
-  }
-
-  async function checkFiles() {
-    if (!ensureInstallDir() || !manifestUrl.trim()) { setStatus("Manifest пока не задан — локальная v29 проверяется при импорте"); setPage("Настройки"); return; }
-    setBusy(true);
-    try {
-      const next = await invoke<UpdatePlan>("check_game", { manifestUrl: manifestUrl.trim(), installDir: installDir.trim() });
-      setPlan(next);
-      setStatus(next.files.length === 0 ? `Все ${next.checkedFiles} файлов актуальны` : `Нужно обновить ${next.files.length} файлов · ${formatBytes(next.totalBytes)}`);
-    } catch (error) { setStatus(`Ошибка проверки: ${String(error)}`); }
-    finally { setBusy(false); }
-  }
-
-  async function syncFiles(repair = false) {
-    if (!ensureInstallDir()) return false;
-    if (!manifestUrl.trim()) {
-      if (localPackageZip.trim() && localResourcePackZip.trim()) return installLocalGgo(false);
-      setStatus("Manifest URL не задан — использую уже лежащие локально игровые файлы");
-      return true;
-    }
-    setProgress(null); setRuntime(null);
-    try {
-      const report = await invoke<SyncReport>(repair ? "repair_game" : "sync_game", { manifestUrl: manifestUrl.trim(), installDir: installDir.trim() });
-      setPlan(null);
-      setProgress({ stage: "complete", currentFile: "", downloadedBytes: report.downloadedBytes, totalBytes: report.downloadedBytes, speedBytesPerSecond: 0 });
-      return true;
-    } catch (error) { setStatus(`Ошибка обновления: ${String(error)}`); return false; }
-  }
-
-  async function play() {
-    if (!ensureInstallDir()) return;
-    if (!auth.minecraftProfile) { setStatus("Сначала войди в Microsoft/Minecraft"); await loginMicrosoft(); return; }
-    setBusy(true);
-    setStatus("Подготавливаю GunGloryOnline…");
-    try {
-      if (!(await syncFiles(false))) return;
-      let next = await invoke<RuntimeCheck>("check_runtime", { installDir: installDir.trim(), customJava: javaPath.trim() || null });
-      setRuntime(next);
-      if (!next.ready) {
-        setStatus("Runtime отсутствует — устанавливаю автоматически…");
-        const installed = await installRuntime();
-        if (!installed) return;
-        next = installed;
-      }
-      setStatus(`Запускаю GunGloryOnline · ${auth.minecraftProfile.name}…`);
-      const result = await invoke<LaunchResult>("launch_minecraft", { installDir: installDir.trim(), customJava: javaPath.trim() || null, options: launchOptions });
-      setStatus(`Игра запущена · PID ${result.pid} · ${result.profileName}`);
-    } catch (error) { setStatus(`Ошибка запуска: ${String(error)}`); }
-    finally { setBusy(false); }
-  }
-
-  return <main className="shell">
-    <aside className="sidebar"><div className="brandMark">GGO</div><div className="nav">{nav.map((item) => <button key={item} className={page === item ? "navButton active" : "navButton"} onClick={() => setPage(item)}>{item}</button>)}</div><div className="channel">CHANNEL / {info.channel.toUpperCase()}</div></aside>
-    <section className="content">
-      <header className="topbar"><span>GUNGLORYONLINE</span><span>{auth.minecraftProfile ? `MC / ${auth.minecraftProfile.name}` : "MICROSOFT / OFFLINE"}</span><a href="https://t.me/GunGloryOnline" target="_blank" rel="noreferrer">TELEGRAM ↗</a></header>
-      {page === "Главная" && <section className="hero"><div className="heroNoise"/><div className="eyebrow">GUNGLORY RUNTIME v1</div><h1>GUN<br/>GLORY<br/><span>ONLINE</span></h1><p className="version">GGO v29 · Forge 47.4.10 · Java 17</p><div className="playRow"><button className="playButton" disabled={busy} onClick={() => void play()}>{busy ? "ПОДГОТОВКА…" : "ИГРАТЬ"}</button><div className="serverCard"><span className="dot"/><div><small>СЕРВЕР</small><strong>{info.server}</strong></div></div></div><div className="actionsRow"><button className="secondaryButton" disabled={busy} onClick={() => { setBusy(true); void installLocalGgo().finally(() => setBusy(false)); }}>Установить GGO v29</button><button className="secondaryButton" disabled={busy} onClick={() => { setBusy(true); void installRuntime().finally(() => setBusy(false)); }}>Установить runtime</button><button className="secondaryButton" disabled={busy} onClick={() => void inspectRuntime()}>Проверить runtime</button>{auth.authenticated ? <button className="secondaryButton" disabled={busy} onClick={() => void logoutMicrosoft()}>Выйти {auth.minecraftProfile?.name ?? "Microsoft"}</button> : <button className="secondaryButton" disabled={busy} onClick={() => void loginMicrosoft()}>Войти Microsoft</button>}</div>{(busy || progress) && <div className="progressWrap"><div className="progressTrack"><span style={{width:`${progressPercent}%`}}/></div><div className="progressMeta"><span>{progressPercent}% {progress?.currentFile ?? ""}</span><span>{progress?.speedBytesPerSecond ? `${formatBytes(progress.speedBytesPerSecond)}/s` : ""}</span></div></div>}{plan && plan.files.length > 0 && <div className="planHint">К обновлению: {plan.files.length} · {formatBytes(plan.totalBytes)}</div>}{runtime && <div className="newsCard"><small>RUNTIME STATUS</small><strong>{runtime.ready ? "Runtime готов" : "Требуется подготовка"}</strong><p>Java: {runtime.java ? `${runtime.java.version} (${runtime.java.source})` : "Java 17 не найдена"}. Компонентов не хватает: {runtime.missing.length}.</p></div>}</section>}
-      {page === "Новости" && <section className="panel"><p className="eyebrow">НОВОСТИ</p><h2>Тестовый launcher</h2><article><time>17.08.2026</time><strong>Первый устанавливаемый билд</strong><p>Нативный выбор папки и архивов, локальная GGO v29, Runtime v1 и автоматический запуск собраны в один launcher.</p></article></section>}
-      {page === "Настройки" && <section className="panel"><p className="eyebrow">НАСТРОЙКИ</p><h2>Клиент</h2><div className="setting"><span>Runtime</span><b>{info.runtime}</b></div><div className="setting"><span>Minecraft</span><b>{auth.minecraftProfile ? auth.minecraftProfile.name : "Не подключён"}</b></div><label className="field"><span>RAM, MB</span><input type="number" min="1024" max="32768" value={ramMb} onChange={(e)=>setRamMb(Number(e.target.value))}/></label><label className="field"><span>Ширина</span><input type="number" min="640" max="7680" value={width} onChange={(e)=>setWidth(Number(e.target.value))}/></label><label className="field"><span>Высота</span><input type="number" min="480" max="4320" value={height} onChange={(e)=>setHeight(Number(e.target.value))}/></label><label className="field"><span>Fullscreen</span><input type="checkbox" checked={fullscreen} onChange={(e)=>setFullscreen(e.target.checked)}/></label><label className="field"><span>Папка установки</span><div style={{display:"flex",gap:8}}><input style={{flex:1}} value={installDir} onChange={(e)=>setInstallDir(e.target.value)} placeholder="GunGloryOnline game data"/><button type="button" className="secondaryButton" onClick={() => void pickInstallDir()}>Выбрать</button></div></label><label className="field"><span>GGO v29 package ZIP</span><div style={{display:"flex",gap:8}}><input style={{flex:1}} value={localPackageZip} onChange={(e)=>setLocalPackageZip(e.target.value)} placeholder="Выбери архив сборки"/><button type="button" className="secondaryButton" onClick={() => void pickZip(setLocalPackageZip)}>Обзор</button></div></label><label className="field"><span>Resource Pack v5 ZIP</span><div style={{display:"flex",gap:8}}><input style={{flex:1}} value={localResourcePackZip} onChange={(e)=>setLocalResourcePackZip(e.target.value)} placeholder="Выбери архив resource pack"/><button type="button" className="secondaryButton" onClick={() => void pickZip(setLocalResourcePackZip)}>Обзор</button></div></label><label className="field"><span>Java 17 (необязательно)</span><input value={javaPath} onChange={(e)=>setJavaPath(e.target.value)} placeholder="Автопоиск через JAVA_HOME / PATH"/></label><label className="field"><span>Beta manifest URL (необязательно)</span><input value={manifestUrl} onChange={(e)=>setManifestUrl(e.target.value)} placeholder="Позже подключим VDS/CDN"/></label><div className="actionsRow"><button className="secondaryButton" disabled={busy} onClick={() => { setBusy(true); void installLocalGgo().finally(() => setBusy(false)); }}>Проверить и установить v29</button><button className="secondaryButton" disabled={busy || !manifestUrl.trim()} onClick={() => void checkFiles()}>Проверить manifest</button><button className="secondaryButton" disabled={busy || !manifestUrl.trim()} onClick={() => { setBusy(true); void syncFiles(true).finally(() => setBusy(false)); }}>Repair</button></div><p className="muted">Пути можно выбрать системными диалогами. Без manifest URL launcher работает в локальном тестовом режиме; позже те же команды переключатся на VDS/CDN.</p></section>}
-      <footer className="statusbar"><div><span className={busy ? "statusDot busy" : "statusDot"}/><span>{status}</span></div><span>Launcher {info.launcherVersion}</span></footer>
-    </section>
-  </main>;
+  return <main className="appShell"><aside className="rail"><button className="logo" onClick={()=>setPage("home")}>GGO</button><nav>{nav.map(([id,label])=><button key={id} className={page===id?"navItem active":"navItem"} onClick={()=>setPage(id)}><span className={`ico ${id}`}/>{label}</button>)}</nav><div className="railFoot"><span className="betaDot"/>BETA · {info.gameVersion}</div></aside><section className="workspace">
+    <header className="header"><div className="wordmark">GUNGLORY<span>ONLINE</span></div><div className="headerActions"><div className="langSwitch">{(["en","ru","uk"] as Lang[]).map(v=><button className={lang===v?"on":""} onClick={()=>setLang(v)} key={v}>{v.toUpperCase()}</button>)}</div><button className="iconBtn" title={t.openFolder} onClick={()=>void invoke("open_game_folder",{installDir})}>▣</button><button className="iconBtn" title={t.restart} onClick={()=>void invoke("restart_launcher")}>↻</button></div></header>
+    {page==="home"&&<section className="homePage"><div className="aurora a1"/><div className="aurora a2"/><div className="heroCopy"><div className="kicker">GUNGLORY RUNTIME · FORGE 1.20.1</div><h1>GUN<br/>GLORY <em>ONLINE</em></h1><p>{t.latest} · Forge 47.4.10 · Java 17</p></div><div className="launcherDock"><div className="identityBox"><small>{t.player}</small><input value={nickname} placeholder="Player name" onChange={e=>setNickname(e.target.value.slice(0,16))}/>{auth.minecraftProfile?<button className="accountLink" onClick={()=>void logout()}>{auth.minecraftProfile.name} · {t.signOut}</button>:<button className="accountLink" onClick={()=>void login()}>{t.signIn}</button>}</div><button className="bigPlay" disabled={busy} onClick={()=>{if(selectedServer)void launch();else setPage("servers");}}><span>{busy?t.preparing:t.play}</span><small>{selectedServer?SERVER.name:t.serverList}</small></button><div className="dockTools"><button onClick={()=>setPage("servers")}>◉<small>{t.servers}</small></button><button onClick={()=>void invoke("open_game_folder",{installDir})}>▣<small>{t.openFolder}</small></button><button onClick={()=>setPage("settings")}>⚙<small>{t.settings}</small></button></div></div><div className="installCard"><div className="installHead"><div><span className={gameInstalled?"readyPulse":"readyPulse warn"}/><strong>{gameInstalled?t.installed:t.notInstalled}</strong><p>{t.installHint}</p></div><b>{info.gameVersion}</b></div>{!gameInstalled&&<><button className="packagePicker" onClick={()=>void choosePackage()}><span>{packageZip?packageZip.split(/[\\/]/).pop():t.choosePackage}</span><b>+</b></button><button className="installBtn" disabled={busy||!packageZip} onClick={()=>void installGame()}>{t.install}</button></>}<div className="rpNote">◆ {t.requiredRp}</div>{(busy||progress)&&<div className="downloadBox"><div className="downloadTop"><span>{status}</span><b>{percent}%</b></div><div className="downloadTrack"><i style={{width:`${percent}%`}}/></div><div className="downloadMeta"><span>{progress?.currentFile||"GunGloryOnline"}</span><span>{progress?.downloadedBytes?bytes(progress.downloadedBytes):""}</span></div></div>}</div></section>}
+    {page==="servers"&&<section className="page serversPage"><button className="backBtn" onClick={()=>setPage("home")}>← {t.back}</button><div className="pageTitle"><span>MULTIPLAYER</span><h2>{t.serverList}</h2><p>{t.doubleClick}</p></div><div className="serverTable"><button className={selectedServer===SERVER.id?"serverRow selected":"serverRow"} onClick={()=>setSelectedServer(SERVER.id)} onDoubleClick={()=>{setSelectedServer(SERVER.id);setTimeout(()=>void launch(),0)}}><div className="serverAvatar">01</div><div className="serverMain"><strong>{SERVER.name}</strong><span>{SERVER.address}</span></div><div className="serverHealth"><span className={serverReachable===false?"signal bad":"signal"}>▮▮▮</span><strong>{ping!==null?`${ping} ms`:"—"}</strong><small>{serverReachable===false?t.offline:t.online}</small></div></button></div><div className="serverBottom"><button className="softBtn" onClick={()=>void refreshServer()}>↻ {t.refresh}</button><button className="connectBtn" disabled={!selectedServer||busy} onClick={()=>void launch()}>{t.connect} →</button></div></section>}
+    {page==="settings"&&<section className="page settingsPage"><div className="pageTitle"><span>CLIENT</span><h2>{t.settings}</h2><p>Simple settings for GunGloryOnline.</p></div><div className="settingsGrid"><article className="settingCard wide"><div className="settingTop"><div><small>{t.ram}</small><strong>{ramMb<1024?`${ramMb} MB`:`${(ramMb/1024).toFixed(ramMb%1024?1:0)} GB`}</strong></div><span>512 MB steps</span></div><input className="ramSlider" type="range" min={512} max={32768} step={512} value={ramMb} onChange={e=>setRamMb(Number(e.target.value))}/><div className="rangeLabels"><span>512 MB</span><span>8 GB</span><span>16 GB</span><span>32 GB</span></div></article><article className="settingCard"><small>{t.resolution}</small><select value={`${resolution[0]}x${resolution[1]}`} onChange={e=>{const[w,h]=e.target.value.split("x").map(Number);setResolution([w,h]);}}>{RESOLUTIONS.map(([w,h])=><option key={w} value={`${w}x${h}`}>{w} × {h}</option>)}</select></article><article className="settingCard toggleCard"><div><small>{t.fullscreen}</small><strong>{fullscreen?"ON":"OFF"}</strong></div><button className={fullscreen?"switch on":"switch"} onClick={()=>setFullscreen(v=>!v)}><i/></button></article><article className="settingCard wide folderCard"><div><small>{t.gameFolder}</small><strong>{installDir}</strong></div><button className="softBtn" onClick={()=>void chooseFolder()}>{t.openFolder}</button></article><article className="settingCard wide"><small>{t.java}</small><input className="simpleInput" value={javaPath} onChange={e=>setJavaPath(e.target.value)} placeholder={`${t.auto} · JAVA_HOME / PATH`}/></article><article className="settingCard"><small>{t.language}</small><div className="languageCards">{(["en","ru","uk"] as Lang[]).map(v=><button key={v} className={lang===v?"selected":""} onClick={()=>setLang(v)}>{v.toUpperCase()}</button>)}</div></article><article className="settingCard"><small>{t.version}</small><strong>Launcher {info.launcherVersion} · {info.gameVersion}</strong><button className="textAction" onClick={()=>void invoke("restart_launcher")}>↻ {t.restart}</button></article></div></section>}
+    {page==="news"&&<section className="page"><div className="pageTitle"><span>UPDATE</span><h2>{t.news}</h2></div><article className="newsFeature"><b>17 AUG 2026</b><h3>Launcher v0.2</h3><p>{t.newsBody}</p></article></section>}
+    <footer className="statusBar"><div><span className={busy?"statusLight busy":"statusLight"}/><span>{status}</span></div><div>{runtime?.ready?"RUNTIME ✓":"GGO v34"} · Launcher {info.launcherVersion}</div></footer>
+  </section></main>;
 }
