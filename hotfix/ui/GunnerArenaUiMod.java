@@ -32,7 +32,11 @@ public final class GunnerArenaUiMod {
         @SubscribeEvent public static void clientTick(TickEvent.ClientTickEvent event){
             if(event.phase!=TickEvent.Phase.END)return;Minecraft mc=Minecraft.getInstance();
             if(mc.player!=null&&mc.screen==null){
-                while(OPEN_MENU.consumeClick())mc.player.connection.sendCommand("menu");
+                while(OPEN_MENU.consumeClick()){
+                    // M is a client UI action. Do not route it through Brigadier: that caused noisy command errors when auth state refreshed late.
+                    ArenaClientNetwork.requestSnapshot();
+                    mc.setScreen(new MainArenaScreen());
+                }
                 while(GUN_SHOP.consumeClick()){
                     var snap=ClientSnapshotStore.get();boolean fresh=ClientSnapshotStore.fresh(System.currentTimeMillis());
                     if(UiAccessPolicy.canShop(snap,fresh)){ArenaClientNetwork.requestCatalog();ArenaClientNetwork.requestSnapshot();mc.setScreen(new MatchShopScreen());}
