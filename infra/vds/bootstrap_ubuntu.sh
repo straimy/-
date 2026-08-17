@@ -8,7 +8,7 @@ fi
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y ca-certificates curl git ufw openssl
+apt-get install -y ca-certificates curl git ufw openssl unzip
 
 install -m 0755 -d /etc/apt/keyrings
 if [[ ! -f /etc/apt/keyrings/docker.asc ]]; then
@@ -33,6 +33,7 @@ ufw default allow outgoing
 ufw allow 22/tcp comment 'SSH'
 ufw allow 80/tcp comment 'GGO HTTP/ACME'
 ufw allow 443/tcp comment 'GGO HTTPS'
+ufw allow 24842/tcp comment 'GGO game server'
 ufw --force enable
 
 mkdir -p /opt/ggo/{infra,backups}
@@ -40,5 +41,5 @@ chmod 750 /opt/ggo
 
 echo
 printf '%s\n' 'GGO single-node host bootstrap complete.'
-printf '%s\n' 'Next: copy infra/vds contents to /opt/ggo/infra, create .env, then docker compose up -d.'
+printf '%s\n' 'Next: copy infra/vds contents to /opt/ggo/infra and run ./deploy_all.sh.'
 printf '%s\n' 'Do not expose PostgreSQL or Redis ports publicly.'
