@@ -1,0 +1,128 @@
+name: GGO Server Hardening v1
+
+on:
+  push:
+    branches:
+      - server/runtime-hardening-v1
+    paths:
+      - '.github/workflows/ggo-server-hardening-v1.yml'
+      - 'hotfix/GgoAntiCheatTelemetry.java'
+      - 'docs/command-block-migration.md'
+  workflow_dispatch:
+
+env:
+  SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+  FINAL_RP: GunnerArena-ResourcePack-1.20.1-v1.zip
+
+jobs:
+  hardening:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Prepare extractor
+        shell: bash
+        run: |
+          cat >/tmp/extract.py <<'PY'
+          import sys
+          from pathlib import Path
+          wf=Path(sys.argv[1]); wanted=sys.argv[2]; lines=wf.read_text().splitlines()
+          start=next((i for i,l in enumerate(lines) if l.strip()==f'- name: {wanted}'),None)
+          if start is None: raise SystemExit('step not found: '+wanted)
+          run=None
+          for i in range(start+1,len(lines)):
+              if lines[i].startswith('      - name:') or lines[i].startswith('      - uses:'): break
+              if lines[i].strip()=='run: |': run=i+1; break
+          if run is None: raise SystemExit('run block missing: '+wanted)
+          out=[]
+          for i in range(run,len(lines)):
+              l=lines[i]
+              if l.startswith('      - name:') or l.startswith('      - uses:'): break
+              out.append(l[10:] if l.startswith('          ') else l)
+          print('\n'.join(out).rstrip())
+          PY
+
+      - name: Prepare v40 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v40-admin-npc-squad.yml 'Prepare latest source robustly' >/tmp/prepare-v40.sh
+          bash /tmp/prepare-v40.sh
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v40-admin-npc-squad.yml 'Apply v39 inventory and v40 NPC admin' >/tmp/apply-v40.sh
+          bash /tmp/apply-v40.sh
+          test -f ga-build/src/main/java/arena/forge/ArenaRuntime.java
+
+      - name: Apply server hardening v1
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ga-build/src/main/java/arena/forge
+          cp hotfix/GgoAntiCheatTelemetry.java ga-build/src/main/java/arena/forge/GgoAntiCheatTelemetry.java
+          grep -q 'GGO-AC-V1' ga-build/src/main/java/arena/forge/GgoAntiCheatTelemetry.java
+          grep -q 'v1 intentionally does not kick or ban' ga-build/src/main/java/arena/forge/GgoAntiCheatTelemetry.java
+
+      - name: Build Core
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v12.yml 'Bootstrap ForgeGradle and build Core' >/tmp/core.sh
+          (cd ga-build && bash /tmp/core.sh)
+
+      - name: Verify hardening class
+        shell: bash
+        run: |
+          set -euo pipefail
+          CORE="$(find ga-build/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          test -n "$CORE"
+          jar tf "$CORE" | grep -q '^arena/forge/GgoAntiCheatTelemetry.class$'
+          mkdir -p server-hardening/server/mods
+          cp "$CORE" server-hardening/server/mods/gungloryonline-core-0.9.7-v40-server-hardening1.jar
+          sha256sum server-hardening/server/mods/* > server-hardening/SHA256SUMS.txt
+          cat > server-hardening/README.txt <<'EOF'
+          GunGloryOnline Server Hardening v1
+          Conservative server-side anti-cheat telemetry only.
+          No automatic kicks/bans in v1.
+          Command-block migration is documented separately and will be implemented service-by-service.
+          EOF
+
+      - name: Dedicated server smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf ds forge-installer.jar; mkdir ds
+          curl -fL --retry 5 --retry-all-errors -o forge-installer.jar https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-installer.jar
+          java -jar forge-installer.jar --installServer ds >/tmp/forge-install.log 2>&1
+          echo 'eula=true' > ds/eula.txt
+          mkdir -p ds/mods
+          cp server-hardening/server/mods/*.jar ds/mods/
+          cd ds
+          timeout 100s java -Xms512M -Xmx1G @libraries/net/minecraftforge/forge/1.20.1-47.4.10/unix_args.txt nogui > ../dedicated-server-console.log 2>&1 || true
+          cd ..
+          test -f ds/logs/latest.log
+          grep -Fq 'Done (' ds/logs/latest.log
+          ! grep -Eq 'Exception in server tick loop|Failed to start the minecraft server|Duplicate key gunnerarena' ds/logs/latest.log
+
+      - name: Upload server hardening build
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-v40-server-hardening-v1
+          path: server-hardening/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-server-hardening-v1-diagnostics
+          path: |
+            v12-core-build.log
+            dedicated-server-console.log
+            ds/logs/**
+          if-no-files-found: ignore
+          retention-days: 7
