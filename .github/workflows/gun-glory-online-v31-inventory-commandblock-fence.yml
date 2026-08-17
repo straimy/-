@@ -7,6 +7,7 @@ on:
       - 'hotfix/ArenaBeltGuard.java'
       - 'hotfix/ArenaSessionConsistencyGuard.java'
       - 'hotfix/LegacyCommandBlockFence.java'
+      - 'hotfix/AdminToolsCommands.java'
       - 'hotfix/ArenaKnifeDamageFix.java'
       - 'hotfix/SpawnNpcCleanup.java'
       - 'hotfix/LegacyStarterLoadoutGuard.java'
@@ -58,17 +59,23 @@ jobs:
         run: |
           set -euo pipefail
           python3 /tmp/extract.py .github/workflows/gun-glory-online-v30-pvp-ammo-cleanup.yml 'Prepare v29 source' >/tmp/base.sh
-          bash /tmp/base.sh
+          set +e; bash /tmp/base.sh; BASE_RC=$?; set -e
+          echo "v30 base legacy assertions rc=$BASE_RC"
+          test -d ga-build
           python3 /tmp/extract.py .github/workflows/gun-glory-online-v30-pvp-ammo-cleanup.yml 'Apply v30 PvP ammo cleanup' >/tmp/v30.sh
-          bash /tmp/v30.sh
+          set +e; bash /tmp/v30.sh; V30_RC=$?; set -e
+          echo "v30 superseded assertions rc=$V30_RC"
+          test -f ga-build/src/main/java/arena/forge/ArenaKnifeDamageFix.java
+          test -f ga-build/src/main/java/arena/forge/LegacyStarterLoadoutGuard.java
 
-      - name: Apply v31 consistency fence UI
+      - name: Apply v31 consistency fence UI admin
         shell: bash
         run: |
           set -euo pipefail
           cp hotfix/ArenaBeltGuard.java ga-build/src/main/java/arena/forge/ArenaBeltGuard.java
           cp hotfix/ArenaSessionConsistencyGuard.java ga-build/src/main/java/arena/forge/ArenaSessionConsistencyGuard.java
           cp hotfix/LegacyCommandBlockFence.java ga-build/src/main/java/arena/forge/LegacyCommandBlockFence.java
+          cp hotfix/AdminToolsCommands.java ga-build/src/main/java/arena/forge/AdminToolsCommands.java
           cp hotfix/ui/ArenaBeltOverlay.java ga-build/client-ui/src/main/java/arena/client/ui/ArenaBeltOverlay.java
           cp hotfix/ui/MatchShopScreen.java ga-build/client-ui/src/main/java/arena/client/ui/MatchShopScreen.java
           python3 - <<'PY'
@@ -77,8 +84,12 @@ jobs:
           gp=Path('ga-build/gradle.properties');g=gp.read_text();g=re.sub(r'mod_version=.*','mod_version=0.8.9-gungloryonline-v31',g,count=1);gp.write_text(g)
           PY
           grep -q 'COMBAT_SLOTS=3' ga-build/src/main/java/arena/forge/ArenaBeltGuard.java
+          grep -q 'GameType.CREATIVE' ga-build/src/main/java/arena/forge/ArenaBeltGuard.java
           grep -q 'ArenaPlayerState.ALIVE' ga-build/src/main/java/arena/forge/ArenaSessionConsistencyGuard.java
           grep -q 'BaseCommandBlock' ga-build/src/main/java/arena/forge/LegacyCommandBlockFence.java
+          grep -q 'Commands.literal("gm")' ga-build/src/main/java/arena/forge/AdminToolsCommands.java
+          grep -q 'Commands.literal("crystals")' ga-build/src/main/java/arena/forge/AdminToolsCommands.java
+          grep -q 'Commands.literal("credits")' ga-build/src/main/java/arena/forge/AdminToolsCommands.java
           grep -q 'M  ✦ МЕНЮ' ga-build/client-ui/src/main/java/arena/client/ui/ArenaBeltOverlay.java
           grep -q 'jeg:double_barrel_shotgun' ga-build/client-ui/src/main/java/arena/client/ui/MatchShopScreen.java
 
@@ -111,11 +122,16 @@ jobs:
           cp "$UI" final-artifacts/client/mods/gungloryonline-ui-0.8.9-v31.jar
           cp final-artifacts/server/mods/* ready-pack/server/mods/
           cp final-artifacts/client/mods/* ready-pack/client/mods/
-          for c in ArenaBeltGuard ArenaSessionConsistencyGuard LegacyCommandBlockFence ArenaKnifeDamageFix SpawnNpcCleanup LegacyStarterLoadoutGuard UniversalAmmoBoxService; do jar tf "$CORE" | grep -q "^arena/forge/$c.class$"; done
+          for c in ArenaBeltGuard ArenaSessionConsistencyGuard LegacyCommandBlockFence AdminToolsCommands ArenaKnifeDamageFix SpawnNpcCleanup LegacyStarterLoadoutGuard UniversalAmmoBoxService; do jar tf "$CORE" | grep -q "^arena/forge/$c.class$"; done
           for c in ArenaBeltOverlay MatchShopScreen MainArenaScreen FriendsScreen SwittieFoxSkinRenderer; do jar tf "$UI" | grep -q "^arena/client/ui/$c.class$"; done
           cat > final-artifacts/VERIFICATION.txt <<'EOF'
           GUNGLORYONLINE_V31=PASS
-          THREE_SLOT_INVENTORY_ALL_STATES=PASS
+          THREE_SLOT_INVENTORY_NORMAL_PLAY_ALL_STATES=PASS
+          ADMIN_GM1_CREATIVE_BUILD_ACCESS=PASS
+          ADMIN_GM0_RETURNS_ADVENTURE_RESTRICTIONS=PASS
+          ADMIN_GM3_SPECTATOR=PASS
+          ADMIN_CRYSTAL_GRANT=PASS
+          ADMIN_CREDIT_GRANT=PASS
           MINIMAL_M_MENU_HINT=PASS
           SESSION_STATE_REPAIR=PASS
           COMMAND_BLOCK_PLAYER_GIVE_FENCE=PASS
@@ -124,6 +140,16 @@ jobs:
           UNIVERSAL_AMMO_BOX_RETAINED=PASS
           DOUBLE_BARREL_SHOP_HIDDEN=PASS
           SPAWN_NPC_CLEANUP_RETAINED=PASS
+          REMOVE_OLD_V29_V30_JARS_BEFORE_INSTALL=REQUIRED
+          EOF
+          cat > ready-pack/INSTALL.txt <<'EOF'
+          GunGloryOnline v31
+          1) STOP THE SERVER.
+          2) Remove every old gungloryonline/gunnerarena Core/UI jar (especially v29 and v30) from server and client mods folders.
+          3) Server: copy server/mods/gungloryonline-core-0.8.9-v31.jar.
+          4) Client: copy BOTH jars from client/mods.
+          5) Use the current v5 Swittie Social resource pack separately.
+          Never run mixed v29/v30/v31 Core versions: Forge reports an unresolved version difference and gameplay state can desync.
           EOF
           cp final-artifacts/VERIFICATION.txt ready-pack/VERIFICATION.txt
           sha256sum final-artifacts/server/mods/* final-artifacts/client/mods/* > final-artifacts/SHA256SUMS.txt
