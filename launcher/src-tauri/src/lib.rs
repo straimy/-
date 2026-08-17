@@ -3,6 +3,7 @@ mod runtime;
 
 use core::{
     bootstrap::BootstrapInfo,
+    ggo_auth::{self, GgoAuthStatus, GgoSessionStore},
     launcher_update::{self, LauncherUpdateStatus},
     microsoft_auth::{self, MicrosoftLoginResult, MicrosoftSessionStore},
     remote_content::{self, NewsFeed, ServerCatalog},
@@ -239,6 +240,39 @@ async fn microsoft_logout(store: State<'_, MicrosoftSessionStore>) -> Result<(),
 }
 
 #[tauri::command]
+async fn ggo_login(
+    store: State<'_, GgoSessionStore>,
+    api_url: String,
+) -> Result<GgoAuthStatus, String> {
+    let http = updater::client().map_err(|error| error.to_string())?;
+    ggo_auth::login(&http, &api_url, store.inner()).await
+}
+
+#[tauri::command]
+async fn ggo_auth_status(store: State<'_, GgoSessionStore>) -> Result<GgoAuthStatus, String> {
+    Ok(ggo_auth::status(store.inner()).await)
+}
+
+#[tauri::command]
+async fn ggo_logout(
+    store: State<'_, GgoSessionStore>,
+    api_url: String,
+) -> Result<(), String> {
+    let http = updater::client().map_err(|error| error.to_string())?;
+    ggo_auth::logout(&http, &api_url, store.inner()).await
+}
+
+#[tauri::command]
+async fn ggo_set_skin_source(
+    store: State<'_, GgoSessionStore>,
+    api_url: String,
+    source: String,
+) -> Result<GgoAuthStatus, String> {
+    let http = updater::client().map_err(|error| error.to_string())?;
+    ggo_auth::set_skin_source(&http, &api_url, &source, store.inner()).await
+}
+
+#[tauri::command]
 async fn check_game(manifest_url: String, install_dir: String) -> Result<UpdatePlan, String> {
     let http = updater::client().map_err(|error| error.to_string())?;
     let manifest = updater::fetch_manifest(&http, &manifest_url)
@@ -283,6 +317,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(MicrosoftSessionStore::default())
+        .manage(GgoSessionStore::default())
         .invoke_handler(tauri::generate_handler![
             bootstrap_info,
             default_install_dir,
@@ -306,6 +341,10 @@ pub fn run() {
             microsoft_login,
             microsoft_auth_status,
             microsoft_logout,
+            ggo_login,
+            ggo_auth_status,
+            ggo_logout,
+            ggo_set_skin_source,
             check_game,
             sync_game,
             repair_game
