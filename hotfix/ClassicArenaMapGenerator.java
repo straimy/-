@@ -36,7 +36,6 @@ public final class ClassicArenaMapGenerator {
     public static final int HEALTH_CELLS = 4;
     public static final int FLAT_CELLS = TOTAL_CELLS - EMPTY_CELLS - GUN_CELLS - HEALTH_CELLS;
 
-    // Recovered from the original 64 structure-block grid.
     private static final int GRID_MIN_X = 48;
     private static final int GRID_MIN_Z = 48;
     private static final int STRUCTURE_BLOCK_X = 52;
@@ -52,14 +51,7 @@ public final class ClassicArenaMapGenerator {
     public enum State { IDLE, GENERATING, READY, ERROR }
     public enum CellKind { FLAT, EMPTY, GUN, HEALTH }
 
-    public record GenerationSnapshot(
-        State state,
-        int placed,
-        int empty,
-        int guns,
-        int health,
-        String error
-    ) {}
+    public record GenerationSnapshot(State state, int placed, int empty, int guns, int health, String error) {}
 
     private State state = State.IDLE;
     private int placed;
@@ -117,12 +109,6 @@ public final class ClassicArenaMapGenerator {
         return counts.getOrDefault(kind, 0);
     }
 
-    /**
-     * The legacy generator kept item-bearing chunks apart using has_items markers and distance
-     * checks. A random 4x4 parity lattice gives sixteen cells on this 8x8 grid whose row/column
-     * distance is always at least two. We use fourteen of those cells (10 gun + 4 health), so the
-     * recovered quotas are guaranteed without a retry loop or a random greedy failure.
-     */
     private List<CellKind> buildPlan(ServerLevel level) {
         List<CellKind> plan = new ArrayList<>(Collections.nCopies(TOTAL_CELLS, CellKind.FLAT));
 
@@ -192,7 +178,6 @@ public final class ClassicArenaMapGenerator {
         StructureTemplate template = level.getStructureManager().get(templateId)
             .orElseThrow(() -> new IllegalStateException("missing Classic Arena template " + templateId));
 
-        // These four offsets are recovered directly from the legacy command-block generator.
         int offsetX;
         int offsetZ;
         switch (rotation) {
@@ -214,11 +199,6 @@ public final class ClassicArenaMapGenerator {
         if (!placed) throw new IllegalStateException("template placement returned false for " + templateId + " at " + origin);
     }
 
-    /**
-     * Legacy command graph assigned the ten random ammo markers as 4× gun_1, 3× gun_2, 3× gun_3.
-     * The templates themselves only contain the semantic random_gun_ammo marker, so this assignment
-     * now happens directly after placement and no scoreboard/tag command chain is needed.
-     */
     private static void assignAmmoSlots(ServerLevel level) {
         List<Marker> markers = new ArrayList<>(level.getEntities(EntityType.MARKER, ARENA_ENTITIES,
             marker -> marker.getTags().contains("random_gun_ammo")));
@@ -240,6 +220,7 @@ public final class ClassicArenaMapGenerator {
             return tags.contains("cg_random_chunk")
                 || tags.contains("item_spawner")
                 || tags.contains("has_items")
+                || tags.contains("respawn_point")
                 || tags.contains("small_health_orb")
                 || tags.contains("random_gun_ammo")
                 || tags.contains("gun_1_ammo")
