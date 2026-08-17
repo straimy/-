@@ -6,10 +6,12 @@ on:
       - main
     paths:
       - 'launcher/**'
+      - 'infra/vds/**'
       - '.github/workflows/ggo-launcher-ci.yml'
   pull_request:
     paths:
       - 'launcher/**'
+      - 'infra/vds/**'
       - '.github/workflows/ggo-launcher-ci.yml'
   workflow_dispatch:
 
@@ -26,6 +28,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Validate VDS publisher
+        working-directory: infra/vds
+        run: |
+          python3 -m py_compile publish_release.py
+          GGO_HOST=updates.example.com docker compose -f docker-compose.yml config >/dev/null
 
       - name: Install Tauri Linux prerequisites
         run: |
