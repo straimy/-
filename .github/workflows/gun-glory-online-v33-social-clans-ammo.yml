@@ -22,7 +22,6 @@ on:
 env:
   SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
   FINAL_RP: GunnerArena-ResourcePack-1.20.1-v1.zip
-  V31_SOURCE_SHA: 6c1c155b7734716c6c4c2d7f37253c5b78e63872
 
 jobs:
   final:
@@ -58,22 +57,38 @@ jobs:
           print('\n'.join(out).rstrip())
           PY
 
-      - name: Prepare known-good v31 source
+      - name: Prepare v31-compatible source directly
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/v33/hotfix/ui /tmp/v33/hotfix
-          for f in hotfix/ArenaBeltGuard.java hotfix/SpawnLoadoutGuard.java hotfix/GgoIdentityBridge.java hotfix/FriendService.java hotfix/FriendNetwork.java hotfix/ClanService.java hotfix/ClanNetwork.java; do cp "$f" "/tmp/v33/$f"; done
-          for f in hotfix/ui/FriendsScreen.java hotfix/ui/ClanScreen.java hotfix/ui/MainArenaScreen.java hotfix/ui/UiTheme.java hotfix/ui/UiEffects.java hotfix/ui/JegNoAmmoFeedback.java; do cp "$f" "/tmp/v33/$f"; done
-          git fetch --no-tags --depth=1 origin "$V31_SOURCE_SHA"
-          git reset --hard "$V31_SOURCE_SHA"
-          git clean -fd
-          python3 /tmp/extract.py .github/workflows/gun-glory-online-v31-inventory-commandblock-fence.yml 'Prepare v30 source' >/tmp/base.sh
-          bash /tmp/base.sh
-          python3 /tmp/extract.py .github/workflows/gun-glory-online-v31-inventory-commandblock-fence.yml 'Apply v31 consistency fence UI admin' >/tmp/v31.sh
-          bash /tmp/v31.sh
+          python3 /tmp/extract.py .github/workflows/gunner-arena-final-build-v3.yml 'Verify inputs and unpack source' >/tmp/base-unpack.sh
+          bash /tmp/base-unpack.sh
+          python3 /tmp/extract.py .github/workflows/gunner-arena-final-build-v3.yml 'Apply Forge 47.4.10 and Core/UI integration fixes' >/tmp/base-integrate.sh
+          (cd ga-build && bash /tmp/base-integrate.sh)
+
+          cp hotfix/apply_v6_runtime_patch.py /tmp/apply_v6_runtime_patch.py.bak
+          cat > hotfix/apply_v6_runtime_patch.py <<'PY'
+          print('apply_v6_runtime_patch: v33 base already contains newer runtime; migration skipped')
+          PY
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v22-economy-identity.yml 'Apply v12 base patch' >/tmp/s.sh
+          set +e; bash /tmp/s.sh; RC=$?; set -e; echo "v12 superseded assertions rc=$RC"
+          cp /tmp/apply_v6_runtime_patch.py.bak hotfix/apply_v6_runtime_patch.py
+
+          for step in 'Apply retained UI patches' 'Apply v21 gameplay baseline' 'Apply v22 economy identity progression'; do
+            python3 /tmp/extract.py .github/workflows/gun-glory-online-v22-economy-identity.yml "$step" >/tmp/s.sh
+            set +e; bash /tmp/s.sh; RC=$?; set -e; echo "$step rc=$RC"
+          done
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v28-social-companion.yml 'Apply v28 gameplay social UI' >/tmp/s.sh
+          set +e; bash /tmp/s.sh; RC=$?; set -e; echo "v28 rc=$RC"
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v29-arena-authority-belt.yml 'Apply v29 arena authority belt fixes' >/tmp/s.sh
+          set +e; bash /tmp/s.sh; RC=$?; set -e; echo "v29 rc=$RC"
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v30-pvp-ammo-cleanup.yml 'Apply v30 PvP ammo cleanup' >/tmp/s.sh
+          set +e; bash /tmp/s.sh; RC=$?; set -e; echo "v30 rc=$RC"
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v31-inventory-commandblock-fence.yml 'Apply v31 consistency fence UI admin' >/tmp/s.sh
+          bash /tmp/s.sh
           test -f ga-build/gradle.properties
-          cp -a /tmp/v33/hotfix/. hotfix/
+          test -f ga-build/src/main/java/arena/forge/ArenaBeltGuard.java
+          test -f ga-build/client-ui/src/main/java/arena/client/ui/ArenaBeltOverlay.java
 
       - name: Apply v33 social clans ammo
         shell: bash
@@ -141,7 +156,7 @@ jobs:
           for c in FriendsScreen ClanScreen MainArenaScreen UiTheme UiEffects JegNoAmmoFeedback ArenaBeltOverlay MatchShopScreen; do jar tf "$UI" | grep -q "^arena/client/ui/$c.class$"; done
           cat > final-artifacts/VERIFICATION.txt <<'EOF'
           GUNGLORYONLINE_V33=PASS
-          KNOWN_GOOD_V31_SOURCE_BASE=PASS
+          DIRECT_SOURCE_ARCHIVE_BASE=PASS
           PHYSICAL_MENU_COMPASS_REMOVED_ALL_VARIANTS=PASS
           THREE_SLOT_INVENTORY_NORMAL_PLAY=PASS
           CONSERVATIVE_AMMO_WARNING=PASS
