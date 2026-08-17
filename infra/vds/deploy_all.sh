@@ -18,11 +18,16 @@ if [[ ! -f .env ]]; then
   echo "Generated production .env secrets."
 fi
 
-chmod +x bootstrap_ubuntu.sh deploy_all.sh game-server/run.sh 2>/dev/null || true
+set -a
+# shellcheck disable=SC1091
+source .env
+set +a
+
+chmod +x bootstrap_ubuntu.sh deploy_all.sh backup_now.sh health_check.sh game-server/run.sh 2>/dev/null || true
 mkdir -p public site game-server/mods game-server/config
 
-# Validate core services before touching running containers.
-docker compose --profile backend config >/dev/null
+# Validate every configured profile before touching running containers.
+docker compose --profile backend --profile game config >/dev/null
 
 echo "Starting GGO edge + account backend..."
 docker compose --profile backend up -d --build
@@ -33,7 +38,7 @@ if [[ -f game-server/world/level.dat ]]; then world_ready=true; fi
 
 if [[ "$core_count" == "1" && "$world_ready" == "true" ]]; then
   echo "Final Core + world detected; starting game server on this VDS..."
-  docker compose --profile game up -d game-server
+  docker compose --profile game up -d --build game-server
 else
   echo "Game server not started yet: requires exactly one Core jar and game-server/world/level.dat."
 fi
@@ -44,6 +49,10 @@ docker compose --profile backend --profile game ps || true
 
 echo
 echo "Public endpoints:"
-echo "  https://ggo.kvicloud.ru"
-echo "  https://updates.ggo.kvicloud.ru"
-echo "  play.ggo.kvicloud.ru:${GGO_GAME_PORT:-24842} (when game world is installed)"
+echo "  https://${GGO_SITE_HOST:-ggo.kvicloud.ru}"
+echo "  https://${GGO_UPDATES_HOST:-updates.ggo.kvicloud.ru}"
+echo "  ${GGO_GAME_HOST:-play.ggo.kvicloud.ru}:${GGO_GAME_PORT:-24842} (when game world is installed)"
+
+echo
+echo "Waiting for public readiness..."
+./health_check.sh
