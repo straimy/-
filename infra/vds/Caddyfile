@@ -1,6 +1,18 @@
-{$GGO_HOST} {
+{$GGO_SITE_HOST} {
     encode zstd gzip
-    root * /srv/ggo/public
+    root * /srv/ggo/site
+    header {
+        X-Content-Type-Options nosniff
+        Referrer-Policy strict-origin-when-cross-origin
+        X-Frame-Options DENY
+    }
+    try_files {path} /index.html
+    file_server
+}
+
+{$GGO_UPDATES_HOST} {
+    encode zstd gzip
+    root * /srv/ggo/updates
 
     @manifest path /manifests/*
     header @manifest Cache-Control "no-cache, no-store, must-revalidate"
