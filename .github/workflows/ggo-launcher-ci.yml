@@ -127,6 +127,8 @@ jobs:
         run: npm install
 
       - name: Build Tauri test bundle
+        env:
+          GGO_CONTENT_BASE_URL: ${{ vars.GGO_CONTENT_BASE_URL }}
         run: npm run tauri build -- --bundles ${{ matrix.bundle }}
 
       - name: Upload test bundle
