@@ -4,10 +4,12 @@ mod runtime;
 use core::{
     bootstrap::BootstrapInfo,
     microsoft_auth::{self, MicrosoftLoginResult, MicrosoftSessionStore},
+    remote_content::{self, NewsFeed, ServerCatalog},
     updater::{self, SyncReport, UpdatePlan},
 };
 use runtime::{
     ggo_local_install::{self, LocalInstallReport},
+    ggo_remote_install,
     minecraft::{self, JavaRuntimeInfo, LaunchPreparation, RuntimeCheck},
     minecraft_install::{self, RuntimeInstallReport},
     minecraft_launch::{self, LaunchCommandPreview, LaunchOptions, LaunchResult},
@@ -86,6 +88,22 @@ async fn ping_server(address: String) -> Result<u128, String> {
         .map_err(|_| "timeout".to_string())?
         .map_err(|error| error.to_string())?;
     Ok(started.elapsed().as_millis())
+}
+
+#[tauri::command]
+async fn fetch_server_catalog(url: String) -> Result<ServerCatalog, String> {
+    let http = updater::client().map_err(|error| error.to_string())?;
+    remote_content::fetch_servers(&http, &url)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn fetch_news_feed(url: String) -> Result<NewsFeed, String> {
+    let http = updater::client().map_err(|error| error.to_string())?;
+    remote_content::fetch_news(&http, &url)
+        .await
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -226,9 +244,12 @@ async fn sync_game(
     manifest_url: String,
     install_dir: String,
 ) -> Result<SyncReport, String> {
-    updater::sync(&app, &manifest_url, &PathBuf::from(install_dir), false)
+    let root = PathBuf::from(&install_dir);
+    let report = updater::sync(&app, &manifest_url, &root, false)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+    ggo_remote_install::finalize_remote_install(&root).map_err(|error| error.to_string())?;
+    Ok(report)
 }
 
 #[tauri::command]
@@ -237,9 +258,12 @@ async fn repair_game(
     manifest_url: String,
     install_dir: String,
 ) -> Result<SyncReport, String> {
-    updater::sync(&app, &manifest_url, &PathBuf::from(install_dir), true)
+    let root = PathBuf::from(&install_dir);
+    let report = updater::sync(&app, &manifest_url, &root, true)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+    ggo_remote_install::finalize_remote_install(&root).map_err(|error| error.to_string())?;
+    Ok(report)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -256,6 +280,8 @@ pub fn run() {
             restart_launcher,
             local_game_installed,
             ping_server,
+            fetch_server_catalog,
+            fetch_news_feed,
             detect_java,
             check_runtime,
             prepare_launch,
