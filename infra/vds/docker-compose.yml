@@ -1,19 +1,66 @@
 services:
-  ggo-content:
+  ggo-edge:
     image: caddy:2-alpine
-    container_name: ggo-content
+    container_name: ggo-edge
     restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
     environment:
-      GGO_HOST: ${GGO_HOST}
+      GGO_SITE_HOST: ${GGO_SITE_HOST}
+      GGO_UPDATES_HOST: ${GGO_UPDATES_HOST}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./public:/srv/ggo/public:ro
+      - ./public:/srv/ggo/updates:ro
+      - ./site:/srv/ggo/site:ro
       - caddy_data:/data
       - caddy_config:/config
+    networks:
+      - edge
+    mem_limit: 384m
+    cpus: 0.50
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: ggo-postgres
+    restart: unless-stopped
+    profiles: ["backend"]
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ggo}
+      POSTGRES_USER: ${POSTGRES_USER:-ggo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - backend
+    mem_limit: 768m
+    cpus: 0.75
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ggo} -d ${POSTGRES_DB:-ggo}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: ggo-redis
+    restart: unless-stopped
+    profiles: ["backend"]
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "192mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - backend
+    mem_limit: 256m
+    cpus: 0.25
+
+networks:
+  edge:
+  backend:
+    internal: true
 
 volumes:
   caddy_data:
   caddy_config:
+  postgres_data:
+  redis_data:
