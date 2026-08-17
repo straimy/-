@@ -86,7 +86,7 @@ jobs:
           grep -q 'COMBAT_SLOTS=3' ga-build/src/main/java/arena/forge/ArenaBeltGuard.java
           grep -q 'GameType.CREATIVE' ga-build/src/main/java/arena/forge/ArenaBeltGuard.java
           grep -q 'ArenaPlayerState.ALIVE' ga-build/src/main/java/arena/forge/ArenaSessionConsistencyGuard.java
-          grep -q 'BaseCommandBlock' ga-build/src/main/java/arena/forge/LegacyCommandBlockFence.java
+          grep -q 'Blocks.COMMAND_BLOCK' ga-build/src/main/java/arena/forge/LegacyCommandBlockFence.java
           grep -q 'Commands.literal("gm")' ga-build/src/main/java/arena/forge/AdminToolsCommands.java
           grep -q 'Commands.literal("crystals")' ga-build/src/main/java/arena/forge/AdminToolsCommands.java
           grep -q 'Commands.literal("credits")' ga-build/src/main/java/arena/forge/AdminToolsCommands.java
