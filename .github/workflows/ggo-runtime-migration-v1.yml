@@ -10,6 +10,7 @@ on:
       - 'hotfix/ui/GgoPauseScreen.java'
       - 'hotfix/ui/GgoVanillaScreenGuard.java'
       - 'hotfix/ui/GgoConnectionOverlay.java'
+      - 'hotfix/ui/GgoDisconnectedScreen.java'
       - 'docs/runtime-migration-roadmap.md'
   workflow_dispatch:
 
@@ -70,10 +71,12 @@ jobs:
           cp hotfix/ui/GgoPauseScreen.java "$UI_DIR/GgoPauseScreen.java"
           cp hotfix/ui/GgoVanillaScreenGuard.java "$UI_DIR/GgoVanillaScreenGuard.java"
           cp hotfix/ui/GgoConnectionOverlay.java "$UI_DIR/GgoConnectionOverlay.java"
+          cp hotfix/ui/GgoDisconnectedScreen.java "$UI_DIR/GgoDisconnectedScreen.java"
           grep -q 'GUNGLORY RUNTIME v1' "$UI_DIR/GgoTitleScreen.java"
           grep -q 'BACK TO GAME' "$UI_DIR/GgoPauseScreen.java"
-          grep -q 'ScreenEvent.Opening' "$UI_DIR/GgoVanillaScreenGuard.java"
+          grep -q 'DisconnectedScreen' "$UI_DIR/GgoVanillaScreenGuard.java"
           grep -q 'CONNECTING TO GUNGLORY ONLINE' "$UI_DIR/GgoConnectionOverlay.java"
+          grep -q 'CONNECTION LOST' "$UI_DIR/GgoDisconnectedScreen.java"
 
       - name: Build Core dependency
         shell: bash
@@ -96,7 +99,7 @@ jobs:
           CORE="$(find ga-build/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
           UI="$(find ga-build/client-ui/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
           test -n "$CORE"; test -n "$UI"
-          for c in GgoTitleScreen GgoPauseScreen GgoVanillaScreenGuard GgoConnectionOverlay; do
+          for c in GgoTitleScreen GgoPauseScreen GgoVanillaScreenGuard GgoConnectionOverlay GgoDisconnectedScreen; do
             jar tf "$UI" | grep -q "^arena/client/ui/$c.class$"
           done
           mkdir -p runtime-migration/client/mods runtime-migration/server/mods
@@ -106,7 +109,7 @@ jobs:
           cat > runtime-migration/README.txt <<'EOF'
           GunGloryOnline Runtime Migration v1
           Client-only shell experiment based on v40.
-          Replaces vanilla Title and Pause screens with GGO-owned screens.
+          Replaces vanilla Title, Pause and Disconnected screens with GGO-owned screens.
           Covers vanilla connecting/receiving screens with a GGO loading presentation while Forge networking remains intact.
           Server Core behavior is unchanged.
           EOF
