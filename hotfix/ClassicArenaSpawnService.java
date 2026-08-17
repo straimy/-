@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
@@ -23,7 +22,7 @@ import net.minecraftforge.fml.common.Mod;
  *
  * Replaces the legacy respawn_ticks scoreboard, locked marker tags and random command teleports.
  * A respawn waits the recovered 60 ticks, prefers markers at least 32 blocks from another active
- * Classic player, and falls back to the marker with the greatest nearest-enemy distance.
+ * Classic participant, and falls back to the marker with the greatest nearest-opponent distance.
  */
 @Mod.EventBusSubscriber(modid = "gunnerarena", bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class ClassicArenaSpawnService {
@@ -43,7 +42,7 @@ public final class ClassicArenaSpawnService {
     @SubscribeEvent
     public static void respawn(PlayerEvent.PlayerRespawnEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer player)) return;
-        if (!"classic".equals(GgoGameModeRegistry.selectedMode(player))) return;
+        if (!ClassicArenaMatchService.isParticipant(player)) return;
         MinecraftServer server = player.getServer();
         if (server == null) return;
 
@@ -62,7 +61,7 @@ public final class ClassicArenaSpawnService {
 
         for (Map.Entry<UUID, Long> entry : List.copyOf(READY_AT.entrySet())) {
             ServerPlayer player = server.getPlayerList().getPlayer(entry.getKey());
-            if (player == null || !"classic".equals(GgoGameModeRegistry.selectedMode(player))) {
+            if (player == null || !ClassicArenaMatchService.isParticipant(player)) {
                 done.add(entry.getKey());
                 continue;
             }
@@ -100,7 +99,7 @@ public final class ClassicArenaSpawnService {
         List<ServerPlayer> active = new ArrayList<>();
         for (ServerPlayer player : level.players()) {
             if (player == respawning || !player.isAlive()) continue;
-            if (!"classic".equals(GgoGameModeRegistry.selectedMode(player))) continue;
+            if (!ClassicArenaMatchService.isParticipant(player)) continue;
             active.add(player);
         }
         if (active.isEmpty()) return markers.get(level.getRandom().nextInt(markers.size()));
