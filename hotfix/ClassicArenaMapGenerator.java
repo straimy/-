@@ -9,8 +9,8 @@ import java.util.Set;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.Marker;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.Mirror;
@@ -214,7 +214,7 @@ public final class ClassicArenaMapGenerator {
     }
 
     private static void cleanupLegacyEntities(ServerLevel level) {
-        List<Entity> entities = level.getEntities(EntityType.MARKER, ARENA_ENTITIES, entity -> {
+        List<Marker> entities = level.getEntities(EntityType.MARKER, ARENA_ENTITIES, entity -> {
             Set<String> tags = entity.getTags();
             return tags.contains("cg_random_chunk")
                 || tags.contains("item_spawner")
@@ -225,7 +225,7 @@ public final class ClassicArenaMapGenerator {
                 || tags.contains("gun_2_ammo")
                 || tags.contains("gun_3_ammo");
         });
-        for (Entity entity : entities) entity.discard();
+        for (Marker entity : entities) entity.discard();
     }
 
     private static <T> void shuffle(ServerLevel level, List<T> values) {
