@@ -1,0 +1,187 @@
+name: GunGloryOnline v33 Social Clans Ammo
+
+on:
+  push:
+    paths:
+      - '.github/workflows/gun-glory-online-v33-social-clans-ammo.yml'
+      - 'hotfix/GgoIdentityBridge.java'
+      - 'hotfix/FriendService.java'
+      - 'hotfix/FriendNetwork.java'
+      - 'hotfix/ClanService.java'
+      - 'hotfix/ClanNetwork.java'
+      - 'hotfix/ui/FriendsScreen.java'
+      - 'hotfix/ui/ClanScreen.java'
+      - 'hotfix/ui/MainArenaScreen.java'
+      - 'hotfix/ui/UiTheme.java'
+      - 'hotfix/ui/JegNoAmmoFeedback.java'
+  workflow_dispatch:
+
+env:
+  SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+  FINAL_RP: GunnerArena-ResourcePack-1.20.1-v1.zip
+
+jobs:
+  final:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Prepare extractor
+        shell: bash
+        run: |
+          cat >/tmp/extract.py <<'PY'
+          import sys
+          from pathlib import Path
+          wf=Path(sys.argv[1]); wanted=sys.argv[2]
+          lines=wf.read_text().splitlines()
+          start=next((i for i,l in enumerate(lines) if l.strip()==f'- name: {wanted}'),None)
+          if start is None: raise SystemExit('step not found: '+wanted)
+          run=None
+          for i in range(start+1,len(lines)):
+              if lines[i].startswith('      - name:') or lines[i].startswith('      - uses:'): break
+              if lines[i].strip()=='run: |': run=i+1; break
+          if run is None: raise SystemExit('run block missing: '+wanted)
+          out=[]
+          for i in range(run,len(lines)):
+              l=lines[i]
+              if l.startswith('      - name:') or l.startswith('      - uses:'): break
+              out.append(l[10:] if l.startswith('          ') else l)
+          print('\n'.join(out).rstrip())
+          PY
+
+      - name: Prepare v31 source natively
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v31-inventory-commandblock-fence.yml 'Prepare v30 source' >/tmp/base.sh
+          bash /tmp/base.sh
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v31-inventory-commandblock-fence.yml 'Apply v31 consistency fence UI admin' >/tmp/v31.sh
+          bash /tmp/v31.sh
+          test -f ga-build/gradle.properties
+
+      - name: Apply v33 social clans ammo
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ga-build/src/main/java/arena/forge ga-build/client-ui/src/main/java/arena/client/ui
+          cp hotfix/GgoIdentityBridge.java ga-build/src/main/java/arena/forge/GgoIdentityBridge.java
+          cp hotfix/FriendService.java ga-build/src/main/java/arena/forge/FriendService.java
+          cp hotfix/FriendNetwork.java ga-build/src/main/java/arena/forge/FriendNetwork.java
+          cp hotfix/ClanService.java ga-build/src/main/java/arena/forge/ClanService.java
+          cp hotfix/ClanNetwork.java ga-build/src/main/java/arena/forge/ClanNetwork.java
+          cp hotfix/ui/FriendsScreen.java ga-build/client-ui/src/main/java/arena/client/ui/FriendsScreen.java
+          cp hotfix/ui/ClanScreen.java ga-build/client-ui/src/main/java/arena/client/ui/ClanScreen.java
+          cp hotfix/ui/MainArenaScreen.java ga-build/client-ui/src/main/java/arena/client/ui/MainArenaScreen.java
+          cp hotfix/ui/UiTheme.java ga-build/client-ui/src/main/java/arena/client/ui/UiTheme.java
+          cp hotfix/ui/JegNoAmmoFeedback.java ga-build/client-ui/src/main/java/arena/client/ui/JegNoAmmoFeedback.java
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          gp=Path('ga-build/gradle.properties');g=gp.read_text();g=re.sub(r'mod_version=.*','mod_version=0.9.0-gungloryonline-v33',g,count=1);gp.write_text(g)
+          PY
+          grep -q 'bootstrap.minecraft.' ga-build/src/main/java/arena/forge/GgoIdentityBridge.java
+          ! grep -q 'UUID.fromString(token.trim())' ga-build/src/main/java/arena/forge/GgoIdentityBridge.java
+          grep -q 'CREATE_COST=500' ga-build/src/main/java/arena/forge/ClanService.java
+          grep -q 'DEPUTY' ga-build/src/main/java/arena/forge/ClanService.java
+          grep -q 'reserve>0||loaded<0' ga-build/client-ui/src/main/java/arena/client/ui/JegNoAmmoFeedback.java
+          grep -q 'КЛАНЫ' ga-build/client-ui/src/main/java/arena/client/ui/MainArenaScreen.java
+
+      - name: Build Core
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v12.yml 'Bootstrap ForgeGradle and build Core' >/tmp/core.sh
+          for n in 1 2 3; do (cd ga-build && bash /tmp/core.sh) && exit 0; sleep $((n*5)); done
+          exit 1
+
+      - name: Build UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v12.yml 'Build UI against real Core' >/tmp/ui.sh
+          for n in 1 2 3; do (cd ga-build && bash /tmp/ui.sh) && exit 0; sleep $((n*5)); done
+          exit 1
+
+      - name: Prepare v33 payloads
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf final-artifacts ready-pack
+          mkdir -p final-artifacts/server/mods final-artifacts/client/mods ready-pack/server/mods ready-pack/client/mods
+          CORE="$(find ga-build/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          UI="$(find ga-build/client-ui/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          cp "$CORE" final-artifacts/server/mods/gungloryonline-core-0.9.0-v33.jar
+          cp "$CORE" final-artifacts/client/mods/gungloryonline-core-0.9.0-v33.jar
+          cp "$UI" final-artifacts/client/mods/gungloryonline-ui-0.9.0-v33.jar
+          cp final-artifacts/server/mods/* ready-pack/server/mods/
+          cp final-artifacts/client/mods/* ready-pack/client/mods/
+          for c in GgoIdentityBridge FriendService FriendNetwork ClanService ClanNetwork ArenaBeltGuard ArenaSessionConsistencyGuard LegacyCommandBlockFence; do jar tf "$CORE" | grep -q "^arena/forge/$c.class$"; done
+          for c in FriendsScreen ClanScreen MainArenaScreen UiTheme JegNoAmmoFeedback ArenaBeltOverlay MatchShopScreen; do jar tf "$UI" | grep -q "^arena/client/ui/$c.class$"; done
+          cat > final-artifacts/VERIFICATION.txt <<'EOF'
+          GUNGLORYONLINE_V33=PASS
+          CONSERVATIVE_AMMO_WARNING=PASS
+          MAGAZINE_OR_RESERVE_SUPPRESSES_NO_AMMO=PASS
+          FRIEND_REQUESTS_BIDIRECTIONAL=PASS
+          FRIEND_ACCEPT_BOTH_LISTS=PASS
+          GGO_PUBLIC_ID_ONLY_LOOKUP=PASS
+          RAW_MINECRAFT_UUID_SOCIAL_LOOKUP_DISABLED=PASS
+          MINECRAFT_UUID_BOOTSTRAP_ONLY_UNTIL_LAUNCHER_AUTH=DOCUMENTED
+          CLAN_CREATE_COST_500_CRYSTALS=PASS
+          CLAN_SEARCH_FILTERS=PASS
+          CLAN_JOIN_PRICE_AND_TREASURY=PASS
+          CLAN_ROLES_OWNER_DEPUTY_VETERAN_MEMBER=PASS
+          CLAN_MEMBER_MANAGEMENT=PASS
+          CLAN_UI=PASS
+          EOF
+          cp final-artifacts/VERIFICATION.txt ready-pack/VERIFICATION.txt
+          sha256sum final-artifacts/server/mods/* final-artifacts/client/mods/* > final-artifacts/SHA256SUMS.txt
+          cp final-artifacts/SHA256SUMS.txt ready-pack/SHA256SUMS.txt
+          (cd ready-pack && zip -qr ../GunGloryOnline-v33-READY-PACK.zip .)
+
+      - name: Dedicated server smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf ds forge-installer.jar; mkdir ds
+          curl -fL --retry 5 --retry-all-errors -o forge-installer.jar https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-installer.jar
+          java -jar forge-installer.jar --installServer ds >/tmp/forge-install.log 2>&1
+          echo 'eula=true' > ds/eula.txt; mkdir -p ds/mods
+          cp final-artifacts/server/mods/gungloryonline-core-0.9.0-v33.jar ds/mods/
+          cd ds; timeout 100s java -Xms512M -Xmx1G @libraries/net/minecraftforge/forge/1.20.1-47.4.10/unix_args.txt nogui > ../dedicated-server-console.log 2>&1 || true; cd ..
+          test -f ds/logs/latest.log
+          grep -Fq 'Done (' ds/logs/latest.log
+          ! grep -Eq 'Exception in server tick loop|Failed to start the minecraft server|Duplicate key gunnerarena:ui|Duplicate key gunnerarena:friends|Duplicate key gunnerarena:clans' ds/logs/latest.log
+
+      - name: Upload v33 build
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-v33-build
+          path: final-artifacts/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload v33 ready pack
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-v33-ready-pack
+          path: GunGloryOnline-v33-READY-PACK.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-v33-diagnostics
+          path: |
+            v12-core-build.log
+            v12-ui-build.log
+            dedicated-server-console.log
+            ds/logs/**
+          if-no-files-found: ignore
+          retention-days: 7
