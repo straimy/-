@@ -26,12 +26,15 @@ public final class GgoVanillaScreenGuard {
             return;
         }
         if (event.getNewScreen() instanceof DisconnectedScreen) {
+            GgoNetworkSkinRuntime.clear();
             event.setNewScreen(new GgoDisconnectedScreen(Component.literal("The server connection was closed")));
         }
     }
 
     @SubscribeEvent
     public static void onClientTick(TickEvent.ClientTickEvent event) {
-        if (event.phase == TickEvent.Phase.END) GgoSkinRuntime.tick();
+        if (event.phase != TickEvent.Phase.END) return;
+        GgoSkinRuntime.tick();
+        GgoNetworkSkinRuntime.tick();
     }
 }
