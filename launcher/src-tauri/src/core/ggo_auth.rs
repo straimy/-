@@ -21,6 +21,14 @@ pub struct GgoAuthStatus {
     pub profile: Option<GgoProfile>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MinecraftLinkResult {
+    pub linked: bool,
+    pub provider: String,
+    pub minecraft_uuid: String,
+    pub minecraft_name: String,
+}
+
 #[derive(Debug, Clone)]
 pub struct GgoSession {
     pub access_token: String,
@@ -83,6 +91,11 @@ struct MeResponse {
 #[derive(Debug, Serialize)]
 struct SkinSourceRequest<'a> {
     source: &'a str,
+}
+
+#[derive(Debug, Serialize)]
+struct MinecraftLinkRequest<'a> {
+    minecraft_access_token: &'a str,
 }
 
 fn pkce_verifier() -> String {
@@ -163,9 +176,6 @@ pub async fn login(http: &Client, api_url: &str, store: &GgoSessionStore) -> Res
             .await
             .map_err(|error| error.to_string())?;
 
-        // 428 is used by our device-flow API while the browser approval is still pending.
-        // Compare the numeric code instead of relying on an http/reqwest named constant,
-        // because older dependency versions do not expose PRECONDITION_REQUIRED.
         if response.status().as_u16() == 428 {
             continue;
         }
@@ -252,4 +262,32 @@ pub async fn set_skin_source(
         authenticated: true,
         profile: Some(profile),
     })
+}
+
+pub async fn link_minecraft(
+    http: &Client,
+    api_url: &str,
+    minecraft_access_token: &str,
+    store: &GgoSessionStore,
+) -> Result<MinecraftLinkResult, String> {
+    let session = store
+        .snapshot()
+        .await
+        .ok_or_else(|| "GGO account is not authenticated".to_string())?;
+    let response = http
+        .put(endpoint(api_url, "/me/identities/minecraft"))
+        .bearer_auth(&session.access_token)
+        .json(&MinecraftLinkRequest { minecraft_access_token })
+        .send()
+        .await
+        .map_err(|error| error.to_string())?;
+    if !response.status().is_success() {
+        let status = response.status();
+        let detail = response.text().await.unwrap_or_default();
+        return Err(format!("Minecraft link failed: HTTP {status} {detail}"));
+    }
+    response
+        .json::<MinecraftLinkResult>()
+        .await
+        .map_err(|error| error.to_string())
 }
