@@ -29,11 +29,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Validate VDS publishers
+      - name: Validate VDS stack
         working-directory: infra/vds
         run: |
-          python3 -m py_compile publish_release.py publish_launcher_update.py
-          GGO_HOST=updates.example.com docker compose -f docker-compose.yml config >/dev/null
+          python3 -m py_compile publish_release.py publish_launcher_update.py account-api/app.py
+          GGO_SITE_HOST=ggo.kvicloud.ru \
+          GGO_UPDATES_HOST=updates.ggo.kvicloud.ru \
+          POSTGRES_PASSWORD=ci-only-password \
+          GGO_JWT_SECRET=ci-only-secret-012345678901234567890123456789 \
+          docker compose --profile backend -f docker-compose.yml config >/dev/null
 
       - name: Install Tauri Linux prerequisites
         run: |
@@ -129,6 +133,7 @@ jobs:
       - name: Build Tauri test bundle
         env:
           GGO_CONTENT_BASE_URL: ${{ vars.GGO_CONTENT_BASE_URL }}
+          GGO_SITE_URL: ${{ vars.GGO_SITE_URL }}
         run: npm run tauri build -- --bundles ${{ matrix.bundle }}
 
       - name: Upload test bundle
