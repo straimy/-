@@ -3,7 +3,7 @@ mod runtime;
 
 use core::{
     bootstrap::BootstrapInfo,
-    ggo_auth::{self, GgoAuthStatus, GgoSessionStore},
+    ggo_auth::{self, GgoAuthStatus, GgoSessionStore, MinecraftLinkResult},
     identity_bridge,
     launcher_update::{self, LauncherUpdateStatus},
     microsoft_auth::{self, MicrosoftLoginResult, MicrosoftSessionStore},
@@ -312,6 +312,26 @@ async fn ggo_set_skin_source(
 }
 
 #[tauri::command]
+async fn ggo_link_minecraft(
+    ggo_store: State<'_, GgoSessionStore>,
+    microsoft_store: State<'_, MicrosoftSessionStore>,
+    api_url: String,
+) -> Result<MinecraftLinkResult, String> {
+    let microsoft = microsoft_store
+        .snapshot()
+        .await
+        .ok_or_else(|| "Microsoft/Minecraft account is not authenticated".to_string())?;
+    let http = updater::client().map_err(|error| error.to_string())?;
+    ggo_auth::link_minecraft(
+        &http,
+        &api_url,
+        &microsoft.minecraft_access_token,
+        ggo_store.inner(),
+    )
+    .await
+}
+
+#[tauri::command]
 async fn check_game(manifest_url: String, install_dir: String) -> Result<UpdatePlan, String> {
     let http = updater::client().map_err(|error| error.to_string())?;
     let manifest = updater::fetch_manifest(&http, &manifest_url)
@@ -385,6 +405,7 @@ pub fn run() {
             ggo_auth_status,
             ggo_logout,
             ggo_set_skin_source,
+            ggo_link_minecraft,
             check_game,
             sync_game,
             repair_game
