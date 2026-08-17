@@ -10,10 +10,9 @@ import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.registries.ForgeRegistries;
 
-/** Lobby/spawn cleanup. Menu is virtual (M), so no physical compass is injected anymore. */
+/** Lobby/spawn cleanup. Menu is virtual (M), so no physical compass is injected or retained. */
 @Mod.EventBusSubscriber(modid="gunnerarena",bus=Mod.EventBusSubscriber.Bus.FORGE)
 public final class SpawnLoadoutGuard {
-    private static final String COMPASS_TAG="gunnerarena_menu_compass";
     private SpawnLoadoutGuard(){}
 
     @SubscribeEvent public static void tick(TickEvent.PlayerTickEvent e){
@@ -22,9 +21,9 @@ public final class SpawnLoadoutGuard {
         boolean changed=false;
         for(int i=0;i<p.getInventory().getContainerSize();i++){
             ItemStack s=p.getInventory().getItem(i);
-            if(isCombatItem(s)||isMenuCompass(s)){p.getInventory().setItem(i,ItemStack.EMPTY);changed=true;}
+            if(isCombatItem(s)||isAnyCompass(s)){p.getInventory().setItem(i,ItemStack.EMPTY);changed=true;}
         }
-        if(isCombatItem(p.getOffhandItem())||isMenuCompass(p.getOffhandItem())){p.setItemInHand(net.minecraft.world.InteractionHand.OFF_HAND,ItemStack.EMPTY);changed=true;}
+        if(isCombatItem(p.getOffhandItem())||isAnyCompass(p.getOffhandItem())){p.setItemInHand(net.minecraft.world.InteractionHand.OFF_HAND,ItemStack.EMPTY);changed=true;}
         if(changed)p.getInventory().setChanged();
     }
 
@@ -33,5 +32,5 @@ public final class SpawnLoadoutGuard {
         if(s.hasTag()&&(s.getTag().getBoolean("GunnerArenaBound")||s.getTag().getBoolean("GunnerArenaKnife")))return true;
         ResourceLocation id=ForgeRegistries.ITEMS.getKey(s.getItem());return id!=null&&"jeg".equals(id.getNamespace());
     }
-    private static boolean isMenuCompass(ItemStack s){return s!=null&&!s.isEmpty()&&s.is(Items.COMPASS)&&s.hasTag()&&s.getTag().getBoolean(COMPASS_TAG);}
+    private static boolean isAnyCompass(ItemStack s){return s!=null&&!s.isEmpty()&&s.is(Items.COMPASS);}
 }
