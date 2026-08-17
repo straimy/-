@@ -18,15 +18,14 @@ import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
 /**
- * Server-owned respawn selection for Classic Arena.
+ * Server-owned spawn/respawn selection for Classic Arena.
  *
  * Replaces the legacy respawn_ticks scoreboard, locked marker tags and random command teleports.
- * A respawn waits the recovered 60 ticks, prefers markers at least 32 blocks from another active
- * Classic participant, and falls back to the marker with the greatest nearest-opponent distance.
+ * Initial placement and respawns both prefer markers separated from other active participants.
  */
 @Mod.EventBusSubscriber(modid = "gunnerarena", bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class ClassicArenaSpawnService {
-    public static final String VERSION = "GGO-CLASSIC-SPAWN-V1";
+    public static final String VERSION = "GGO-CLASSIC-SPAWN-V2";
     private static final long RESPAWN_DELAY_TICKS = 60L;
     private static final double SAFE_RADIUS = 32.0D;
     private static final double SAFE_RADIUS_SQR = SAFE_RADIUS * SAFE_RADIUS;
@@ -38,6 +37,22 @@ public final class ClassicArenaSpawnService {
     private static final Map<UUID, Long> READY_AT = new HashMap<>();
 
     private ClassicArenaSpawnService() {}
+
+    /** Places every participant directly on generated respawn markers before the 3-2-1 countdown. */
+    public static boolean placeInitial(ServerLevel level, List<ServerPlayer> players) {
+        List<Marker> markers = respawnMarkers(level);
+        if (markers.isEmpty()) return false;
+
+        List<ServerPlayer> placed = new ArrayList<>();
+        for (ServerPlayer player : players) {
+            Marker marker = chooseAgainst(level, markers, placed);
+            if (marker == null) return false;
+            player.teleportTo(level, marker.getX(), marker.getY() + 0.15D, marker.getZ(), player.getYRot(), player.getXRot());
+            player.fallDistance = 0.0F;
+            placed.add(player);
+        }
+        return true;
+    }
 
     @SubscribeEvent
     public static void respawn(PlayerEvent.PlayerRespawnEvent event) {
@@ -78,6 +93,7 @@ public final class ClassicArenaSpawnService {
             Marker marker = chooseSpawn(player.serverLevel(), player);
             if (marker != null) {
                 player.teleportTo(player.serverLevel(), marker.getX(), marker.getY() + 0.15D, marker.getZ(), player.getYRot(), player.getXRot());
+                player.fallDistance = 0.0F;
             }
             player.displayClientMessage(Component.literal("GGO • FIGHT"), true);
             done.add(entry.getKey());
@@ -92,8 +108,7 @@ public final class ClassicArenaSpawnService {
     }
 
     private static Marker chooseSpawn(ServerLevel level, ServerPlayer respawning) {
-        List<Marker> markers = level.getEntities(EntityType.MARKER, ARENA,
-            marker -> marker.getTags().contains("respawn_point"));
+        List<Marker> markers = respawnMarkers(level);
         if (markers.isEmpty()) return null;
 
         List<ServerPlayer> active = new ArrayList<>();
@@ -102,6 +117,16 @@ public final class ClassicArenaSpawnService {
             if (!ClassicArenaMatchService.isParticipant(player)) continue;
             active.add(player);
         }
+        return chooseAgainst(level, markers, active);
+    }
+
+    private static List<Marker> respawnMarkers(ServerLevel level) {
+        return level.getEntities(EntityType.MARKER, ARENA,
+            marker -> marker.getTags().contains("respawn_point"));
+    }
+
+    private static Marker chooseAgainst(ServerLevel level, List<Marker> markers, List<ServerPlayer> active) {
+        if (markers.isEmpty()) return null;
         if (active.isEmpty()) return markers.get(level.getRandom().nextInt(markers.size()));
 
         List<Marker> safe = new ArrayList<>();
