@@ -5,7 +5,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.network.chat.Component;
-import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.ScreenEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -26,7 +25,7 @@ public final class InventoryPolish {
         int left=(sw-176)/2,top=(sh-166)/2;
         long now=System.currentTimeMillis();
 
-        // Header / identity strip above the vanilla panel.
+        // Header stays exactly over the inventory width so potion/effect cards on the right remain unobstructed.
         int hx=left-2,hy=top-27,hw=180;
         UiEffects.verticalGradient(g,hx,hy,hx+hw,top-3,0xD7192B48,0xD4101725);
         UiEffects.animatedSheen(g,hx,hy,hw,24,now,UiTheme.ACCENT);
@@ -36,6 +35,13 @@ public final class InventoryPolish {
         String state=snap!=null&&"RUNNING".equalsIgnoreCase(snap.roundState())?"◆ В БОЮ":"◇ ЛОББИ";
         int stateColor=state.startsWith("◆")?0xFFFF6B87:UiTheme.ACCENT;
         g.drawString(mc.font,Component.literal(state),hx+8,hy+14,stateColor,false);
+
+        // Tiny held-item marker in the header instead of a large right-side card that covered status effects.
+        var held=mc.player.getMainHandItem();
+        if(!held.isEmpty()){
+            g.renderItem(held,hx+158,hy+4);
+            g.renderOutline(hx+156,hy+2,20,20,UiTheme.ACCENT_2);
+        }
 
         // Dim every normal inventory cell: gameplay owns only the three combat belt slots.
         g.fill(left+7,top+83,left+169,top+140,0x8A07101C);
@@ -51,31 +57,11 @@ public final class InventoryPolish {
             g.drawString(mc.font,Component.literal(Integer.toString(i+1)),x+2,y-8,c,false);
         }
 
-        // Compact weapon card on the right. Do not invent ammo values if JEG metadata is unknown.
-        int px=left+184,py=top+8,pw=Math.min(156,Math.max(118,(sw-left-188)));
-        if(px+pw<sw-3){
-            UiEffects.verticalGradient(g,px,py,px+pw,py+82,0xD0142135,0xC6090F1A);
-            UiEffects.pulseBorder(g,px,py,pw,82,now,UiTheme.ACCENT_2);
-            g.drawString(mc.font,Component.literal("БОЕВОЙ КОМПЛЕКТ"),px+8,py+8,UiTheme.PINK,false);
-            ItemStack held=mc.player.getMainHandItem();
-            if(!held.isEmpty()){
-                g.renderItem(held,px+8,py+27);
-                String name=held.getHoverName().getString();
-                if(name.length()>18)name=name.substring(0,18)+"…";
-                g.drawString(mc.font,Component.literal(name),px+31,py+27,UiTheme.TEXT,false);
-                int count=held.getCount();
-                g.drawString(mc.font,Component.literal("Слот "+(mc.player.getInventory().selected+1)+(count>1?"  ×"+count:"")),px+31,py+39,UiTheme.MUTED,false);
-            }else g.drawString(mc.font,Component.literal("Оружие не выбрано"),px+8,py+31,UiTheme.DIM,false);
-            g.fill(px+8,py+56,px+pw-8,py+57,UiTheme.HAIRLINE);
-            g.drawString(mc.font,Component.literal("M — меню"),px+8,py+63,UiTheme.ACCENT,false);
-            g.drawString(mc.font,Component.literal("G — магазин"),px+8,py+72,UiTheme.MUTED,false);
-        }
-
-        // Bottom footer keeps the screen visually tied to other GGO menus.
+        // Footer is narrow and anchored to the inventory panel only.
         int fy=top+169;
         if(fy+14<sh){
             UiEffects.verticalGradient(g,left-2,fy,left+178,fy+14,0xB9101725,0xB7192B48);
-            g.drawCenteredString(mc.font,Component.literal("3 БОЕВЫХ СЛОТА  •  E — ЗАКРЫТЬ"),left+88,fy+3,UiTheme.MUTED);
+            g.drawCenteredString(mc.font,Component.literal("3 БОЕВЫХ СЛОТА  •  M МЕНЮ  •  E ЗАКРЫТЬ"),left+88,fy+3,UiTheme.MUTED);
         }
     }
 }
