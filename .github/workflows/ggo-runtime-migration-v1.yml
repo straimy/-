@@ -9,6 +9,7 @@ on:
       - 'hotfix/ui/GgoTitleScreen.java'
       - 'hotfix/ui/GgoPauseScreen.java'
       - 'hotfix/ui/GgoVanillaScreenGuard.java'
+      - 'hotfix/ui/GgoConnectionOverlay.java'
       - 'docs/runtime-migration-roadmap.md'
   workflow_dispatch:
 
@@ -68,9 +69,11 @@ jobs:
           cp hotfix/ui/GgoTitleScreen.java "$UI_DIR/GgoTitleScreen.java"
           cp hotfix/ui/GgoPauseScreen.java "$UI_DIR/GgoPauseScreen.java"
           cp hotfix/ui/GgoVanillaScreenGuard.java "$UI_DIR/GgoVanillaScreenGuard.java"
+          cp hotfix/ui/GgoConnectionOverlay.java "$UI_DIR/GgoConnectionOverlay.java"
           grep -q 'GUNGLORY RUNTIME v1' "$UI_DIR/GgoTitleScreen.java"
           grep -q 'BACK TO GAME' "$UI_DIR/GgoPauseScreen.java"
           grep -q 'ScreenEvent.Opening' "$UI_DIR/GgoVanillaScreenGuard.java"
+          grep -q 'CONNECTING TO GUNGLORY ONLINE' "$UI_DIR/GgoConnectionOverlay.java"
 
       - name: Build Core dependency
         shell: bash
@@ -93,7 +96,7 @@ jobs:
           CORE="$(find ga-build/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
           UI="$(find ga-build/client-ui/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
           test -n "$CORE"; test -n "$UI"
-          for c in GgoTitleScreen GgoPauseScreen GgoVanillaScreenGuard; do
+          for c in GgoTitleScreen GgoPauseScreen GgoVanillaScreenGuard GgoConnectionOverlay; do
             jar tf "$UI" | grep -q "^arena/client/ui/$c.class$"
           done
           mkdir -p runtime-migration/client/mods runtime-migration/server/mods
@@ -104,6 +107,7 @@ jobs:
           GunGloryOnline Runtime Migration v1
           Client-only shell experiment based on v40.
           Replaces vanilla Title and Pause screens with GGO-owned screens.
+          Covers vanilla connecting/receiving screens with a GGO loading presentation while Forge networking remains intact.
           Server Core behavior is unchanged.
           EOF
           sha256sum runtime-migration/server/mods/* runtime-migration/client/mods/* > runtime-migration/SHA256SUMS.txt
