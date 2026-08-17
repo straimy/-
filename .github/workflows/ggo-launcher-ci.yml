@@ -33,7 +33,8 @@ jobs:
         working-directory: infra/vds
         run: |
           set -euo pipefail
-          python3 -m py_compile publish_release.py publish_launcher_update.py account-api/app.py
+          python3 -m py_compile publish_release.py publish_launcher_update.py build_full_bundle.py account-api/app.py
+          python3 build_full_bundle.py --help >/dev/null
           bash -n bootstrap_ubuntu.sh deploy_all.sh backup_now.sh game-server/run.sh
           GGO_SITE_HOST=ggo.kvicloud.ru \
           GGO_UPDATES_HOST=updates.ggo.kvicloud.ru \
