@@ -47,12 +47,18 @@ jobs:
           print('\n'.join(out).rstrip())
           PY
 
-      - name: Prepare v36 source
+      - name: Prepare v36 source directly
         shell: bash
         run: |
           set -euo pipefail
-          python3 /tmp/extract.py .github/workflows/gun-glory-online-v36-ui-clans-hotbar.yml 'Prepare v35 source' >/tmp/base.sh
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v33-social-clans-ammo.yml 'Prepare v31-compatible source directly' >/tmp/base.sh
           bash /tmp/base.sh
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v33-social-clans-ammo.yml 'Apply v33 social clans ammo' >/tmp/v33.sh
+          bash /tmp/v33.sh
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v34-inventory-polish.yml 'Apply v34 inventory polish' >/tmp/v34.sh
+          bash /tmp/v34.sh
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v35-auth-hud-fixes.yml 'Apply v35 auth HUD fixes' >/tmp/v35.sh
+          bash /tmp/v35.sh
           python3 /tmp/extract.py .github/workflows/gun-glory-online-v36-ui-clans-hotbar.yml 'Apply v36 UI clan hotbar fixes' >/tmp/v36.sh
           bash /tmp/v36.sh
           test -f ga-build/gradle.properties
@@ -72,7 +78,6 @@ jobs:
           s=gp.read_text();s=re.sub(r'mod_version=.*','mod_version=0.9.4-gungloryonline-v37',s,count=1);gp.write_text(s)
           PY
           grep -q 'XP_PER_KILL=100' ga-build/src/main/java/arena/forge/ProgressionService.java
-          grep -q 'speed()*0.03' ga-build/src/main/java/arena/forge/ProgressionService.java || true
           grep -q 'БОЕВЫЕ НАВЫКИ' ga-build/client-ui/src/main/java/arena/client/ui/SkillsScreen.java
           grep -q 'Убийства игроков' ga-build/client-ui/src/main/java/arena/client/ui/ProfileScreen.java
 
@@ -114,7 +119,7 @@ jobs:
           SKILL_DAMAGE_REAL_EVENT_MODIFIER=PASS
           SKILL_ARMOR_REAL_EVENT_MODIFIER=PASS
           SKILL_UPGRADE_ONE_CLICK=PASS
-          PVP_KILL_XP=100=PASS
+          PVP_KILL_XP_100=PASS
           RANK_PROGRESS_BAR=PASS
           RANKS_NOVICE_TO_LEGEND=PASS
           EOF
