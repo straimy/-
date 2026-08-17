@@ -14,6 +14,9 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.Marker;
+import net.minecraft.world.phys.AABB;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.living.LivingDeathEvent;
@@ -26,17 +29,18 @@ import net.minecraftforge.fml.common.Mod;
  *
  * The old map stored players_count, kills_to_win, kills/old_kills and countdown state in scoreboard
  * objectives and moved the flow with redstone blocks. This service owns those values directly.
- * Classic remains MIGRATING in /play; the dev start command is OP-only until real-world smoke passes.
+ * Classic remains MIGRATING in /play; dev commands are OP-only until real-world smoke passes.
  */
 @Mod.EventBusSubscriber(modid = "gunnerarena", bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class ClassicArenaMatchService {
-    public static final String VERSION = "GGO-CLASSIC-MATCH-V1";
+    public static final String VERSION = "GGO-CLASSIC-MATCH-V2";
     public enum State { WAITING, GENERATING, COUNTDOWN, RUNNING, FINISHED, ERROR }
 
     private static final int MIN_PLAYERS = 2;
     private static final int KILLS_PER_PLAYER = 10;
     private static final long COUNTDOWN_TICKS = 60L;
     private static final long FINISH_HOLD_TICKS = 100L;
+    private static final AABB ARENA_MARKERS = new AABB(47.0D, 60.0D, 47.0D, 113.0D, 110.0D, 113.0D);
     private static final ClassicArenaMapGenerator GENERATOR = new ClassicArenaMapGenerator();
     private static final Set<UUID> PARTICIPANTS = new HashSet<>();
     private static final Map<UUID, Integer> KILLS = new HashMap<>();
@@ -67,6 +71,7 @@ public final class ClassicArenaMatchService {
                 .then(Commands.literal("classic")
                     .then(Commands.literal("status").executes(ctx -> status(ctx.getSource())))
                     .then(Commands.literal("dev")
+                        .then(Commands.literal("generate").executes(ctx -> devGenerate(ctx.getSource())))
                         .then(Commands.literal("start").executes(ctx -> devStart(ctx.getSource())))
                         .then(Commands.literal("stop").executes(ctx -> devStop(ctx.getSource())))))
         );
@@ -79,6 +84,52 @@ public final class ClassicArenaMatchService {
                 + (error.isBlank() ? "" : " error=" + error)
         ).withStyle(state == State.ERROR ? ChatFormatting.RED : ChatFormatting.AQUA), false);
         return Command.SINGLE_SUCCESS;
+    }
+
+    /**
+     * Real-world integration smoke that needs no connected players. It directly runs the Java
+     * structure generator and verifies the semantic marker output recovered from the supplied map.
+     */
+    private static int devGenerate(net.minecraft.commands.CommandSourceStack source) {
+        if (state != State.WAITING) {
+            source.sendFailure(Component.literal("[GGO] Refusing dev generation while Classic is " + state));
+            return 0;
+        }
+        ServerLevel level = source.getLevel();
+        if (!GENERATOR.generate(level)) {
+            var snapshot = GENERATOR.snapshot();
+            source.sendFailure(Component.literal("[GGO] Classic dev generation failed: " + snapshot.error()));
+            return 0;
+        }
+
+        List<Marker> markers = level.getEntities(EntityType.MARKER, ARENA_MARKERS, marker -> true);
+        int ammo1 = countTag(markers, "gun_1_ammo");
+        int ammo2 = countTag(markers, "gun_2_ammo");
+        int ammo3 = countTag(markers, "gun_3_ammo");
+        int health = countTag(markers, "small_health_orb") + countTag(markers, "health_orb");
+        int respawn = countTag(markers, "respawn_point");
+        int jumpPads = countTag(markers, "jump_pad_marker");
+        var snapshot = GENERATOR.snapshot();
+
+        boolean quotasOk = snapshot.placed() == ClassicArenaMapGenerator.TOTAL_CELLS
+            && ammo1 == 4 && ammo2 == 3 && ammo3 == 3
+            && health == ClassicArenaMapGenerator.HEALTH_CELLS
+            && respawn > 0;
+
+        Component message = Component.literal(
+            "[GGO] Classic dev generation: cells=" + snapshot.placed()
+                + " ammo=" + ammo1 + "/" + ammo2 + "/" + ammo3
+                + " health=" + health + " respawn=" + respawn + " jumpPads=" + jumpPads
+                + " result=" + (quotasOk ? "PASS" : "CHECK")
+        ).withStyle(quotasOk ? ChatFormatting.GREEN : ChatFormatting.GOLD);
+        source.sendSuccess(() -> message, true);
+        return quotasOk ? Command.SINGLE_SUCCESS : 0;
+    }
+
+    private static int countTag(List<Marker> markers, String tag) {
+        int count = 0;
+        for (Marker marker : markers) if (marker.getTags().contains(tag)) count++;
+        return count;
     }
 
     private static int devStart(net.minecraft.commands.CommandSourceStack source) {
