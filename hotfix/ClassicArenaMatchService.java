@@ -27,13 +27,13 @@ import net.minecraftforge.fml.common.Mod;
 /**
  * Command-block-free state machine for the recovered Classic Arena mode.
  *
- * The old map stored players_count, kills_to_win, kills/old_kills and countdown state in scoreboard
+ * The old map stored players_count, kills_to_win, selected guns and countdown state in scoreboard
  * objectives and moved the flow with redstone blocks. This service owns those values directly.
- * Classic remains MIGRATING in /play; dev commands are OP-only until real-world smoke passes.
+ * Classic remains MIGRATING in /play; dev commands are OP-only until real-world gameplay smoke passes.
  */
 @Mod.EventBusSubscriber(modid = "gunnerarena", bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class ClassicArenaMatchService {
-    public static final String VERSION = "GGO-CLASSIC-MATCH-V2";
+    public static final String VERSION = "GGO-CLASSIC-MATCH-V3";
     public enum State { WAITING, GENERATING, COUNTDOWN, RUNNING, FINISHED, ERROR }
 
     private static final int MIN_PLAYERS = 2;
@@ -80,16 +80,15 @@ public final class ClassicArenaMatchService {
     private static int status(net.minecraft.commands.CommandSourceStack source) {
         source.sendSuccess(() -> Component.literal(
             "[GGO] Classic state=" + state + " participants=" + PARTICIPANTS.size()
-                + " target=" + killTarget + (winner == null ? "" : " winner=" + winner)
+                + " target=" + killTarget
+                + " guns=" + String.join(",", ClassicArenaLoadoutService.selectedWeapons())
+                + (winner == null ? "" : " winner=" + winner)
                 + (error.isBlank() ? "" : " error=" + error)
         ).withStyle(state == State.ERROR ? ChatFormatting.RED : ChatFormatting.AQUA), false);
         return Command.SINGLE_SUCCESS;
     }
 
-    /**
-     * Real-world integration smoke that needs no connected players. It directly runs the Java
-     * structure generator and verifies the semantic marker output recovered from the supplied map.
-     */
+    /** Player-free structure/marker integration smoke for the imported world. */
     private static int devGenerate(net.minecraft.commands.CommandSourceStack source) {
         if (state != State.WAITING) {
             source.sendFailure(Component.literal("[GGO] Refusing dev generation while Classic is " + state));
@@ -147,7 +146,7 @@ public final class ClassicArenaMatchService {
             return 0;
         }
         if (!begin(level, candidates)) {
-            source.sendFailure(Component.literal("[GGO] Classic generation failed: " + error));
+            source.sendFailure(Component.literal("[GGO] Classic start failed: " + error));
             return 0;
         }
         return Command.SINGLE_SUCCESS;
@@ -175,15 +174,28 @@ public final class ClassicArenaMatchService {
         transition(level.getServer(), State.GENERATING, 0L);
 
         if (!GENERATOR.generate(level)) {
-            error = GENERATOR.snapshot().error();
-            transition(level.getServer(), State.ERROR, 0L);
-            return false;
+            return fail(level.getServer(), "generation: " + GENERATOR.snapshot().error());
+        }
+        if (!ClassicArenaLoadoutService.prepareRound(level, players)) {
+            return fail(level.getServer(), "loadout: one or more recovered Classic weapon IDs are unavailable");
+        }
+        if (!ClassicArenaSpawnService.placeInitial(level, players)) {
+            return fail(level.getServer(), "spawn: generated arena contains no usable respawn points");
         }
 
         transition(level.getServer(), State.COUNTDOWN, COUNTDOWN_TICKS);
         broadcast(level.getServer(), Component.literal("GGO • CLASSIC ARENA").withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD));
         broadcast(level.getServer(), Component.literal("First to " + killTarget + " kills").withStyle(ChatFormatting.GRAY));
+        broadcast(level.getServer(), Component.literal(
+            "Loadout: " + String.join(" • ", ClassicArenaLoadoutService.selectedWeapons())
+        ).withStyle(ChatFormatting.DARK_GRAY));
         return true;
+    }
+
+    private static boolean fail(MinecraftServer server, String reason) {
+        error = reason;
+        transition(server, State.ERROR, 0L);
+        return false;
     }
 
     @SubscribeEvent
@@ -213,10 +225,8 @@ public final class ClassicArenaMatchService {
         if (!(event.getSource().getEntity() instanceof ServerPlayer killer) || killer == victim || !isParticipant(killer)) return;
 
         int value = KILLS.merge(killer.getUUID(), 1, Integer::sum);
-        // The legacy command graph healed a killer with Instant Health I after each new kill.
         killer.heal(Math.min(4.0F, killer.getMaxHealth() - killer.getHealth()));
         killer.displayClientMessage(Component.literal("GGO • " + value + "/" + killTarget + " KILLS"), true);
-
         if (value >= killTarget) finish(killer);
     }
 
