@@ -11,6 +11,8 @@ on:
       - 'hotfix/ui/GgoVanillaScreenGuard.java'
       - 'hotfix/ui/GgoConnectionOverlay.java'
       - 'hotfix/ui/GgoDisconnectedScreen.java'
+      - 'hotfix/ui/GgoLaunchMode.java'
+      - 'hotfix/ui/GgoTrainingScreen.java'
       - 'hotfix/ui/GgoSkinResolver.java'
       - 'hotfix/ui/GgoIdentityBridge.java'
       - 'hotfix/ui/GgoSkinRuntime.java'
@@ -79,6 +81,8 @@ jobs:
           cp hotfix/ui/GgoVanillaScreenGuard.java "$UI_DIR/GgoVanillaScreenGuard.java"
           cp hotfix/ui/GgoConnectionOverlay.java "$UI_DIR/GgoConnectionOverlay.java"
           cp hotfix/ui/GgoDisconnectedScreen.java "$UI_DIR/GgoDisconnectedScreen.java"
+          cp hotfix/ui/GgoLaunchMode.java "$UI_DIR/GgoLaunchMode.java"
+          cp hotfix/ui/GgoTrainingScreen.java "$UI_DIR/GgoTrainingScreen.java"
           cp hotfix/ui/GgoSkinResolver.java "$UI_DIR/GgoSkinResolver.java"
           cp hotfix/ui/GgoIdentityBridge.java "$UI_DIR/GgoIdentityBridge.java"
           cp hotfix/ui/GgoSkinRuntime.java "$UI_DIR/GgoSkinRuntime.java"
@@ -86,9 +90,11 @@ jobs:
           python3 hotfix/ui/apply_ggo_skin_mixin.py
           grep -q 'GUNGLORY RUNTIME v1' "$UI_DIR/GgoTitleScreen.java"
           grep -q 'BACK TO GAME' "$UI_DIR/GgoPauseScreen.java"
-          grep -q 'GgoNetworkSkinRuntime.tick' "$UI_DIR/GgoVanillaScreenGuard.java"
+          grep -q 'GgoLaunchMode.isTraining' "$UI_DIR/GgoVanillaScreenGuard.java"
           grep -q 'CONNECTING TO GUNGLORY ONLINE' "$UI_DIR/GgoConnectionOverlay.java"
           grep -q 'CONNECTION LOST' "$UI_DIR/GgoDisconnectedScreen.java"
+          grep -q 'ggo.launch.mode' "$UI_DIR/GgoLaunchMode.java"
+          grep -q 'OFFLINE TRAINING' "$UI_DIR/GgoTrainingScreen.java"
           grep -q 'resolveMinecraft' "$UI_DIR/GgoSkinResolver.java"
           grep -q '.ggo-profile.json' "$UI_DIR/GgoIdentityBridge.java"
           grep -q 'DynamicTexture' "$UI_DIR/GgoSkinRuntime.java"
@@ -117,7 +123,7 @@ jobs:
           CORE="$(find ga-build/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
           UI="$(find ga-build/client-ui/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
           test -n "$CORE"; test -n "$UI"
-          for c in GgoTitleScreen GgoPauseScreen GgoVanillaScreenGuard GgoConnectionOverlay GgoDisconnectedScreen GgoSkinResolver GgoIdentityBridge GgoSkinRuntime GgoNetworkSkinRuntime; do
+          for c in GgoTitleScreen GgoPauseScreen GgoVanillaScreenGuard GgoConnectionOverlay GgoDisconnectedScreen GgoLaunchMode GgoTrainingScreen GgoSkinResolver GgoIdentityBridge GgoSkinRuntime GgoNetworkSkinRuntime; do
             jar tf "$UI" | grep -q "^arena/client/ui/$c.class$"
           done
           jar tf "$UI" | grep -q '^arena/client/ui/mixin/AbstractClientPlayerMixin.class$'
@@ -132,6 +138,7 @@ jobs:
           GunGloryOnline Runtime Migration v1
           Client-only shell experiment based on v40.
           Replaces vanilla Title, Pause and Disconnected screens with GGO-owned screens.
+          Supports a launcher-owned `ggo.launch.mode=training` offline shell without exposing Minecraft singleplayer UX.
           Covers vanilla connecting/receiving screens with a GGO loading presentation while Forge networking remains intact.
           Reads the launcher's non-secret .ggo-profile.json identity bridge.
           Includes first-party GGO skin metadata/download cache with SHA256 verification and texture registration.
