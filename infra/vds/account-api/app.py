@@ -1,21 +1,24 @@
 import base64
 import hashlib
+import io
 import os
 import re
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Literal
 
 import asyncpg
 import jwt
+from PIL import Image
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
 from pydantic import BaseModel, EmailStr, Field
 from redis.asyncio import Redis
 
-app = FastAPI(title="GunGloryOnline Account API", version="0.1.0", docs_url=None, redoc_url=None)
+app = FastAPI(title="GunGloryOnline Account API", version="0.2.0", docs_url=None, redoc_url=None)
 ph = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=2)
 name_re = re.compile(r"^[A-Za-z0-9_]{3,16}$")
 
@@ -23,6 +26,9 @@ DB_URL = os.getenv("DATABASE_URL", "postgresql://ggo:ggo@postgres:5432/ggo")
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
 JWT_SECRET = os.getenv("GGO_JWT_SECRET", "")
 JWT_ISSUER = os.getenv("GGO_JWT_ISSUER", "ggo.kvicloud.ru")
+PUBLIC_SITE_URL = os.getenv("GGO_PUBLIC_SITE_URL", "https://ggo.kvicloud.ru").rstrip("/")
+SKIN_DIR = Path(os.getenv("GGO_SKIN_DIR", "/data/skins"))
+MAX_SKIN_BYTES = 512 * 1024
 ACCESS_MINUTES = 15
 REFRESH_DAYS = 30
 DEVICE_TTL = 600
@@ -55,8 +61,10 @@ CREATE TABLE IF NOT EXISTS linked_identities (
 CREATE TABLE IF NOT EXISTS skin_preferences (
     player_id UUID PRIMARY KEY REFERENCES players(id) ON DELETE CASCADE,
     source TEXT NOT NULL DEFAULT 'default',
+    skin_hash TEXT,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+ALTER TABLE skin_preferences ADD COLUMN IF NOT EXISTS skin_hash TEXT;
 CREATE TABLE IF NOT EXISTS refresh_sessions (
     id UUID PRIMARY KEY,
     player_id UUID NOT NULL REFERENCES players(id) ON DELETE CASCADE,
@@ -115,6 +123,10 @@ def validate_name(value: str) -> str:
     return value
 
 
+def skin_url(skin_hash: str | None) -> str | None:
+    return f"{PUBLIC_SITE_URL}/skins/{skin_hash}.png" if skin_hash else None
+
+
 def access_token(player_id: str) -> str:
     stamp = now()
     return jwt.encode({
@@ -135,12 +147,7 @@ async def issue_session(player_id: str) -> dict:
         "INSERT INTO refresh_sessions(id,player_id,token_hash,expires_at) VALUES($1,$2,$3,$4)",
         session_id, uuid.UUID(player_id), sha256_text(opaque), expires,
     )
-    return {
-        "access_token": access_token(player_id),
-        "refresh_token": opaque,
-        "token_type": "Bearer",
-        "expires_in": ACCESS_MINUTES * 60,
-    }
+    return {"access_token": access_token(player_id), "refresh_token": opaque, "token_type": "Bearer", "expires_in": ACCESS_MINUTES * 60}
 
 
 async def current_player(authorization: str | None = Header(default=None)) -> str:
@@ -161,6 +168,7 @@ async def startup() -> None:
     global db, redis
     if len(JWT_SECRET) < 32:
         raise RuntimeError("GGO_JWT_SECRET must contain at least 32 characters")
+    SKIN_DIR.mkdir(parents=True, exist_ok=True)
     db = await asyncpg.create_pool(DB_URL, min_size=1, max_size=6)
     redis = Redis.from_url(REDIS_URL, decode_responses=True)
     async with db.acquire() as conn:
@@ -224,21 +232,10 @@ async def device_start(body: DeviceStartBody) -> dict:
     device_id = secrets.token_urlsafe(32)
     user_code = "-".join([secrets.token_hex(2).upper(), secrets.token_hex(2).upper()])
     key = f"ggo:device:{device_id}"
-    await redis.hset(key, mapping={
-        "status": "pending",
-        "user_code": user_code,
-        "challenge": body.code_challenge,
-        "installation_id": body.installation_id,
-    })
+    await redis.hset(key, mapping={"status": "pending", "user_code": user_code, "challenge": body.code_challenge, "installation_id": body.installation_id})
     await redis.expire(key, DEVICE_TTL)
     await redis.setex(f"ggo:usercode:{user_code}", DEVICE_TTL, device_id)
-    return {
-        "device_id": device_id,
-        "user_code": user_code,
-        "verification_uri": f"https://ggo.kvicloud.ru/activate?code={user_code}",
-        "expires_in": DEVICE_TTL,
-        "interval": 3,
-    }
+    return {"device_id": device_id, "user_code": user_code, "verification_uri": f"{PUBLIC_SITE_URL}/activate?code={user_code}", "expires_in": DEVICE_TTL, "interval": 3}
 
 
 @app.post("/auth/device/approve")
@@ -295,28 +292,78 @@ async def logout(body: RefreshBody) -> dict:
 @app.get("/me")
 async def me(player_id: str = Depends(current_player)) -> dict:
     assert db is not None
-    row = await db.fetchrow("SELECT p.id,p.display_name,p.created_at,COALESCE(s.source,'default') AS skin_source FROM players p LEFT JOIN skin_preferences s ON s.player_id=p.id WHERE p.id=$1", uuid.UUID(player_id))
+    row = await db.fetchrow("SELECT p.id,p.display_name,p.created_at,COALESCE(s.source,'default') AS skin_source,s.skin_hash FROM players p LEFT JOIN skin_preferences s ON s.player_id=p.id WHERE p.id=$1", uuid.UUID(player_id))
     if row is None:
         raise HTTPException(404, "player not found")
     identities = await db.fetch("SELECT provider,provider_subject,display_name FROM linked_identities WHERE player_id=$1 ORDER BY id", uuid.UUID(player_id))
-    return {
-        "id": str(row["id"]),
-        "display_name": row["display_name"],
-        "skin_source": row["skin_source"],
-        "created_at": row["created_at"].isoformat(),
-        "identities": [dict(item) for item in identities],
-    }
+    return {"id": str(row["id"]), "display_name": row["display_name"], "skin_source": row["skin_source"], "skin_hash": row["skin_hash"], "skin_url": skin_url(row["skin_hash"]), "created_at": row["created_at"].isoformat(), "identities": [dict(item) for item in identities]}
+
+
+@app.get("/players/{player_id}/skin")
+async def public_skin(player_id: uuid.UUID) -> dict:
+    assert db is not None
+    row = await db.fetchrow("SELECT p.id,p.display_name,COALESCE(s.source,'default') AS source,s.skin_hash FROM players p LEFT JOIN skin_preferences s ON s.player_id=p.id WHERE p.id=$1", player_id)
+    if row is None:
+        raise HTTPException(404, "player not found")
+    return {"player_id": str(row["id"]), "display_name": row["display_name"], "source": row["source"], "skin_hash": row["skin_hash"], "skin_url": skin_url(row["skin_hash"])}
 
 
 @app.get("/me/skin")
 async def get_skin(player_id: str = Depends(current_player)) -> dict:
     assert db is not None
-    source = await db.fetchval("SELECT source FROM skin_preferences WHERE player_id=$1", uuid.UUID(player_id))
-    return {"source": source or "default"}
+    row = await db.fetchrow("SELECT source,skin_hash FROM skin_preferences WHERE player_id=$1", uuid.UUID(player_id))
+    source = row["source"] if row else "default"
+    skin_hash = row["skin_hash"] if row else None
+    return {"source": source, "skin_hash": skin_hash, "skin_url": skin_url(skin_hash)}
 
 
 @app.put("/me/skin/source")
 async def set_skin(body: SkinBody, player_id: str = Depends(current_player)) -> dict:
     assert db is not None
+    if body.source == "ggo":
+        current_hash = await db.fetchval("SELECT skin_hash FROM skin_preferences WHERE player_id=$1", uuid.UUID(player_id))
+        if not current_hash:
+            raise HTTPException(409, "upload a GGO skin before selecting the GGO skin source")
     await db.execute("INSERT INTO skin_preferences(player_id,source,updated_at) VALUES($1,$2,NOW()) ON CONFLICT(player_id) DO UPDATE SET source=EXCLUDED.source,updated_at=NOW()", uuid.UUID(player_id), body.source)
     return {"source": body.source}
+
+
+@app.post("/me/skin")
+async def upload_skin(file: UploadFile = File(...), player_id: str = Depends(current_player)) -> dict:
+    assert db is not None
+    if file.content_type not in {"image/png", "application/octet-stream"}:
+        raise HTTPException(415, "skin must be a PNG image")
+    raw = await file.read(MAX_SKIN_BYTES + 1)
+    if not raw or len(raw) > MAX_SKIN_BYTES:
+        raise HTTPException(413, "skin PNG must be 512 KiB or smaller")
+    try:
+        with Image.open(io.BytesIO(raw)) as image:
+            image.load()
+            if image.format != "PNG":
+                raise HTTPException(415, "skin must be a PNG image")
+            if image.size not in {(64, 64), (64, 32)}:
+                raise HTTPException(422, "skin dimensions must be 64x64 or 64x32")
+            normalized = image.convert("RGBA")
+            output = io.BytesIO()
+            normalized.save(output, format="PNG", optimize=True)
+            stored = output.getvalue()
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(422, "invalid PNG skin")
+
+    digest = hashlib.sha256(stored).hexdigest()
+    target = SKIN_DIR / f"{digest}.png"
+    if not target.exists():
+        temp = target.with_suffix(".png.tmp")
+        temp.write_bytes(stored)
+        os.replace(temp, target)
+    await db.execute("INSERT INTO skin_preferences(player_id,source,skin_hash,updated_at) VALUES($1,'ggo',$2,NOW()) ON CONFLICT(player_id) DO UPDATE SET source='ggo',skin_hash=EXCLUDED.skin_hash,updated_at=NOW()", uuid.UUID(player_id), digest)
+    return {"source": "ggo", "skin_hash": digest, "skin_url": skin_url(digest)}
+
+
+@app.delete("/me/skin")
+async def delete_skin(player_id: str = Depends(current_player)) -> dict:
+    assert db is not None
+    await db.execute("INSERT INTO skin_preferences(player_id,source,skin_hash,updated_at) VALUES($1,'default',NULL,NOW()) ON CONFLICT(player_id) DO UPDATE SET source='default',skin_hash=NULL,updated_at=NOW()", uuid.UUID(player_id))
+    return {"source": "default", "skin_hash": None, "skin_url": None}
