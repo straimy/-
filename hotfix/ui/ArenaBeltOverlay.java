@@ -1,6 +1,7 @@
 package arena.client.ui;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.RenderGuiOverlayEvent;
@@ -15,14 +16,16 @@ public final class ArenaBeltOverlay {
 
     @SubscribeEvent public static void render(RenderGuiOverlayEvent.Post e){
         Minecraft mc=Minecraft.getInstance();
-        if(mc.player==null||mc.options.hideGui||mc.screen!=null)return;
+        boolean chat=mc.screen instanceof ChatScreen;
+        if(mc.player==null||mc.options.hideGui||(mc.screen!=null&&!chat))return;
         var g=e.getGuiGraphics();int w=mc.getWindow().getGuiScaledWidth(),h=mc.getWindow().getGuiScaledHeight();
 
-        // Cover the vanilla 9-slot strip completely so the player never sees two inventories.
-        int nativeX=w/2-92,nativeY=h-24;
+        // Raise the custom belt while chat is open so the input line never hides it.
+        int lift=chat?18:0;
+        int nativeX=w/2-92,nativeY=h-24-lift;
         g.fill(nativeX-2,nativeY-2,nativeX+184,nativeY+24,0xE00A0D14);
 
-        int total=SLOTS*22;int x=w/2-total/2;int y=h-23;
+        int total=SLOTS*22;int x=w/2-total/2;int y=h-23-lift;
         for(int i=0;i<SLOTS;i++){
             int sx=x+i*22;boolean selected=mc.player.getInventory().selected==i;
             g.fill(sx,y,sx+20,y+20,selected?0xE0314668:0xD0141B2A);
@@ -37,5 +40,11 @@ public final class ArenaBeltOverlay {
         if(hx+hw>w-4)hx=x-hw-7;
         g.fill(hx,hy,hx+hw,hy+16,0xD0141B2A);g.renderOutline(hx,hy,hw,16,UiTheme.PINK);
         g.drawString(mc.font,Component.literal(hint),hx+6,hy+4,UiTheme.TEXT,false);
+
+        // A very small divider keeps the hearts/food row visually separate from the belt without covering vanilla HUD icons.
+        if(!chat){
+            int lineY=y-11;
+            g.fill(x-3,lineY,x+total+3,lineY+1,0x704A6B8F);
+        }
     }
 }
