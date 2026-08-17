@@ -29,10 +29,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Validate VDS publisher
+      - name: Validate VDS publishers
         working-directory: infra/vds
         run: |
-          python3 -m py_compile publish_release.py
+          python3 -m py_compile publish_release.py publish_launcher_update.py
           GGO_HOST=updates.example.com docker compose -f docker-compose.yml config >/dev/null
 
       - name: Install Tauri Linux prerequisites
