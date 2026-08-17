@@ -63,6 +63,8 @@ public final class AdminToolsCommands {
                     })))));
     }
 
+    private static int saturatingIntAdd(int value,int amount){long sum=(long)value+amount;return (int)Math.min(Integer.MAX_VALUE,Math.max(Integer.MIN_VALUE,sum));}
+
     /** Runtime versions used by the project changed the round-session API several times; support all known shapes. */
     private static boolean addCreditsReflective(Object session,int amount){
         if(session==null)return false;
@@ -73,14 +75,14 @@ public final class AdminToolsCommands {
         for(String n:new String[]{"credits","roundCredits"}){
             try{
                 Field f=session.getClass().getDeclaredField(n);f.setAccessible(true);Object v=f.get(session);
-                if(v instanceof Integer i){f.setInt(session,Math.min(Integer.MAX_VALUE,(long)i+amount));return true;}
+                if(v instanceof Integer i){f.setInt(session,saturatingIntAdd(i,amount));return true;}
                 if(v instanceof Long l){f.setLong(session,l>Long.MAX_VALUE-amount?Long.MAX_VALUE:l+amount);return true;}
             }catch(Exception ignored){}
         }
         try{
             Method get=session.getClass().getMethod("credits");Object v=get.invoke(session);
             for(String setter:new String[]{"credits","setCredits"}){
-                if(v instanceof Integer i){try{session.getClass().getMethod(setter,int.class).invoke(session,Math.min(Integer.MAX_VALUE,(long)i+amount));return true;}catch(Exception ignored){}}
+                if(v instanceof Integer i){try{session.getClass().getMethod(setter,int.class).invoke(session,saturatingIntAdd(i,amount));return true;}catch(Exception ignored){}}
                 if(v instanceof Long l){try{session.getClass().getMethod(setter,long.class).invoke(session,l>Long.MAX_VALUE-amount?Long.MAX_VALUE:l+amount);return true;}catch(Exception ignored){}}
             }
         }catch(Exception ignored){}
