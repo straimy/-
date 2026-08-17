@@ -15,6 +15,10 @@ const profilePanel = $("profilePanel");
 const profileName = $("profileName");
 const profileId = $("profileId");
 const approveButton = $("approveButton");
+const skinFile = $("skinFile");
+const skinPreview = $("skinPreview");
+const skinPreviewImage = $("skinPreviewImage");
+const skinHash = $("skinHash");
 
 function setStatus(message, bad = false) {
   statusEl.textContent = message;
@@ -37,6 +41,18 @@ async function request(path, options = {}) {
   return data;
 }
 
+async function uploadRequest(path, formData) {
+  const response = await fetch(`${API}${path}`, {
+    method: "POST",
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+    body: formData
+  });
+  let data = null;
+  try { data = await response.json(); } catch { data = null; }
+  if (!response.ok) throw new Error(data?.detail || `HTTP ${response.status}`);
+  return data;
+}
+
 function applySession(data) {
   accessToken = data.access_token || "";
   player = data.player || null;
@@ -52,6 +68,18 @@ function applySession(data) {
   void refreshProfile();
 }
 
+function applySkinPreview(me) {
+  if (me.skin_url && me.skin_hash) {
+    skinPreview.classList.remove("hidden");
+    skinPreviewImage.src = `${me.skin_url}?h=${encodeURIComponent(me.skin_hash)}`;
+    skinHash.textContent = me.skin_hash;
+  } else {
+    skinPreview.classList.add("hidden");
+    skinPreviewImage.removeAttribute("src");
+    skinHash.textContent = "";
+  }
+}
+
 async function refreshProfile() {
   if (!accessToken) return;
   try {
@@ -60,6 +88,7 @@ async function refreshProfile() {
     profileName.textContent = me.display_name;
     profileId.textContent = me.id;
     document.querySelectorAll("[data-skin]").forEach((button) => button.classList.toggle("active", button.dataset.skin === me.skin_source));
+    applySkinPreview(me);
   } catch (error) {
     setStatus(error.message, true);
   }
@@ -126,6 +155,7 @@ $("logoutButton").addEventListener("click", () => {
   player = null;
   profilePanel.classList.add("hidden");
   authTabs.classList.remove("hidden");
+  skinPreview.classList.add("hidden");
   showTab("login");
   setStatus("Signed out.");
 });
@@ -141,4 +171,26 @@ document.querySelectorAll("[data-skin]").forEach((button) => {
       setStatus(error.message, true);
     }
   });
+});
+
+skinFile.addEventListener("change", async () => {
+  const file = skinFile.files?.[0];
+  if (!file || !accessToken) return;
+  setStatus("Uploading GGO skin…");
+  skinFile.disabled = true;
+  try {
+    if (file.type && file.type !== "image/png") throw new Error("Choose a PNG skin.");
+    if (file.size > 512 * 1024) throw new Error("Skin PNG must be 512 KiB or smaller.");
+    const body = new FormData();
+    body.append("file", file, file.name || "skin.png");
+    const uploaded = await uploadRequest("/me/skin", body);
+    setStatus("GGO skin uploaded and selected.");
+    applySkinPreview(uploaded);
+    await refreshProfile();
+  } catch (error) {
+    setStatus(error.message, true);
+  } finally {
+    skinFile.disabled = false;
+    skinFile.value = "";
+  }
 });
