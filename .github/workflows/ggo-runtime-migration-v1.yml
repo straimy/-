@@ -1,0 +1,124 @@
+name: GGO Runtime Migration v1
+
+on:
+  push:
+    branches:
+      - client/runtime-migration-v1
+    paths:
+      - '.github/workflows/ggo-runtime-migration-v1.yml'
+      - 'hotfix/ui/GgoTitleScreen.java'
+      - 'hotfix/ui/GgoPauseScreen.java'
+      - 'hotfix/ui/GgoVanillaScreenGuard.java'
+      - 'docs/runtime-migration-roadmap.md'
+  workflow_dispatch:
+
+jobs:
+  build-shell:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Prepare extractor
+        shell: bash
+        run: |
+          cat >/tmp/extract.py <<'PY'
+          import sys
+          from pathlib import Path
+          wf=Path(sys.argv[1]); wanted=sys.argv[2]; lines=wf.read_text().splitlines()
+          start=next((i for i,l in enumerate(lines) if l.strip()==f'- name: {wanted}'),None)
+          if start is None: raise SystemExit('step not found: '+wanted)
+          run=None
+          for i in range(start+1,len(lines)):
+              if lines[i].startswith('      - name:') or lines[i].startswith('      - uses:'): break
+              if lines[i].strip()=='run: |': run=i+1; break
+          if run is None: raise SystemExit('run block missing: '+wanted)
+          out=[]
+          for i in range(run,len(lines)):
+              l=lines[i]
+              if l.startswith('      - name:') or l.startswith('      - uses:'): break
+              out.append(l[10:] if l.startswith('          ') else l)
+          print('\n'.join(out).rstrip())
+          PY
+
+      - name: Prepare v40 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v40-admin-npc-squad.yml 'Prepare latest source robustly' >/tmp/prepare-v40.sh
+          bash /tmp/prepare-v40.sh
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v40-admin-npc-squad.yml 'Apply v39 inventory and v40 NPC admin' >/tmp/apply-v40.sh
+          bash /tmp/apply-v40.sh
+          test -f ga-build/client-ui/src/main/java/arena/client/ui/GunnerArenaUiMod.java
+
+      - name: Apply Runtime Migration v1 client shell
+        shell: bash
+        run: |
+          set -euo pipefail
+          UI_DIR=ga-build/client-ui/src/main/java/arena/client/ui
+          mkdir -p "$UI_DIR"
+          cp hotfix/ui/GgoTitleScreen.java "$UI_DIR/GgoTitleScreen.java"
+          cp hotfix/ui/GgoPauseScreen.java "$UI_DIR/GgoPauseScreen.java"
+          cp hotfix/ui/GgoVanillaScreenGuard.java "$UI_DIR/GgoVanillaScreenGuard.java"
+          grep -q 'GUNGLORY RUNTIME v1' "$UI_DIR/GgoTitleScreen.java"
+          grep -q 'BACK TO GAME' "$UI_DIR/GgoPauseScreen.java"
+          grep -q 'ScreenEvent.Opening' "$UI_DIR/GgoVanillaScreenGuard.java"
+
+      - name: Build Core dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v12.yml 'Bootstrap ForgeGradle and build Core' >/tmp/core.sh
+          (cd ga-build && bash /tmp/core.sh)
+
+      - name: Build UI shell
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v12.yml 'Build UI against real Core' >/tmp/ui.sh
+          (cd ga-build && bash /tmp/ui.sh)
+
+      - name: Verify shell classes
+        shell: bash
+        run: |
+          set -euo pipefail
+          CORE="$(find ga-build/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          UI="$(find ga-build/client-ui/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          test -n "$CORE"; test -n "$UI"
+          for c in GgoTitleScreen GgoPauseScreen GgoVanillaScreenGuard; do
+            jar tf "$UI" | grep -q "^arena/client/ui/$c.class$"
+          done
+          mkdir -p runtime-migration/client/mods runtime-migration/server/mods
+          cp "$CORE" runtime-migration/server/mods/gungloryonline-core-0.9.7-v40.jar
+          cp "$CORE" runtime-migration/client/mods/gungloryonline-core-0.9.7-v40.jar
+          cp "$UI" runtime-migration/client/mods/gungloryonline-ui-0.9.7-v40-runtime-migration1.jar
+          cat > runtime-migration/README.txt <<'EOF'
+          GunGloryOnline Runtime Migration v1
+          Client-only shell experiment based on v40.
+          Replaces vanilla Title and Pause screens with GGO-owned screens.
+          Server Core behavior is unchanged.
+          EOF
+          sha256sum runtime-migration/server/mods/* runtime-migration/client/mods/* > runtime-migration/SHA256SUMS.txt
+
+      - name: Upload runtime migration build
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-v40-runtime-migration-v1
+          path: runtime-migration/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-runtime-migration-v1-diagnostics
+          path: |
+            v12-core-build.log
+            v12-ui-build.log
+          if-no-files-found: ignore
+          retention-days: 7
