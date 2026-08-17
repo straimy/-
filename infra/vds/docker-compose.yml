@@ -13,6 +13,7 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./public:/srv/ggo/updates:ro
       - ./site:/srv/ggo/site:ro
+      - skin_data:/srv/ggo/skins:ro
       - caddy_data:/data
       - caddy_config:/config
     networks:
@@ -32,6 +33,10 @@ services:
       REDIS_URL: redis://redis:6379/0
       GGO_JWT_SECRET: ${GGO_JWT_SECRET}
       GGO_JWT_ISSUER: ${GGO_SITE_HOST}
+      GGO_PUBLIC_SITE_URL: https://${GGO_SITE_HOST}
+      GGO_SKIN_DIR: /data/skins
+    volumes:
+      - skin_data:/data/skins
     depends_on:
       postgres:
         condition: service_healthy
@@ -89,3 +94,4 @@ volumes:
   caddy_config:
   postgres_data:
   redis_data:
+  skin_data:
