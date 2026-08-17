@@ -14,6 +14,7 @@ on:
       - 'hotfix/CGBetaForgeAdapter.java'
       - 'hotfix/ClassicArenaPickupService.java'
       - 'hotfix/ClassicArenaSpawnService.java'
+      - 'hotfix/ClassicArenaMatchService.java'
       - 'hotfix/GgoLegacyCommandBlockCleaner.java'
       - 'docs/command-block-migration.md'
       - 'docs/current-server-build-audit-2026-08-17.md'
@@ -88,6 +89,7 @@ jobs:
           cp hotfix/CGBetaForgeAdapter.java ga-build/src/main/java/arena/forge/CGBetaForgeAdapter.java
           cp hotfix/ClassicArenaPickupService.java ga-build/src/main/java/arena/forge/ClassicArenaPickupService.java
           cp hotfix/ClassicArenaSpawnService.java ga-build/src/main/java/arena/forge/ClassicArenaSpawnService.java
+          cp hotfix/ClassicArenaMatchService.java ga-build/src/main/java/arena/forge/ClassicArenaMatchService.java
           cp hotfix/GgoLegacyCommandBlockCleaner.java ga-build/src/main/java/arena/forge/GgoLegacyCommandBlockCleaner.java
           grep -q 'GGO-AC-V1' ga-build/src/main/java/arena/forge/GgoAntiCheatTelemetry.java
           grep -q 'GGO-RULES-V1' ga-build/src/main/java/arena/forge/GgoServerRulesGuard.java
@@ -96,6 +98,7 @@ jobs:
           grep -q 'GGO-CLASSIC-GEN-V2' ga-build/src/main/java/arena/forge/ClassicArenaMapGenerator.java
           grep -q 'GGO-CLASSIC-PICKUPS-V2' ga-build/src/main/java/arena/forge/ClassicArenaPickupService.java
           grep -q 'GGO-CLASSIC-SPAWN-V1' ga-build/src/main/java/arena/forge/ClassicArenaSpawnService.java
+          grep -q 'GGO-CLASSIC-MATCH-V1' ga-build/src/main/java/arena/forge/ClassicArenaMatchService.java
           grep -q 'strip CONFIRM' ga-build/src/main/java/arena/forge/GgoLegacyCommandBlockCleaner.java
           grep -q 'generator.generate(level)' ga-build/src/main/java/arena/forge/CGBetaForgeAdapter.java
           ! grep -q 'setBlock.*REDSTONE\|Scoreboard\|#cg_chunk_count' ga-build/src/main/java/arena/forge/CGBetaForgeAdapter.java
@@ -122,6 +125,7 @@ jobs:
           jar tf "$CORE" | grep -q '^arena/forge/CGBetaForgeAdapter.class$'
           jar tf "$CORE" | grep -q '^arena/forge/ClassicArenaPickupService.class$'
           jar tf "$CORE" | grep -q '^arena/forge/ClassicArenaSpawnService.class$'
+          jar tf "$CORE" | grep -q '^arena/forge/ClassicArenaMatchService.class$'
           jar tf "$CORE" | grep -q '^arena/forge/GgoLegacyCommandBlockCleaner.class$'
           mkdir -p server-hardening/server/mods
           cp "$CORE" server-hardening/server/mods/gungloryonline-core-0.9.7-v40-server-hardening1.jar
@@ -137,6 +141,7 @@ jobs:
           CGBetaForgeAdapter no longer toggles the old redstone generator or reads scoreboard progress.
           ClassicArenaPickupService migrates health and three legacy ammo slots without scoreboard command logic.
           ClassicArenaSpawnService replaces respawn_ticks/locked marker command chains with safe server-owned respawns.
+          ClassicArenaMatchService owns participants, countdown, kills target, winner and round reset without scoreboards.
           GgoLegacyCommandBlockCleaner is manual/OP-only and requires explicit CONFIRM before legacy block removal.
           Command-block migration continues service-by-service until the clean production world has command blocks disabled/removed.
           EOF
