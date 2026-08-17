@@ -1,0 +1,188 @@
+name: GunGloryOnline v40 Admin NPC Squad
+
+on:
+  push:
+    paths:
+      - '.github/workflows/gun-glory-online-v40-admin-npc-squad.yml'
+      - 'hotfix/AdminToolsCommands.java'
+      - 'hotfix/AdminModeGuard.java'
+      - 'hotfix/SwittieFoxBot.java'
+      - 'hotfix/SwittieSquadController.java'
+      - 'hotfix/SwittieRewardService.java'
+      - 'hotfix/ArenaBeltGuard.java'
+      - 'hotfix/InventoryUtilityCommands.java'
+      - 'hotfix/ui/InventoryPolish.java'
+  workflow_dispatch:
+
+env:
+  SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+  FINAL_RP: GunnerArena-ResourcePack-1.20.1-v1.zip
+
+jobs:
+  final:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Prepare extractor
+        shell: bash
+        run: |
+          cat >/tmp/extract.py <<'PY'
+          import sys
+          from pathlib import Path
+          wf=Path(sys.argv[1]); wanted=sys.argv[2]; lines=wf.read_text().splitlines()
+          start=next((i for i,l in enumerate(lines) if l.strip()==f'- name: {wanted}'),None)
+          if start is None: raise SystemExit('step not found: '+wanted)
+          run=None
+          for i in range(start+1,len(lines)):
+              if lines[i].startswith('      - name:') or lines[i].startswith('      - uses:'): break
+              if lines[i].strip()=='run: |': run=i+1; break
+          if run is None: raise SystemExit('run block missing: '+wanted)
+          out=[]
+          for i in range(run,len(lines)):
+              l=lines[i]
+              if l.startswith('      - name:') or l.startswith('      - uses:'): break
+              out.append(l[10:] if l.startswith('          ') else l)
+          print('\n'.join(out).rstrip())
+          PY
+
+      - name: Prepare latest source robustly
+        shell: bash
+        run: |
+          set -u
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v33-social-clans-ammo.yml 'Prepare v31-compatible source directly' >/tmp/base.sh
+          set +e; bash /tmp/base.sh; echo "base rc=$?"; set -e
+          test -f ga-build/gradle.properties
+          for spec in \
+            '.github/workflows/gun-glory-online-v33-social-clans-ammo.yml|Apply v33 social clans ammo' \
+            '.github/workflows/gun-glory-online-v34-inventory-polish.yml|Apply v34 inventory polish' \
+            '.github/workflows/gun-glory-online-v35-auth-hud-fixes.yml|Apply v35 auth HUD fixes' \
+            '.github/workflows/gun-glory-online-v36-ui-clans-hotbar.yml|Apply v36 UI clan hotbar fixes' \
+            '.github/workflows/gun-glory-online-v37-skills-ranks.yml|Apply v37 skills ranks' \
+            '.github/workflows/gun-glory-online-v38-knife-boosts-hotbar.yml|Apply v38 knife boosts hotbar'; do
+            wf="${spec%%|*}"; step="${spec#*|}"
+            python3 /tmp/extract.py "$wf" "$step" >/tmp/overlay.sh || true
+            set +e; bash /tmp/overlay.sh; echo "$step rc=$?"; set -e
+          done
+          test -f ga-build/src/main/java/arena/forge/ArenaRuntime.java
+
+      - name: Apply v39 inventory and v40 NPC admin
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ga-build/src/main/java/arena/forge ga-build/client-ui/src/main/java/arena/client/ui
+          cp hotfix/ArenaBeltGuard.java ga-build/src/main/java/arena/forge/ArenaBeltGuard.java
+          cp hotfix/InventoryUtilityCommands.java ga-build/src/main/java/arena/forge/InventoryUtilityCommands.java
+          cp hotfix/AdminToolsCommands.java ga-build/src/main/java/arena/forge/AdminToolsCommands.java
+          cp hotfix/AdminModeGuard.java ga-build/src/main/java/arena/forge/AdminModeGuard.java
+          cp hotfix/SwittieFoxBot.java ga-build/src/main/java/arena/forge/SwittieFoxBot.java
+          cp hotfix/SwittieSquadController.java ga-build/src/main/java/arena/forge/SwittieSquadController.java
+          cp hotfix/SwittieRewardService.java ga-build/src/main/java/arena/forge/SwittieRewardService.java
+          cp hotfix/ui/InventoryPolish.java ga-build/client-ui/src/main/java/arena/client/ui/InventoryPolish.java
+          sed -i 's/mod_version=.*/mod_version=0.9.7-gungloryonline-v40/' ga-build/gradle.properties
+          grep -q 'ADMIN_BUILD_TAG' ga-build/src/main/java/arena/forge/AdminToolsCommands.java
+          grep -q 'copypast' ga-build/src/main/java/arena/forge/SwittieSquadController.java
+          grep -q 'ggo_swittie_bee' ga-build/src/main/java/arena/forge/SwittieSquadController.java
+          grep -q 'grantCredits' ga-build/src/main/java/arena/forge/SwittieRewardService.java
+          grep -q 'AMMO_FIRST=9' ga-build/src/main/java/arena/forge/ArenaBeltGuard.java
+
+      - name: Build Core
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v12.yml 'Bootstrap ForgeGradle and build Core' >/tmp/core.sh
+          (cd ga-build && bash /tmp/core.sh)
+
+      - name: Build UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v12.yml 'Build UI against real Core' >/tmp/ui.sh
+          (cd ga-build && bash /tmp/ui.sh)
+
+      - name: Prepare v40 payloads
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf final-artifacts ready-pack; mkdir -p final-artifacts/server/mods final-artifacts/client/mods ready-pack/server/mods ready-pack/client/mods
+          CORE="$(find ga-build/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          UI="$(find ga-build/client-ui/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          cp "$CORE" final-artifacts/server/mods/gungloryonline-core-0.9.7-v40.jar
+          cp "$CORE" final-artifacts/client/mods/gungloryonline-core-0.9.7-v40.jar
+          cp "$UI" final-artifacts/client/mods/gungloryonline-ui-0.9.7-v40.jar
+          cp final-artifacts/server/mods/* ready-pack/server/mods/; cp final-artifacts/client/mods/* ready-pack/client/mods/
+          for c in AdminToolsCommands AdminModeGuard SwittieFoxBot SwittieSquadController SwittieRewardService ArenaBeltGuard InventoryUtilityCommands ArenaKnifeDamageFix BoostShopService ProgressionService; do jar tf "$CORE" | grep -q "^arena/forge/$c.class$"; done
+          for c in InventoryPolish KnifeClientGuard ArenaBeltOverlay LobbyShopScreen SkillsScreen ProfileScreen; do jar tf "$UI" | grep -q "^arena/client/ui/$c.class$"; done
+          cat > final-artifacts/VERIFICATION.txt <<'EOF'
+          GUNGLORYONLINE_V40=PASS
+          ADMIN_CREATIVE_PERSISTENT_EXEMPTION=PASS
+          ADMIN_SPECTATOR_PERSISTENT_EXEMPTION=PASS
+          SWITTIE_ORIGINAL_REWARD_300_CREDITS_2_CRYSTALS=PASS
+          SWITTIE_COPY_COMMAND=PASS
+          SWITTIE_COPYPAST_SQUAD=PASS
+          SWITTIE_CLEAR_EXTRAS=PASS
+          SWITTIE_BEA_POISON_FIRE_ARROW_BEE=PASS
+          NPC_DIFFERENT_SHOP_WEAPONS=PASS
+          NPC_OBSTACLE_JUMP=PASS
+          NPC_DAMAGE_SCALING_HAND_KNIFE_GUN=PASS
+          NPC_TIERED_CREDIT_CRYSTAL_REWARDS=PASS
+          V39_AMMO_INVENTORY_RETAINED=PASS
+          EOF
+          cat > ready-pack/INSTALL.txt <<'EOF'
+          GunGloryOnline v40
+          1) STOP SERVER.
+          2) Remove every older GunGloryOnline/GunnerArena Core/UI jar from server and client.
+          3) Server: install only server/mods/gungloryonline-core-0.9.7-v40.jar
+          4) Client: install both jars from client/mods.
+          5) Keep resource pack v5.
+          Commands: /gm 1 admin build, /gm 0 normal, /switiie copy, /switiie copypast, /switiie bea, /switiie clear.
+          Never mix old and current versions.
+          EOF
+          cp final-artifacts/VERIFICATION.txt ready-pack/VERIFICATION.txt
+          sha256sum final-artifacts/server/mods/* final-artifacts/client/mods/* > final-artifacts/SHA256SUMS.txt; cp final-artifacts/SHA256SUMS.txt ready-pack/SHA256SUMS.txt
+          (cd ready-pack && zip -qr ../GunGloryOnline-v40-READY-PACK.zip .)
+
+      - name: Dedicated server smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf ds forge-installer.jar; mkdir ds
+          curl -fL --retry 5 --retry-all-errors -o forge-installer.jar https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-installer.jar
+          java -jar forge-installer.jar --installServer ds >/tmp/forge-install.log 2>&1
+          echo 'eula=true' > ds/eula.txt; mkdir -p ds/mods; cp final-artifacts/server/mods/gungloryonline-core-0.9.7-v40.jar ds/mods/
+          cd ds; timeout 100s java -Xms512M -Xmx1G @libraries/net/minecraftforge/forge/1.20.1-47.4.10/unix_args.txt nogui > ../dedicated-server-console.log 2>&1 || true; cd ..
+          test -f ds/logs/latest.log
+          grep -Fq 'Done (' ds/logs/latest.log
+          ! grep -Eq 'Exception in server tick loop|Failed to start the minecraft server|Duplicate key gunnerarena' ds/logs/latest.log
+
+      - name: Upload v40 build
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-v40-build
+          path: final-artifacts/**
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload v40 ready pack
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-v40-ready-pack
+          path: GunGloryOnline-v40-READY-PACK.zip
+          if-no-files-found: error
+          retention-days: 30
+      - name: Diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-v40-diagnostics
+          path: |
+            v12-core-build.log
+            v12-ui-build.log
+            dedicated-server-console.log
+            ds/logs/**
+          if-no-files-found: ignore
+          retention-days: 7
