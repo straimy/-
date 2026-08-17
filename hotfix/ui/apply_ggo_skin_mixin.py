@@ -6,10 +6,12 @@ text = build.read_text()
 
 plugin_line = "    id 'org.spongepowered.mixin' version '0.7.+'\n"
 if "org.spongepowered.mixin" not in text:
-    marker = "plugins {\n"
-    if marker not in text:
-        raise SystemExit("client-ui build.gradle plugins block missing")
-    text = text.replace(marker, marker + plugin_line, 1)
+    lines = text.splitlines(keepends=True)
+    forge_index = next((i for i, line in enumerate(lines) if "net.minecraftforge.gradle" in line), None)
+    if forge_index is None:
+        raise SystemExit("client-ui ForgeGradle plugin declaration missing")
+    lines.insert(forge_index + 1, plugin_line)
+    text = "".join(lines)
 
 if "org.spongepowered:mixin:0.8.5:processor" not in text:
     text += "\n\ndependencies {\n    annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'\n}\n"
@@ -45,4 +47,4 @@ mixin_dir.mkdir(parents=True, exist_ok=True)
 mixin_src = Path("hotfix/ui/mixin/AbstractClientPlayerMixin.java")
 (mixin_dir / mixin_src.name).write_text(mixin_src.read_text())
 
-print("GGO skin mixin configured")
+print("GGO skin mixin configured after ForgeGradle")
