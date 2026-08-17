@@ -6,7 +6,9 @@ use core::{
     ggo_auth::{self, GgoAuthStatus, GgoSessionStore, MinecraftLinkResult},
     identity_bridge,
     launcher_update::{self, LauncherUpdateStatus},
-    microsoft_auth::{self, MicrosoftLoginResult, MicrosoftSessionStore},
+    microsoft_auth::{
+        self, MinecraftProfile, MicrosoftLoginResult, MicrosoftSession, MicrosoftSessionStore,
+    },
     remote_content::{self, NewsFeed, ServerCatalog},
     updater::{self, SyncReport, UpdatePlan},
 };
@@ -25,6 +27,7 @@ use tokio::{
     net::TcpStream,
     time::{timeout, Duration},
 };
+use uuid::Uuid;
 
 #[tauri::command]
 fn bootstrap_info() -> BootstrapInfo {
@@ -243,6 +246,63 @@ async fn launch_minecraft(
 }
 
 #[tauri::command]
+async fn launch_training(
+    ggo_store: State<'_, GgoSessionStore>,
+    install_dir: String,
+    custom_java: Option<String>,
+    display_name: String,
+    mut options: LaunchOptions,
+) -> Result<LaunchResult, String> {
+    let root = PathBuf::from(&install_dir);
+    let guest_name = {
+        let value = display_name.trim();
+        if value.is_empty() {
+            "Guest".to_string()
+        } else {
+            value.chars().take(16).collect::<String>()
+        }
+    };
+
+    let (runtime_name, runtime_id) = if let Some(ggo) = ggo_store.snapshot().await {
+        identity_bridge::write(
+            &root,
+            Some(&ggo.profile.id),
+            &ggo.profile.display_name,
+            &ggo.profile.skin_source,
+            "ggo",
+        )?;
+        (
+            ggo.profile.display_name,
+            ggo.profile.id.replace('-', ""),
+        )
+    } else {
+        identity_bridge::write(&root, None, &guest_name, "default", "guest")?;
+        (guest_name, Uuid::new_v4().simple().to_string())
+    };
+
+    options.connect_server = false;
+    options.launch_mode = "training".to_string();
+    let local_session = MicrosoftSession {
+        access_token: String::new(),
+        refresh_token: None,
+        expires_in_seconds: 0,
+        minecraft_access_token: "0".to_string(),
+        minecraft_profile: MinecraftProfile {
+            id: runtime_id,
+            name: runtime_name,
+        },
+    };
+
+    minecraft_process::launch_with_natives(
+        &root,
+        custom_java.as_deref(),
+        &local_session,
+        &options,
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 async fn microsoft_login(
     store: State<'_, MicrosoftSessionStore>,
 ) -> Result<MicrosoftLoginResult, String> {
@@ -398,6 +458,7 @@ pub fn run() {
             install_local_ggo,
             preview_minecraft_launch,
             launch_minecraft,
+            launch_training,
             microsoft_login,
             microsoft_auth_status,
             microsoft_logout,
