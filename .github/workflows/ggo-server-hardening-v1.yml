@@ -8,7 +8,9 @@ on:
       - '.github/workflows/ggo-server-hardening-v1.yml'
       - 'hotfix/GgoAntiCheatTelemetry.java'
       - 'hotfix/GgoServerRulesGuard.java'
+      - 'hotfix/GgoGameModeRegistry.java'
       - 'docs/command-block-migration.md'
+      - 'docs/current-server-build-audit-2026-08-17.md'
       - 'tools/world_command_audit.py'
   workflow_dispatch:
 
@@ -73,8 +75,10 @@ jobs:
           mkdir -p ga-build/src/main/java/arena/forge
           cp hotfix/GgoAntiCheatTelemetry.java ga-build/src/main/java/arena/forge/GgoAntiCheatTelemetry.java
           cp hotfix/GgoServerRulesGuard.java ga-build/src/main/java/arena/forge/GgoServerRulesGuard.java
+          cp hotfix/GgoGameModeRegistry.java ga-build/src/main/java/arena/forge/GgoGameModeRegistry.java
           grep -q 'GGO-AC-V1' ga-build/src/main/java/arena/forge/GgoAntiCheatTelemetry.java
           grep -q 'GGO-RULES-V1' ga-build/src/main/java/arena/forge/GgoServerRulesGuard.java
+          grep -q 'Classic Arena' ga-build/src/main/java/arena/forge/GgoGameModeRegistry.java
           grep -q 'v1 intentionally does not kick or ban' ga-build/src/main/java/arena/forge/GgoAntiCheatTelemetry.java
 
       - name: Build Core
@@ -92,6 +96,7 @@ jobs:
           test -n "$CORE"
           jar tf "$CORE" | grep -q '^arena/forge/GgoAntiCheatTelemetry.class$'
           jar tf "$CORE" | grep -q '^arena/forge/GgoServerRulesGuard.class$'
+          jar tf "$CORE" | grep -q '^arena/forge/GgoGameModeRegistry.class$'
           mkdir -p server-hardening/server/mods
           cp "$CORE" server-hardening/server/mods/gungloryonline-core-0.9.7-v40-server-hardening1.jar
           sha256sum server-hardening/server/mods/* > server-hardening/SHA256SUMS.txt
@@ -99,6 +104,8 @@ jobs:
           GunGloryOnline Server Hardening v1
           Conservative server-side anti-cheat telemetry; no automatic kicks/bans in v1.
           Normal players cannot break/place world blocks; explicit OP admin build mode is exempt.
+          /play is backed by the server-owned GGO game mode registry.
+          Classic Arena is registered as MIGRATING from the recovered legacy command-block game.
           Command-block migration is documented separately and will be implemented service-by-service.
           tools/world_command_audit.py can inventory command blocks/datapack functions in imported worlds.
           EOF
