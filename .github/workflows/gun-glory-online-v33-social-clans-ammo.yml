@@ -22,6 +22,7 @@ on:
 env:
   SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
   FINAL_RP: GunnerArena-ResourcePack-1.20.1-v1.zip
+  V31_SOURCE_SHA: 6c1c155b7734716c6c4c2d7f37253c5b78e63872
 
 jobs:
   final:
@@ -57,15 +58,22 @@ jobs:
           print('\n'.join(out).rstrip())
           PY
 
-      - name: Prepare current v31 source
+      - name: Prepare known-good v31 source
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p /tmp/v33/hotfix/ui /tmp/v33/hotfix
+          for f in hotfix/ArenaBeltGuard.java hotfix/SpawnLoadoutGuard.java hotfix/GgoIdentityBridge.java hotfix/FriendService.java hotfix/FriendNetwork.java hotfix/ClanService.java hotfix/ClanNetwork.java; do cp "$f" "/tmp/v33/$f"; done
+          for f in hotfix/ui/FriendsScreen.java hotfix/ui/ClanScreen.java hotfix/ui/MainArenaScreen.java hotfix/ui/UiTheme.java hotfix/ui/UiEffects.java hotfix/ui/JegNoAmmoFeedback.java; do cp "$f" "/tmp/v33/$f"; done
+          git fetch --no-tags --depth=1 origin "$V31_SOURCE_SHA"
+          git reset --hard "$V31_SOURCE_SHA"
+          git clean -fd
           python3 /tmp/extract.py .github/workflows/gun-glory-online-v31-inventory-commandblock-fence.yml 'Prepare v30 source' >/tmp/base.sh
           bash /tmp/base.sh
           python3 /tmp/extract.py .github/workflows/gun-glory-online-v31-inventory-commandblock-fence.yml 'Apply v31 consistency fence UI admin' >/tmp/v31.sh
           bash /tmp/v31.sh
           test -f ga-build/gradle.properties
+          cp -a /tmp/v33/hotfix/. hotfix/
 
       - name: Apply v33 social clans ammo
         shell: bash
@@ -133,7 +141,7 @@ jobs:
           for c in FriendsScreen ClanScreen MainArenaScreen UiTheme UiEffects JegNoAmmoFeedback ArenaBeltOverlay MatchShopScreen; do jar tf "$UI" | grep -q "^arena/client/ui/$c.class$"; done
           cat > final-artifacts/VERIFICATION.txt <<'EOF'
           GUNGLORYONLINE_V33=PASS
-          CURRENT_V31_PIPELINE_BASE=PASS
+          KNOWN_GOOD_V31_SOURCE_BASE=PASS
           PHYSICAL_MENU_COMPASS_REMOVED_ALL_VARIANTS=PASS
           THREE_SLOT_INVENTORY_NORMAL_PLAY=PASS
           CONSERVATIVE_AMMO_WARNING=PASS
