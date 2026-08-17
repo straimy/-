@@ -12,6 +12,8 @@ on:
       - 'hotfix/ui/GgoConnectionOverlay.java'
       - 'hotfix/ui/GgoDisconnectedScreen.java'
       - 'hotfix/ui/GgoSkinResolver.java'
+      - 'hotfix/ui/GgoIdentityBridge.java'
+      - 'hotfix/ui/GgoSkinRuntime.java'
       - 'docs/runtime-migration-roadmap.md'
   workflow_dispatch:
 
@@ -74,12 +76,16 @@ jobs:
           cp hotfix/ui/GgoConnectionOverlay.java "$UI_DIR/GgoConnectionOverlay.java"
           cp hotfix/ui/GgoDisconnectedScreen.java "$UI_DIR/GgoDisconnectedScreen.java"
           cp hotfix/ui/GgoSkinResolver.java "$UI_DIR/GgoSkinResolver.java"
+          cp hotfix/ui/GgoIdentityBridge.java "$UI_DIR/GgoIdentityBridge.java"
+          cp hotfix/ui/GgoSkinRuntime.java "$UI_DIR/GgoSkinRuntime.java"
           grep -q 'GUNGLORY RUNTIME v1' "$UI_DIR/GgoTitleScreen.java"
           grep -q 'BACK TO GAME' "$UI_DIR/GgoPauseScreen.java"
-          grep -q 'DisconnectedScreen' "$UI_DIR/GgoVanillaScreenGuard.java"
+          grep -q 'GgoSkinRuntime.tick' "$UI_DIR/GgoVanillaScreenGuard.java"
           grep -q 'CONNECTING TO GUNGLORY ONLINE' "$UI_DIR/GgoConnectionOverlay.java"
           grep -q 'CONNECTION LOST' "$UI_DIR/GgoDisconnectedScreen.java"
           grep -q 'ggo-cache' "$UI_DIR/GgoSkinResolver.java"
+          grep -q '.ggo-profile.json' "$UI_DIR/GgoIdentityBridge.java"
+          grep -q 'DynamicTexture' "$UI_DIR/GgoSkinRuntime.java"
 
       - name: Build Core dependency
         shell: bash
@@ -102,7 +108,7 @@ jobs:
           CORE="$(find ga-build/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
           UI="$(find ga-build/client-ui/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
           test -n "$CORE"; test -n "$UI"
-          for c in GgoTitleScreen GgoPauseScreen GgoVanillaScreenGuard GgoConnectionOverlay GgoDisconnectedScreen GgoSkinResolver; do
+          for c in GgoTitleScreen GgoPauseScreen GgoVanillaScreenGuard GgoConnectionOverlay GgoDisconnectedScreen GgoSkinResolver GgoIdentityBridge GgoSkinRuntime; do
             jar tf "$UI" | grep -q "^arena/client/ui/$c.class$"
           done
           mkdir -p runtime-migration/client/mods runtime-migration/server/mods
@@ -114,7 +120,8 @@ jobs:
           Client-only shell experiment based on v40.
           Replaces vanilla Title, Pause and Disconnected screens with GGO-owned screens.
           Covers vanilla connecting/receiving screens with a GGO loading presentation while Forge networking remains intact.
-          Includes first-party GGO skin metadata/download cache keyed by ggo_player_id and immutable skin SHA256.
+          Reads the launcher's non-secret .ggo-profile.json identity bridge.
+          Includes first-party GGO skin metadata/download cache keyed by ggo_player_id, SHA256 verification and texture registration.
           Server Core behavior is unchanged.
           EOF
           sha256sum runtime-migration/server/mods/* runtime-migration/client/mods/* > runtime-migration/SHA256SUMS.txt
