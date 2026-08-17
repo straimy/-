@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>GunGloryOnline Account</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <a class="brand" href="/">GUNGLORY<span>ONLINE</span></a>
+      <span class="badge">ACCOUNT BETA</span>
+    </header>
+
+    <section class="hero">
+      <div class="copy">
+        <span>GGO IDENTITY</span>
+        <h1>One account.<br><em>Beyond Minecraft.</em></h1>
+        <p>Your GunGloryOnline profile owns progression, cosmetics, social data and GGO skins. Microsoft can be linked later as an optional identity.</p>
+      </div>
+
+      <section class="card" id="authCard">
+        <div id="activationBox" class="activation hidden">
+          <small>LAUNCHER SIGN-IN</small>
+          <strong id="activationCode">—</strong>
+          <p>Sign in below, then approve this launcher session.</p>
+        </div>
+
+        <div class="tabs" id="authTabs">
+          <button class="active" data-tab="login">Sign in</button>
+          <button data-tab="register">Create account</button>
+        </div>
+
+        <form id="loginForm" class="form">
+          <label>Email<input id="loginEmail" type="email" autocomplete="email" required /></label>
+          <label>Password<input id="loginPassword" type="password" autocomplete="current-password" required /></label>
+          <button class="primary" type="submit">SIGN IN</button>
+        </form>
+
+        <form id="registerForm" class="form hidden">
+          <label>Player name<input id="registerName" maxlength="16" pattern="[A-Za-z0-9_]{3,16}" autocomplete="nickname" required /></label>
+          <label>Email<input id="registerEmail" type="email" autocomplete="email" required /></label>
+          <label>Password<input id="registerPassword" type="password" minlength="10" maxlength="128" autocomplete="new-password" required /></label>
+          <button class="primary" type="submit">CREATE GGO ACCOUNT</button>
+        </form>
+
+        <div id="profilePanel" class="profile hidden">
+          <small>GGO PROFILE</small>
+          <h2 id="profileName">Player</h2>
+          <code id="profileId"></code>
+          <div class="skinRow">
+            <span>Skin source</span>
+            <div class="skinButtons">
+              <button data-skin="ggo">GGO</button>
+              <button data-skin="microsoft">Official</button>
+              <button data-skin="default">Default</button>
+            </div>
+          </div>
+          <button id="approveButton" class="primary hidden">APPROVE LAUNCHER</button>
+          <button id="logoutButton" class="secondary">SIGN OUT</button>
+        </div>
+
+        <p class="status" id="status">Ready.</p>
+      </section>
+    </section>
+
+    <footer>GunGloryOnline · GGO Identity v1 · Passwords never enter the launcher.</footer>
+  </main>
+  <script src="/app.js" defer></script>
+</body>
+</html>
