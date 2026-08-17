@@ -8,6 +8,48 @@ Move gameplay authority from map command blocks into versioned server/Core code 
 
 A production map may contain geometry, spawn markers, named regions, decorative entities and explicit GGO metadata. It should not contain critical match state, economy, damage, rewards, authentication, progression or anti-cheat logic in command blocks.
 
+## Current migration evidence — supplied 2026-08-17 world
+
+The supplied full server/world was audited at the Anvil/NBT level and contained **992 command blocks**.
+
+A runtime copy was then started with:
+
+- the green server-hardening Core;
+- the supplied real world and gameplay mods;
+- `enable-command-block=false`.
+
+The dedicated server reached `Done (4.596s)`, proving the imported world itself can load with command execution disabled.
+
+On a separate disposable copy of that world, the OP-only migration cleaner was executed through the real dedicated-server console:
+
+1. `/ggo legacy commandblocks status`;
+2. `/ggo legacy commandblocks strip CONFIRM`;
+3. `save-all`;
+4. `stop`.
+
+The server reported:
+
+- **992 legacy command blocks removed**.
+
+A second direct region/NBT scan of the saved copy reported:
+
+- `command_block_entities = 0`;
+- `commands = 0`.
+
+This proves the removal mechanism itself. It does **not** by itself mean every legacy gameplay behavior is already migrated; the clean copy remains an integration target until Classic Arena and remaining map presentation/trigger services pass gameplay smoke.
+
+## Already migrated from the legacy command graph
+
+- Classic 8×8 procedural arena generation -> `ClassicArenaMapGenerator` using `StructureTemplate` directly;
+- recovered generator bridge no longer toggles redstone or reads generator scoreboards;
+- random ammo point distribution 4/3/3 -> Java generator state;
+- health + three Classic ammo slots -> `ClassicArenaPickupService`;
+- respawn delay / locked spawn-marker logic -> `ClassicArenaSpawnService`;
+- Classic participants/countdown/kills target/winner/reset -> `ClassicArenaMatchService`;
+- jump pads -> `ClassicArenaJumpPadService` direct velocity implementation (in validation);
+- normal-player block breaking/placement and legacy command-block interaction -> `GgoServerRulesGuard`;
+- migration-only stripping -> `GgoLegacyCommandBlockCleaner` with explicit OP `CONFIRM`.
+
 ## Migration order
 
 1. Inventory/loadout grants -> server loadout service.
