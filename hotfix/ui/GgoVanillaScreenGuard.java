@@ -17,8 +17,10 @@ public final class GgoVanillaScreenGuard {
 
     @SubscribeEvent
     public static void onScreenOpening(ScreenEvent.Opening event) {
-        if (event.getNewScreen() instanceof TitleScreen && !(event.getNewScreen() instanceof GgoTitleScreen)) {
-            event.setNewScreen(new GgoTitleScreen());
+        if (event.getNewScreen() instanceof TitleScreen
+            && !(event.getNewScreen() instanceof GgoTitleScreen)
+            && !(event.getNewScreen() instanceof GgoTrainingScreen)) {
+            event.setNewScreen(GgoLaunchMode.isTraining() ? new GgoTrainingScreen() : new GgoTitleScreen());
             return;
         }
         if (event.getNewScreen() instanceof PauseScreen && !(event.getNewScreen() instanceof GgoPauseScreen)) {
