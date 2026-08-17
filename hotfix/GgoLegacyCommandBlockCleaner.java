@@ -4,7 +4,6 @@ import com.mojang.brigadier.Command;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.Commands;
 import net.minecraft.core.BlockPos;
@@ -17,54 +16,48 @@ import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
-/**
- * Explicit migration-only cleaner for the imported Classic Arena command-block infrastructure.
- *
- * Nothing is deleted automatically. An OP must inspect status and then type the exact CONFIRM token.
- * The production deployment should be backed up before the strip command is ever used.
- */
+/** Explicit, OP-only migration cleaner for the imported Classic Arena command-block layer. */
 @Mod.EventBusSubscriber(modid = "gunnerarena", bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class GgoLegacyCommandBlockCleaner {
     public static final String VERSION = "GGO-LEGACY-CLEAN-V1";
 
-    // Bounds recovered from the supplied 2026-08-17 world audit. They cover all 992 command blocks.
-    private static final int MIN_X = 32;
-    private static final int MAX_X = 213;
-    private static final int MIN_Y = 17;
-    private static final int MAX_Y = 88;
-    private static final int MIN_Z = -62;
-    private static final int MAX_Z = 107;
+    // Exact bounds recovered from the supplied world audit; all 992 legacy blocks are inside.
+    private static final int MIN_X = 32, MAX_X = 213;
+    private static final int MIN_Y = 17, MAX_Y = 88;
+    private static final int MIN_Z = -62, MAX_Z = 107;
 
     private GgoLegacyCommandBlockCleaner() {}
 
     @SubscribeEvent
     public static void commands(RegisterCommandsEvent event) {
+        var commandBlocks = Commands.literal("commandblocks")
+            .then(Commands.literal("status").executes(ctx -> {
+                List<BlockPos> found = find(ctx.getSource().getLevel());
+                ctx.getSource().sendSuccess(() -> Component.literal(
+                    "[GGO] Legacy command blocks in audited bounds: " + found.size()
+                ).withStyle(found.isEmpty() ? ChatFormatting.GREEN : ChatFormatting.GOLD), false);
+                return Command.SINGLE_SUCCESS;
+            }))
+            .then(Commands.literal("strip")
+                .then(Commands.argument("confirmation", StringArgumentType.word())
+                    .executes(ctx -> strip(
+                        ctx.getSource().getLevel(),
+                        ctx.getSource(),
+                        StringArgumentType.getString(ctx, "confirmation")
+                    ))));
+
         event.getDispatcher().register(
             Commands.literal("ggo")
                 .requires(source -> source.hasPermission(2))
-                .then(Commands.literal("legacy")
-                    .then(Commands.literal("commandblocks")
-                        .then(Commands.literal("status").executes(ctx -> {
-                            ServerLevel level = ctx.getSource().getLevel();
-                            List<BlockPos> found = find(level);
-                            ctx.getSource().sendSuccess(() -> Component.literal(
-                                "[GGO] Legacy command blocks in audited bounds: " + found.size()
-                            ).withStyle(found.isEmpty() ? ChatFormatting.GREEN : ChatFormatting.GOLD), false);
-                            return Command.SINGLE_SUCCESS;
-                        }))
-                        .then(Commands.literal("strip")
-                            .then(Commands.argument("confirmation", StringArgumentType.word())
-                                .executes(ctx -> strip(
-                                    ctx.getSource().getLevel(),
-                                    ctx.getSource(),
-                                    StringArgumentType.getString(ctx, "confirmation")
-                                )))))
+                .then(Commands.literal("legacy").then(commandBlocks))
         );
     }
 
     private static int strip(ServerLevel level, net.minecraft.commands.CommandSourceStack source, String confirmation) {
         if (!"CONFIRM".equals(confirmation)) {
-            source.sendFailure(Component.literal("[GGO] Refusing destructive migration. Use: /ggo legacy commandblocks strip CONFIRM"));
+            source.sendFailure(Component.literal(
+                "[GGO] Refusing destructive migration. Use: /ggo legacy commandblocks strip CONFIRM"
+            ));
             return 0;
         }
 
