@@ -57,7 +57,11 @@ public final class FriendsScreen extends AbstractArenaScreen {
 
     @Override public void render(GuiGraphics g,int mx,int my,float pt){
         drawBackdrop(g);UiLayout.Rect p=UiLayout.of(width,height).contentPanel();drawPanel(g,p);
-        long now=System.currentTimeMillis();double wave=(Math.sin(now/420.0)+1.0)*.5;int glowAlpha=36+(int)(42*wave);int glow=(glowAlpha<<24)|0x006BE7E3;
+        long now=System.currentTimeMillis();
+        UiEffects.verticalGradient(g,p.x()+1,p.y()+1,p.x()+p.width()-1,p.y()+Math.min(72,p.height()-1),0x441C3658,0x07111725);
+        UiEffects.animatedSheen(g,p.x()+1,p.y()+1,p.width()-2,3,now,UiTheme.ACCENT);
+        UiEffects.pulseBorder(g,p.x(),p.y(),p.width(),p.height(),now,UiTheme.ACCENT);
+        double wave=(Math.sin(now/420.0)+1.0)*.5;int glowAlpha=36+(int)(42*wave);int glow=(glowAlpha<<24)|0x006BE7E3;
         g.fill(p.x()-2,p.y()-2,p.x()+p.width()+2,p.y(),glow);g.fill(p.x()-2,p.y()+p.height(),p.x()+p.width()+2,p.y()+p.height()+2,glow);
         g.drawString(font,Component.literal("✦ СОЦИАЛ"),p.x()+14,p.y()+12,UiTheme.PINK);
         g.drawString(font,Component.literal("GGO-ID  "+snapshot.selfId()),p.x()+14,p.y()+27,UiTheme.ACCENT);
