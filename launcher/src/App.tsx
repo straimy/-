@@ -36,6 +36,7 @@ type UpdatePlan = { gameVersion: string; files: { path: string; size: number; re
 type MinecraftProfile = { id: string; name: string };
 type MicrosoftAuthStatus = { authenticated: boolean; minecraftProfile: MinecraftProfile | null };
 type GgoAuthStatus = { authenticated: boolean; profile: null | { id: string; displayName: string; skinSource: SkinSource } };
+type MinecraftLinkResult = { linked: boolean; provider: string; minecraftUuid: string; minecraftName: string };
 type LaunchResult = { pid: number; profileName: string };
 type LaunchOptions = { ramMb: number; width: number; height: number; fullscreen: boolean };
 type RemoteServer = { id: string; name: string; address: string; enabled: boolean; order: number };
@@ -108,6 +109,12 @@ export default function App(){
     if(!nickname)setNickname(value.profile.displayName);
   }
 
+  async function linkMinecraftIdentity(){
+    const linked=await invoke<MinecraftLinkResult>("ggo_link_minecraft",{apiUrl:info.accountApiUrl});
+    setStatus(`GGO · ${linked.minecraftName} linked ✓`);
+    return linked;
+  }
+
   useEffect(()=>{
     let alive=true;
     void invoke<BootstrapInfo>("bootstrap_info").then(v=>{if(alive)setInfo(v);}).catch(()=>undefined);
@@ -155,7 +162,14 @@ export default function App(){
 
   async function login(){
     setBusy(true);
-    try{const a=await invoke<MicrosoftAuthStatus>("microsoft_login");setAuth(a);if(a.minecraftProfile&&!nickname)setNickname(a.minecraftProfile.name);setStatus(a.minecraftProfile?.name??"Microsoft connected");}
+    try{
+      const a=await invoke<MicrosoftAuthStatus>("microsoft_login");
+      setAuth(a);
+      if(a.minecraftProfile&&!nickname)setNickname(a.minecraftProfile.name);
+      if(a.minecraftProfile&&ggoAccount.connected){
+        try{await linkMinecraftIdentity();}catch(e){setStatus(`Microsoft connected · GGO link pending: ${String(e)}`);}
+      }else setStatus(a.minecraftProfile?.name??"Microsoft connected");
+    }
     catch(e){setStatus(String(e));}
     finally{setBusy(false);}
   }
@@ -163,7 +177,13 @@ export default function App(){
 
   async function beginGgoLogin(){
     setBusy(true);setStatus("Waiting for GGO website confirmation…");
-    try{const value=await invoke<GgoAuthStatus>("ggo_login",{apiUrl:info.accountApiUrl});applyGgoStatus(value);setStatus(value.profile?`GGO · ${value.profile.displayName}`:"GGO sign-in failed");}
+    try{
+      const value=await invoke<GgoAuthStatus>("ggo_login",{apiUrl:info.accountApiUrl});
+      applyGgoStatus(value);
+      if(value.profile&&auth.minecraftProfile){
+        try{await linkMinecraftIdentity();}catch(e){setStatus(`GGO connected · Minecraft link pending: ${String(e)}`);}
+      }else setStatus(value.profile?`GGO · ${value.profile.displayName}`:"GGO sign-in failed");
+    }
     catch(e){setStatus(String(e));}
     finally{setBusy(false);}
   }
