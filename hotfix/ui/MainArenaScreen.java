@@ -17,7 +17,8 @@ public final class MainArenaScreen extends AbstractArenaScreen {
         addRenderableWidget(new ArenaButton(l.primaryButton(1),Component.literal("◇  МАГАЗИН"),b->Minecraft.getInstance().setScreen(new LobbyShopScreen())));
         addRenderableWidget(new ArenaButton(l.primaryButton(2),Component.literal("⌁  ПРОФИЛЬ"),b->Minecraft.getInstance().setScreen(new ProfileScreen())));
         addRenderableWidget(new ArenaButton(l.primaryButton(3),Component.literal("✦  ДРУЗЬЯ"),b->Minecraft.getInstance().setScreen(new FriendsScreen())));
-        int w=Math.min(132,Math.max(104,l.panelWidth()/4)),y=Math.min(Math.max(l.primaryButton(3).y()+l.primaryButton(3).height()+7,height-35),height-27);
+        addRenderableWidget(new ArenaButton(l.primaryButton(4),Component.literal("♜  КЛАНЫ"),b->Minecraft.getInstance().setScreen(new ClanScreen())));
+        int w=Math.min(132,Math.max(104,l.panelWidth()/4)),y=Math.min(Math.max(l.primaryButton(4).y()+l.primaryButton(4).height()+7,height-35),height-27);
         addRenderableWidget(new ArenaButton(new UiLayout.Rect(l.centerX()-w/2,y,w,17),Component.literal("↗  TELEGRAM"),b->Util.getPlatform().openUri(TELEGRAM_URI)));
     }
     @Override public void tick(){super.tick();if(playButton!=null)playButton.active=UiAccessPolicy.canPlay(ClientSnapshotStore.get(),ClientSnapshotStore.fresh(System.currentTimeMillis()));}
