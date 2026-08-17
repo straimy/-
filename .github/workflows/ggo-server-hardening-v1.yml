@@ -92,7 +92,7 @@ jobs:
           grep -q 'Classic Arena' ga-build/src/main/java/arena/forge/GgoGameModeRegistry.java
           grep -q 'GGO-LOOT-V1' ga-build/src/main/java/arena/forge/GgoLootSpawnService.java
           grep -q 'GGO-CLASSIC-GEN-V1' ga-build/src/main/java/arena/forge/ClassicArenaMapGenerator.java
-          grep -q 'GGO-CLASSIC-PICKUPS-V1' ga-build/src/main/java/arena/forge/ClassicArenaPickupService.java
+          grep -q 'GGO-CLASSIC-PICKUPS-V2' ga-build/src/main/java/arena/forge/ClassicArenaPickupService.java
           grep -q 'strip CONFIRM' ga-build/src/main/java/arena/forge/GgoLegacyCommandBlockCleaner.java
           grep -q 'generator.generate(level)' ga-build/src/main/java/arena/forge/CGBetaForgeAdapter.java
           ! grep -q 'setBlock.*REDSTONE\|Scoreboard\|#cg_chunk_count' ga-build/src/main/java/arena/forge/CGBetaForgeAdapter.java
@@ -131,7 +131,7 @@ jobs:
           GgoLootSpawnService provides typed server-owned AMMO/HEALTH/WEAPON/UTILITY points without command execution.
           ClassicArenaMapGenerator directly places the recovered 8x8 cg.pregen templates from Java.
           CGBetaForgeAdapter no longer toggles the old redstone generator or reads scoreboard progress.
-          ClassicArenaPickupService migrates small-health pickups server-side and only activates for Classic players.
+          ClassicArenaPickupService migrates health and three legacy ammo slots without scoreboard command logic.
           GgoLegacyCommandBlockCleaner is manual/OP-only and requires explicit CONFIRM before legacy block removal.
           Command-block migration continues service-by-service until the clean production world has command blocks disabled/removed.
           EOF
