@@ -3,8 +3,10 @@ package arena.forge;
 import arena.GunnerArenaMod;
 import com.mojang.brigadier.ParseResults;
 import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.level.BaseCommandBlock;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.event.CommandEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -23,13 +25,22 @@ public final class LegacyCommandBlockFence {
     @SubscribeEvent public static void command(CommandEvent e){
         ParseResults<CommandSourceStack> parsed=e.getParseResults();if(parsed==null)return;
         CommandSourceStack src=parsed.getContext().getSource();
-        if(src==null||!(src.getSource() instanceof BaseCommandBlock))return;
+        if(src==null||!isCommandBlockSource(src))return;
         ArenaRuntime r=GunnerArenaMod.RUNTIME;if(r==null)return;
 
         String raw=parsed.getReader().getString();if(raw==null)return;
         String cmd=raw.trim().toLowerCase(Locale.ROOT);if(cmd.startsWith("/"))cmd=cmd.substring(1);
         if(!isDangerousPlayerCommand(cmd)||!targetsPlayer(cmd))return;
         e.setCanceled(true);
+    }
+
+    /** CommandSourceStack does not expose its raw source in Mojmap 1.20.1; resolve it by source position. */
+    private static boolean isCommandBlockSource(CommandSourceStack src){
+        try{
+            BlockPos pos=BlockPos.containing(src.getPosition());
+            BlockState state=src.getLevel().getBlockState(pos);
+            return state.is(Blocks.COMMAND_BLOCK)||state.is(Blocks.CHAIN_COMMAND_BLOCK)||state.is(Blocks.REPEATING_COMMAND_BLOCK);
+        }catch(Exception ignored){return false;}
     }
 
     private static boolean isDangerousPlayerCommand(String c){
