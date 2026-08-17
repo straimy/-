@@ -32,12 +32,15 @@ jobs:
       - name: Validate VDS stack
         working-directory: infra/vds
         run: |
+          set -euo pipefail
           python3 -m py_compile publish_release.py publish_launcher_update.py account-api/app.py
+          bash -n bootstrap_ubuntu.sh deploy_all.sh backup_now.sh game-server/run.sh
           GGO_SITE_HOST=ggo.kvicloud.ru \
           GGO_UPDATES_HOST=updates.ggo.kvicloud.ru \
+          GGO_GAME_HOST=play.ggo.kvicloud.ru \
           POSTGRES_PASSWORD=ci-only-password \
           GGO_JWT_SECRET=ci-only-secret-012345678901234567890123456789 \
-          docker compose --profile backend -f docker-compose.yml config >/dev/null
+          docker compose --profile backend --profile game -f docker-compose.yml config >/dev/null
 
       - name: Install Tauri Linux prerequisites
         run: |
