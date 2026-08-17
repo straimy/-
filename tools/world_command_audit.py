@@ -10,7 +10,6 @@ import argparse
 import gzip
 import io
 import json
-import shutil
 import struct
 import tempfile
 import zipfile
@@ -175,18 +174,100 @@ def find_block_entities(root: dict[str, Any]) -> list[dict[str, Any]]:
     return [value for value in candidates if isinstance(value, dict)]
 
 
-def command_block_record(entity: dict[str, Any], region: Path, dimension: str) -> dict[str, Any] | None:
+def find_sections(root: dict[str, Any]) -> list[dict[str, Any]]:
+    if isinstance(root.get("sections"), list):
+        return [value for value in root["sections"] if isinstance(value, dict)]
+    level = root.get("Level")
+    if isinstance(level, dict):
+        for key in ("sections", "Sections"):
+            if isinstance(level.get(key), list):
+                return [value for value in level[key] if isinstance(value, dict)]
+    return []
+
+
+def palette_block_name_at(root: dict[str, Any], x: int, y: int, z: int) -> str | None:
+    section_y = y // 16
+    local_x = x & 15
+    local_y = y & 15
+    local_z = z & 15
+    block_index = (local_y << 8) | (local_z << 4) | local_x
+
+    for section in find_sections(root):
+        if section.get("Y") != section_y:
+            continue
+
+        block_states = section.get("block_states")
+        if isinstance(block_states, dict):
+            palette = block_states.get("palette")
+            if not isinstance(palette, list) or not palette:
+                return None
+            if len(palette) == 1:
+                entry = palette[0]
+                return entry.get("Name") if isinstance(entry, dict) else None
+            data = block_states.get("data")
+            if not isinstance(data, list) or not data:
+                return None
+            bits = max(4, (len(palette) - 1).bit_length())
+            values_per_long = 64 // bits
+            long_index = block_index // values_per_long
+            if long_index >= len(data):
+                return None
+            shift = (block_index % values_per_long) * bits
+            unsigned = int(data[long_index]) & ((1 << 64) - 1)
+            palette_index = (unsigned >> shift) & ((1 << bits) - 1)
+            if palette_index >= len(palette):
+                return None
+            entry = palette[palette_index]
+            return entry.get("Name") if isinstance(entry, dict) else None
+
+        palette = section.get("Palette")
+        packed = section.get("BlockStates")
+        if isinstance(palette, list) and palette:
+            if len(palette) == 1:
+                entry = palette[0]
+                return entry.get("Name") if isinstance(entry, dict) else None
+            if not isinstance(packed, list) or not packed:
+                return None
+            bits = max(4, (len(palette) - 1).bit_length())
+            values_per_long = 64 // bits
+            long_index = block_index // values_per_long
+            if long_index >= len(packed):
+                return None
+            shift = (block_index % values_per_long) * bits
+            unsigned = int(packed[long_index]) & ((1 << 64) - 1)
+            palette_index = (unsigned >> shift) & ((1 << bits) - 1)
+            if palette_index >= len(palette):
+                return None
+            entry = palette[palette_index]
+            return entry.get("Name") if isinstance(entry, dict) else None
+    return None
+
+
+def command_block_record(entity: dict[str, Any], chunk: dict[str, Any], region: Path, dimension: str) -> dict[str, Any] | None:
     entity_id = str(entity.get("id", ""))
     if "command_block" not in entity_id:
         return None
     command = entity.get("Command")
+    x = entity.get("x")
+    y = entity.get("y")
+    z = entity.get("z")
+    block_name = None
+    if all(isinstance(value, int) for value in (x, y, z)):
+        block_name = palette_block_name_at(chunk, int(x), int(y), int(z))
+    kind = {
+        "minecraft:command_block": "impulse",
+        "minecraft:repeating_command_block": "repeating",
+        "minecraft:chain_command_block": "chain",
+    }.get(block_name, "unknown")
     return {
         "dimension": dimension,
         "region": str(region),
         "id": entity_id,
-        "x": entity.get("x"),
-        "y": entity.get("y"),
-        "z": entity.get("z"),
+        "block": block_name,
+        "kind": kind,
+        "x": x,
+        "y": y,
+        "z": z,
         "command": command if isinstance(command, str) else "",
         "auto": entity.get("auto"),
         "powered": entity.get("powered"),
@@ -226,7 +307,7 @@ def scan_regions(world: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]
                     errors.append({"region": str(region.relative_to(world)), "chunk": [local_x, local_z], "error": chunk["__ggo_parse_error__"]})
                     continue
                 for entity in find_block_entities(chunk):
-                    record = command_block_record(entity, region.relative_to(world), dimension)
+                    record = command_block_record(entity, chunk, region.relative_to(world), dimension)
                     if record:
                         commands.append(record)
         except Exception as exc:
@@ -285,11 +366,12 @@ def scan_scoreboard(world: Path) -> dict[str, Any]:
 
 def safe_extract_world(zip_path: Path, target: Path) -> Path:
     with zipfile.ZipFile(zip_path) as zf:
+        root = target.resolve()
         for info in zf.infolist():
             if info.is_dir():
                 continue
             dest = (target / info.filename).resolve()
-            if target.resolve() not in dest.parents:
+            if dest != root and root not in dest.parents:
                 raise SystemExit(f"unsafe ZIP path: {info.filename}")
         zf.extractall(target)
 
@@ -304,10 +386,15 @@ def audit(world: Path) -> dict[str, Any]:
     command_blocks, region_errors = scan_regions(world)
     functions = scan_functions(world)
     scoreboard = scan_scoreboard(world)
+    type_counts: dict[str, int] = {}
+    for block in command_blocks:
+        key = str(block.get("kind", "unknown"))
+        type_counts[key] = type_counts.get(key, 0) + 1
     return {
         "schemaVersion": 1,
         "world": world.name,
         "commandBlockCount": len(command_blocks),
+        "commandBlockTypes": type_counts,
         "functionFileCount": len(functions),
         "functionCommandCount": sum(len(item["commands"]) for item in functions),
         "commandBlocks": command_blocks,
@@ -347,7 +434,7 @@ def main() -> int:
         print(f"report: {args.output}")
     else:
         print(rendered)
-    print(f"command blocks: {report['commandBlockCount']}", file=__import__('sys').stderr)
+    print(f"command blocks: {report['commandBlockCount']} {report['commandBlockTypes']}", file=__import__('sys').stderr)
     print(f"datapack commands: {report['functionCommandCount']}", file=__import__('sys').stderr)
     return 0
 
