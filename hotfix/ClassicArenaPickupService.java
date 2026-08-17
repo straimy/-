@@ -54,7 +54,6 @@ public final class ClassicArenaPickupService {
     public static void serverTick(TickEvent.ServerTickEvent event) {
         if (event.phase != TickEvent.Phase.END || event.getServer() == null) return;
         long now = event.getServer().getTickCount();
-        // 5 Hz is enough for the recovered 1.3-block pickup radius and keeps marker scans cheap.
         if ((now & 3L) != 0L) return;
 
         for (ServerLevel level : event.getServer().getAllLevels()) {
@@ -63,7 +62,6 @@ public final class ClassicArenaPickupService {
         }
 
         if ((now % 200L) == 0L && !READY_AT.isEmpty()) {
-            // Generated rounds replace marker entities, so stale cooldown UUIDs can be discarded.
             READY_AT.entrySet().removeIf(entry -> now - entry.getValue() > 20L * 60L * 5L);
         }
     }
@@ -75,7 +73,6 @@ public final class ClassicArenaPickupService {
             ServerPlayer player = nearestEligible(level, marker, p -> p.getHealth() < p.getMaxHealth());
             if (player == null) continue;
 
-            // Legacy command: instant_health 1 0 true => 4 health points / two hearts.
             player.heal(Math.min(4.0F, player.getMaxHealth() - player.getHealth()));
             play(level, marker, "jeg:s1queence.custom.health_pickup", 0.7F, 1.0F);
             READY_AT.put(marker.getUUID(), now + HEALTH_COOLDOWN_TICKS);
@@ -104,7 +101,6 @@ public final class ClassicArenaPickupService {
 
             ItemStack added = new ItemStack(ammo, amount);
             player.getInventory().add(added);
-            // If inventory refused a remainder, do not silently delete it or treat the pickup as full.
             int accepted = amount - added.getCount();
             if (accepted <= 0) continue;
 
@@ -127,7 +123,7 @@ public final class ClassicArenaPickupService {
         ServerPlayer best = null;
         double bestDistance = Double.MAX_VALUE;
         for (ServerPlayer player : level.getEntitiesOfClass(ServerPlayer.class, pickup, p ->
-            p.isAlive() && "classic".equals(GgoGameModeRegistry.selectedMode(p)) && extra.test(p))) {
+            p.isAlive() && ClassicArenaMatchService.isParticipant(p) && extra.test(p))) {
             double distance = player.distanceToSqr(marker);
             if (distance < bestDistance) {
                 best = player;
