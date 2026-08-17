@@ -4,6 +4,7 @@ mod runtime;
 use core::{
     bootstrap::BootstrapInfo,
     ggo_auth::{self, GgoAuthStatus, GgoSessionStore},
+    identity_bridge,
     launcher_update::{self, LauncherUpdateStatus},
     microsoft_auth::{self, MicrosoftLoginResult, MicrosoftSessionStore},
     remote_content::{self, NewsFeed, ServerCatalog},
@@ -80,6 +81,23 @@ fn restart_launcher(app: AppHandle) {
 #[tauri::command]
 fn local_game_installed(install_dir: String) -> bool {
     ggo_local_install::is_installed(&PathBuf::from(install_dir)).unwrap_or(false)
+}
+
+#[tauri::command]
+fn write_identity_bridge(
+    install_dir: String,
+    ggo_player_id: Option<String>,
+    display_name: String,
+    skin_source: String,
+    provider: String,
+) -> Result<(), String> {
+    identity_bridge::write(
+        &PathBuf::from(install_dir),
+        ggo_player_id.as_deref(),
+        &display_name,
+        &skin_source,
+        &provider,
+    )
 }
 
 #[tauri::command]
@@ -326,6 +344,7 @@ pub fn run() {
             open_game_folder,
             restart_launcher,
             local_game_installed,
+            write_identity_bridge,
             ping_server,
             fetch_server_catalog,
             fetch_news_feed,
