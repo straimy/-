@@ -19,11 +19,44 @@ const skinFile = $("skinFile");
 const skinPreview = $("skinPreview");
 const skinPreviewImage = $("skinPreviewImage");
 const skinHash = $("skinHash");
+const downloadVersion = $("downloadVersion");
+const downloadState = $("downloadState");
+const downloadWindows = $("downloadWindows");
+const downloadLinux = $("downloadLinux");
 
 function setStatus(message, bad = false) {
   statusEl.textContent = message;
   statusEl.classList.toggle("bad", bad);
 }
+
+function enableDownload(anchor, url, fileName) {
+  if (!anchor || !url) return;
+  anchor.href = url;
+  anchor.removeAttribute("aria-disabled");
+  anchor.setAttribute("download", fileName || "");
+}
+
+async function loadPublicDownloads() {
+  if (!downloadState) return;
+  try {
+    const response = await fetch(`/downloads.json?t=${Date.now()}`, { cache: "no-store" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    if (!data || data.schemaVersion !== 1 || !data.version) throw new Error("invalid downloads metadata");
+    downloadVersion.textContent = `Launcher ${data.version}`;
+    enableDownload(downloadWindows, data.windows?.url, data.windows?.fileName);
+    enableDownload(downloadLinux, data.linux?.url, data.linux?.fileName);
+    downloadState.textContent = "Latest signed build";
+  } catch {
+    downloadState.textContent = "Download build is being prepared";
+  }
+}
+
+[downloadWindows, downloadLinux].forEach((anchor) => {
+  anchor?.addEventListener("click", (event) => {
+    if (anchor.getAttribute("aria-disabled") === "true") event.preventDefault();
+  });
+});
 
 function showTab(name) {
   loginForm.classList.toggle("hidden", name !== "login");
@@ -194,3 +227,5 @@ skinFile.addEventListener("change", async () => {
     skinFile.value = "";
   }
 });
+
+void loadPublicDownloads();
