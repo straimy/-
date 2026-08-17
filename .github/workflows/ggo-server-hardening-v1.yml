@@ -8,6 +8,7 @@ on:
       - '.github/workflows/ggo-server-hardening-v1.yml'
       - 'hotfix/GgoAntiCheatTelemetry.java'
       - 'docs/command-block-migration.md'
+      - 'tools/world_command_audit.py'
   workflow_dispatch:
 
 env:
@@ -24,6 +25,13 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+
+      - name: Validate world audit tool
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile tools/world_command_audit.py
+          python3 tools/world_command_audit.py --help >/dev/null
 
       - name: Prepare extractor
         shell: bash
@@ -88,6 +96,7 @@ jobs:
           Conservative server-side anti-cheat telemetry only.
           No automatic kicks/bans in v1.
           Command-block migration is documented separately and will be implemented service-by-service.
+          tools/world_command_audit.py can inventory command blocks/datapack functions in imported worlds.
           EOF
 
       - name: Dedicated server smoke
