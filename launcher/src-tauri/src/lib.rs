@@ -203,17 +203,38 @@ async fn preview_minecraft_launch(
 
 #[tauri::command]
 async fn launch_minecraft(
-    store: State<'_, MicrosoftSessionStore>,
+    microsoft_store: State<'_, MicrosoftSessionStore>,
+    ggo_store: State<'_, GgoSessionStore>,
     install_dir: String,
     custom_java: Option<String>,
     options: LaunchOptions,
 ) -> Result<LaunchResult, String> {
-    let session = store
+    let session = microsoft_store
         .snapshot()
         .await
         .ok_or_else(|| "Minecraft account is not authenticated".to_string())?;
+    let root = PathBuf::from(&install_dir);
+
+    if let Some(ggo) = ggo_store.snapshot().await {
+        identity_bridge::write(
+            &root,
+            Some(&ggo.profile.id),
+            &ggo.profile.display_name,
+            &ggo.profile.skin_source,
+            "ggo",
+        )?;
+    } else {
+        identity_bridge::write(
+            &root,
+            None,
+            &session.minecraft_profile.name,
+            "microsoft",
+            "microsoft",
+        )?;
+    }
+
     minecraft_process::launch_with_natives(
-        &PathBuf::from(install_dir),
+        &root,
         custom_java.as_deref(),
         &session,
         &options,
