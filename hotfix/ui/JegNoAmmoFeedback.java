@@ -3,6 +3,7 @@ package arena.client.ui;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
@@ -15,7 +16,7 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.registries.ForgeRegistries;
 import org.lwjgl.glfw.GLFW;
 
-/** Hard client dry-fire guard for JEG firearms. Arena melee/knife items are never treated as guns. */
+/** Conservative JEG dry-fire feedback. Never blocks a shot unless an explicit magazine value is known to be empty. */
 @Mod.EventBusSubscriber(modid="gunnerarena", value=Dist.CLIENT, bus=Mod.EventBusSubscriber.Bus.FORGE)
 public final class JegNoAmmoFeedback {
     private static boolean reloadWasDown;
@@ -26,9 +27,11 @@ public final class JegNoAmmoFeedback {
         Minecraft mc=Minecraft.getInstance();
         if(mc.player==null||mc.level==null||mc.screen!=null||!e.isAttack())return;
         ItemStack gun=mc.player.getMainHandItem();
-        if(!isJegGun(gun)||loaded(gun)>0)return;
+        if(!isJegGun(gun))return;
+        int loaded=loaded(gun),reserve=reserve(mc,gun);
+        if(loaded>0||reserve>0||loaded<0)return;
         e.setCanceled(true);mc.options.keyAttack.setDown(false);
-        int reserve=reserve(mc,gun);show(mc,reserve<=0?"✦ НЕТ ПАТРОНОВ":"R — ПЕРЕЗАРЯДИТЬ",reserve<=0?ChatFormatting.RED:ChatFormatting.YELLOW);
+        show(mc,"✦ НЕТ ПАТРОНОВ",ChatFormatting.RED);
     }
 
     @SubscribeEvent public static void clientTick(TickEvent.ClientTickEvent e) {
@@ -37,8 +40,12 @@ public final class JegNoAmmoFeedback {
         ItemStack gun=mc.player.getMainHandItem();boolean reload=InputConstants.isKeyDown(mc.getWindow().getWindow(),GLFW.GLFW_KEY_R);
         if(!isJegGun(gun)){reloadWasDown=reload;return;}
         int loaded=loaded(gun),reserve=reserve(mc,gun);
-        if(loaded<=0&&mc.options.keyAttack.isDown()){mc.options.keyAttack.setDown(false);show(mc,reserve<=0?"✦ НЕТ ПАТРОНОВ":"R — ПЕРЕЗАРЯДИТЬ",reserve<=0?ChatFormatting.RED:ChatFormatting.YELLOW);}
-        if(reload&&!reloadWasDown&&reserve<=0&&loaded<=0)show(mc,"✦ НЕТ ПАТРОНОВ",ChatFormatting.RED);
+        if(loaded==0&&reserve==0&&mc.options.keyAttack.isDown()){mc.options.keyAttack.setDown(false);show(mc,"✦ НЕТ ПАТРОНОВ",ChatFormatting.RED);}
+        if(reload&&!reloadWasDown){
+            if(loaded>0){/* Magazine already has ammunition: no false warning. */}
+            else if(reserve>0)show(mc,"R — ПЕРЕЗАРЯДИТЬ",ChatFormatting.YELLOW);
+            else if(loaded==0)show(mc,"✦ НЕТ ПАТРОНОВ",ChatFormatting.RED);
+        }
         reloadWasDown=reload;
     }
 
@@ -50,7 +57,15 @@ public final class JegNoAmmoFeedback {
         return !p.contains("knife")&&!p.contains("melee");
     }
     private static boolean isArenaKnife(ItemStack s){return s.hasTag()&&s.getTag().getBoolean("GunnerArenaKnife");}
-    private static int loaded(ItemStack gun){return gun.hasTag()?Math.max(0,gun.getTag().getInt("AmmoCount")):0;}
+
+    /** -1 = unknown. Unknown is deliberately treated as potentially loaded so we never cancel valid JEG fire. */
+    private static int loaded(ItemStack gun){
+        if(!gun.hasTag())return -1;CompoundTag t=gun.getTag();
+        String[] keys={"AmmoCount","Ammo","CurrentAmmo","Magazine","MagazineAmmo","Bullets","BulletsInMagazine"};
+        for(String k:keys)if(t.contains(k,99))return Math.max(0,t.getInt(k));
+        if(t.contains("Gun",10)){CompoundTag g=t.getCompound("Gun");for(String k:keys)if(g.contains(k,99))return Math.max(0,g.getInt(k));}
+        return -1;
+    }
     private static int reserve(Minecraft mc,ItemStack gun){ResourceLocation id=ForgeRegistries.ITEMS.getKey(gun.getItem());Item a=id==null?null:ammoItemFor(id);return a==null?0:count(mc,a);}
     private static void show(Minecraft mc,String text,ChatFormatting color){long now=System.currentTimeMillis();if(now<messageUntil-250)return;messageUntil=now+1100;mc.player.displayClientMessage(Component.literal(text).withStyle(color),true);}
     private static int count(Minecraft mc,Item item){int n=0;for(ItemStack s:mc.player.getInventory().items)if(s.is(item))n+=s.getCount();for(ItemStack s:mc.player.getInventory().offhand)if(s.is(item))n+=s.getCount();return n;}
