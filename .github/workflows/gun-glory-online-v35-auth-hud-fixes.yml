@@ -51,8 +51,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 /tmp/extract.py .github/workflows/gun-glory-online-v34-inventory-polish.yml 'Prepare v33 source' >/tmp/base.sh
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v33-social-clans-ammo.yml 'Prepare v31-compatible source directly' >/tmp/base.sh
           bash /tmp/base.sh
+          python3 /tmp/extract.py .github/workflows/gun-glory-online-v33-social-clans-ammo.yml 'Apply v33 social clans ammo' >/tmp/v33.sh
+          bash /tmp/v33.sh
           python3 /tmp/extract.py .github/workflows/gun-glory-online-v34-inventory-polish.yml 'Apply v34 inventory polish' >/tmp/v34.sh
           bash /tmp/v34.sh
           test -f ga-build/gradle.properties
@@ -73,7 +75,7 @@ jobs:
           grep -q 'notLoggedPlayers' ga-build/src/main/java/arena/forge/LegacyAuthSyncGuard.java
           grep -q 'sendCommands(player)' ga-build/src/main/java/arena/forge/LegacyAuthSyncGuard.java
           grep -q 'instanceof ChatScreen' ga-build/client-ui/src/main/java/arena/client/ui/ArenaBeltOverlay.java
-          ! grep -q 'BOЕВОЙ КОМПЛЕКТ' ga-build/client-ui/src/main/java/arena/client/ui/InventoryPolish.java || true
+          ! grep -q 'БОЕВОЙ КОМПЛЕКТ' ga-build/client-ui/src/main/java/arena/client/ui/InventoryPolish.java
 
       - name: Build Core
         shell: bash
