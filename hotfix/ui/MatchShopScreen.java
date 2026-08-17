@@ -19,7 +19,7 @@ import java.util.Set;
 final class MatchShopScreen extends Screen {
     private static final String[] CATEGORIES={"PISTOL","RIFLE","HEAVY"};
     private static final Set<String> HIDDEN=Set.of(
-        "gunnerarena:p9","gunnerarena:px18","gunnerarena:pdw50","gunnerarena:vector_x","gunnerarena:vkr47","gunnerarena:arx3","gunnerarena:raven_m96","gunnerarena:titan_50","jeg:spectre_dmr");
+        "gunnerarena:p9","gunnerarena:px18","gunnerarena:pdw50","gunnerarena:vector_x","gunnerarena:vkr47","gunnerarena:arx3","gunnerarena:raven_m96","gunnerarena:titan_50","jeg:spectre_dmr","jeg:double_barrel_shotgun");
     private final List<ArenaButton> buttons=new ArrayList<>();private final List<RowHit> rowHits=new ArrayList<>();
     private String category="PISTOL";private int selectedIndex,page;private long seen=-1;
     MatchShopScreen(){super(Component.literal("Оружие"));}
