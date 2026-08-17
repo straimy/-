@@ -1,7 +1,9 @@
 package arena.forge;
 
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.level.BlockEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -40,13 +42,21 @@ public final class GgoServerRulesGuard {
         event.setCanceled(true);
     }
 
+    @SubscribeEvent
+    public static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
+        if (!(event.getEntity() instanceof ServerPlayer player)) return;
+        if (!isCommandBlock(event.getLevel().getBlockState(event.getPos()))) return;
+        if (canBuild(player)) return;
+        event.setCanceled(true);
+        event.setCancellationResult(InteractionResult.FAIL);
+    }
+
     private static boolean canBuild(ServerPlayer player) {
         if (!player.hasPermissions(2)) return false;
         if (!player.getTags().contains(AdminToolsCommands.ADMIN_BUILD_TAG)) return false;
         return player.isCreative();
     }
 
-    /** Utility used by future interaction guards while command blocks are phased out. */
     public static boolean isCommandBlock(net.minecraft.world.level.block.state.BlockState state) {
         return state.is(Blocks.COMMAND_BLOCK)
             || state.is(Blocks.CHAIN_COMMAND_BLOCK)
