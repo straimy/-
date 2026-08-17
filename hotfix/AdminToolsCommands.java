@@ -45,6 +45,16 @@ public final class AdminToolsCommands {
             .then(Commands.literal("get").executes(ctx->show(ctx.getSource(),ctx.getSource().getPlayerOrException())).then(Commands.argument("player",EntityArgument.player()).executes(ctx->show(ctx.getSource(),EntityArgument.getPlayer(ctx,"player"))))));
     }
 
+    /** Shared authoritative helper for gameplay rewards such as NPC kills. */
+    public static boolean grantRoundCredits(ServerPlayer target,int amount){
+        if(target==null||amount<=0)return false;
+        var r=GunnerArenaMod.RUNTIME;if(r==null)return false;
+        Object manager=r.players(),session=r.players().roundSession(target);
+        boolean ok=addCreditsReflective(session,amount);
+        if(!ok)ok=managerCreditsReflective(manager,target,amount,false);
+        return ok;
+    }
+
     private static int change(CommandSourceStack src,ServerPlayer target,int amount,boolean set){
         var r=GunnerArenaMod.RUNTIME;if(r==null){src.sendFailure(Component.literal("[GGO] Runtime ещё не готов."));return 0;}
         Object manager=r.players(),session=r.players().roundSession(target);
