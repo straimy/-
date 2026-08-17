@@ -4,7 +4,6 @@ import com.mojang.logging.LogUtils;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import net.minecraft.core.BlockPos;
@@ -118,56 +117,36 @@ public final class ClassicArenaMapGenerator {
     }
 
     /**
-     * Places item-bearing cells first with one-cell separation, then distributes empty/flat cells.
-     * The old command system rejected nearby has_items markers within roughly 8-12 blocks; on an
-     * 8-block grid this is equivalent to keeping GUN/HEALTH cells out of adjacent grid cells.
+     * The legacy generator kept item-bearing chunks apart using has_items markers and distance
+     * checks. A random 4x4 parity lattice gives sixteen cells on this 8x8 grid whose row/column
+     * distance is always at least two. We use fourteen of those cells (10 gun + 4 health), so the
+     * recovered quotas are guaranteed without a retry loop or a random greedy failure.
      */
     private List<CellKind> buildPlan(ServerLevel level) {
         List<CellKind> plan = new ArrayList<>(Collections.nCopies(TOTAL_CELLS, CellKind.FLAT));
-        List<Integer> candidates = new ArrayList<>();
-        for (int i = 0; i < TOTAL_CELLS; i++) candidates.add(i);
-        shuffle(level, candidates);
 
-        Set<Integer> itemCells = new HashSet<>();
-        selectSeparated(plan, candidates, itemCells, CellKind.GUN, GUN_CELLS);
-        selectSeparated(plan, candidates, itemCells, CellKind.HEALTH, HEALTH_CELLS);
+        int rowParity = level.getRandom().nextInt(2);
+        int colParity = level.getRandom().nextInt(2);
+        List<Integer> safeItemCells = new ArrayList<>(16);
+        for (int row = rowParity; row < GRID_SIZE; row += 2) {
+            for (int col = colParity; col < GRID_SIZE; col += 2) {
+                safeItemCells.add(row * GRID_SIZE + col);
+            }
+        }
+        shuffle(level, safeItemCells);
+        if (safeItemCells.size() < GUN_CELLS + HEALTH_CELLS) {
+            throw new IllegalStateException("Classic item lattice is smaller than recovered quota");
+        }
+
+        int cursor = 0;
+        for (int i = 0; i < GUN_CELLS; i++) plan.set(safeItemCells.get(cursor++), CellKind.GUN);
+        for (int i = 0; i < HEALTH_CELLS; i++) plan.set(safeItemCells.get(cursor++), CellKind.HEALTH);
 
         List<Integer> remaining = new ArrayList<>();
         for (int i = 0; i < TOTAL_CELLS; i++) if (plan.get(i) == CellKind.FLAT) remaining.add(i);
         shuffle(level, remaining);
-        for (int i = 0; i < Math.min(EMPTY_CELLS, remaining.size()); i++) plan.set(remaining.get(i), CellKind.EMPTY);
+        for (int i = 0; i < EMPTY_CELLS; i++) plan.set(remaining.get(i), CellKind.EMPTY);
         return plan;
-    }
-
-    private static void selectSeparated(
-        List<CellKind> plan,
-        List<Integer> shuffled,
-        Set<Integer> itemCells,
-        CellKind kind,
-        int target
-    ) {
-        int selected = 0;
-        for (int index : shuffled) {
-            if (selected >= target) break;
-            if (plan.get(index) != CellKind.FLAT || touchesItemCell(index, itemCells)) continue;
-            plan.set(index, kind);
-            itemCells.add(index);
-            selected++;
-        }
-        // The 8x8 grid has enough separated cells for the recovered 10+4 quota. Fail closed if a
-        // future quota/config makes that impossible instead of silently changing map balance.
-        if (selected != target) throw new IllegalStateException("cannot place " + target + " separated " + kind + " cells; placed " + selected);
-    }
-
-    private static boolean touchesItemCell(int index, Set<Integer> itemCells) {
-        int row = index / GRID_SIZE;
-        int col = index % GRID_SIZE;
-        for (int other : itemCells) {
-            int otherRow = other / GRID_SIZE;
-            int otherCol = other % GRID_SIZE;
-            if (Math.abs(row - otherRow) <= 1 && Math.abs(col - otherCol) <= 1) return true;
-        }
-        return false;
     }
 
     private static ResourceLocation chooseTemplate(ServerLevel level, CellKind kind) {
@@ -250,8 +229,6 @@ public final class ClassicArenaMapGenerator {
     }
 
     private static <T> void shuffle(ServerLevel level, List<T> values) {
-        // Fisher-Yates using the world RNG keeps generation reproducible from server RNG without
-        // introducing java.util.Random state outside the game server.
         for (int i = values.size() - 1; i > 0; i--) {
             int j = level.getRandom().nextInt(i + 1);
             T tmp = values.get(i);
