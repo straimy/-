@@ -28,10 +28,41 @@ Minecraft/Forge dependencies remain Runtime v1 implementation details and should
 | `cloth-config-11.1.136-forge.jar` | library/config dependency | **KEEP only if dependency graph requires it** |
 | `collective-1.20.1-7.93.jar` | library | **REVIEW dependency graph** |
 | `dash-1.20.1-1.1.1.jar` | movement/gameplay utility | **REVIEW before removal** |
-| `huge-structure-blocks-1.0.9-forge.jar` | likely legacy Classic Arena generation tooling | **MIGRATE THEN REMOVE** after `ClassicArenaMapGenerator` replaces structure-command workflow |
+| `huge-structure-blocks-1.0.9-forge.jar` | legacy Classic structure tooling | **REMOVE FROM SERVER** — direct Java generator + real-world startup smoke passed without it |
 | `SAuth-2.0.0.jar` | server-only registration/auth layer used with `online-mode=false` | **MIGRATE THEN REMOVE** after verified GGO server-session authentication is live |
-| `embeddium-0.3.31-mc1.20.1.jar` | client renderer optimization (`CLIENT`) | **REMOVE FROM SERVER**, keep client only if desired |
-| `damagenumbers-1.4.0-forge.jar` | presentation/client HUD feature | **REMOVE FROM SERVER after compatibility smoke**, replace with GGO UI when practical |
+| `embeddium-0.3.31-mc1.20.1.jar` | client renderer optimization (`CLIENT`) | **REMOVE FROM SERVER** — real-world startup smoke passed without it |
+| `damagenumbers-1.4.0-forge.jar` | presentation/client HUD feature | **REMOVE FROM SERVER** — real-world startup smoke passed without it; replace with GGO UI when practical |
+
+## Runtime-tested cleanup evidence
+
+A copy of the supplied full server was started with the green server-hardening Core and `enable-command-block=false`.
+
+Baseline real-world smoke:
+
+- supplied `world/`;
+- supplied configs and gameplay mods;
+- hardening Core replacing the original v40 Core;
+- command blocks disabled;
+- dedicated server reached `Done (4.596s)`.
+
+Clean server smoke #1 removed:
+
+- `embeddium-0.3.31-mc1.20.1.jar`;
+- `damagenumbers-1.4.0-forge.jar`;
+- nested historical server `.tar.gz` from `mods/`;
+- `desktop.ini`.
+
+The same supplied world reached `Done (4.476s)`.
+
+Clean server smoke #2 additionally removed:
+
+- `huge-structure-blocks-1.0.9-forge.jar`.
+
+The same supplied world reached `Done (4.645s)`.
+
+External Mojang/Forge version-check warnings seen in the isolated test container were DNS/network limitations of the test environment and did not prevent world startup.
+
+These results prove startup/map-load independence only. They do not yet prove every live player interaction path, so gameplay dependencies are still removed conservatively.
 
 ## Non-mod archive cleanup
 
@@ -52,7 +83,7 @@ Backups are created by the production VDS backup service, not carried inside the
 
 The current world contains at least one FramedBlocks block state (`framedblocks:framed_slope`), so removing FramedBlocks now can corrupt/replace map geometry.
 
-The legacy map contains 992 command blocks and a large structure-driven Classic Arena system. `Huge Structure Blocks` must therefore not be removed merely because it looks like a builder tool; first migrate and smoke-test `ClassicArenaMapGenerator`.
+The legacy map contains 992 command blocks and a large structure-driven Classic Arena system. Its generator has now been replaced by direct `StructureTemplate` placement in Core, and the real supplied world starts successfully without Huge Structure Blocks. The remaining migration work is gameplay behavior/clean-world validation, not a runtime dependency on that mod.
 
 The imported server also contains old `plugins/Citizens` and `plugins/Denizen` data, but the current Forge server log does not show these as an active plugin runtime. Treat these directories as migration evidence/legacy data, not production dependencies, unless a later audit proves otherwise.
 
