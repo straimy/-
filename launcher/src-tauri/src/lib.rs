@@ -3,6 +3,7 @@ mod runtime;
 
 use core::{
     bootstrap::BootstrapInfo,
+    launcher_update::{self, LauncherUpdateStatus},
     microsoft_auth::{self, MicrosoftLoginResult, MicrosoftSessionStore},
     remote_content::{self, NewsFeed, ServerCatalog},
     updater::{self, SyncReport, UpdatePlan},
@@ -104,6 +105,16 @@ async fn fetch_news_feed(url: String) -> Result<NewsFeed, String> {
     remote_content::fetch_news(&http, &url)
         .await
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn check_launcher_update(app: AppHandle) -> Result<LauncherUpdateStatus, String> {
+    launcher_update::check(&app).await
+}
+
+#[tauri::command]
+async fn install_launcher_update(app: AppHandle) -> Result<bool, String> {
+    launcher_update::install(&app).await
 }
 
 #[tauri::command]
@@ -270,6 +281,7 @@ async fn repair_game(
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(MicrosoftSessionStore::default())
         .invoke_handler(tauri::generate_handler![
             bootstrap_info,
@@ -282,6 +294,8 @@ pub fn run() {
             ping_server,
             fetch_server_catalog,
             fetch_news_feed,
+            check_launcher_update,
+            install_launcher_update,
             detect_java,
             check_runtime,
             prepare_launch,
