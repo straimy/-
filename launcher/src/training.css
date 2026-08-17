@@ -1,0 +1,6 @@
+.dockTools{grid-template-columns:repeat(4,1fr)}
+.dockTools .trainingDock{position:relative;background:linear-gradient(180deg,rgba(139,38,47,.12),rgba(255,255,255,.01));color:#b2676d}
+.dockTools .trainingDock:hover{background:linear-gradient(180deg,rgba(155,42,52,.22),rgba(255,255,255,.035));color:#fff}
+.dockTools .trainingDock em{font-style:normal;font-size:6px;line-height:1.15;color:#5e6875;max-width:76px;text-align:center;white-space:normal}
+.dockTools .trainingDock:disabled{opacity:.42;cursor:wait}
+@media(max-width:1120px){.dockTools .trainingDock em{display:none}.dockTools button small{max-width:56px}}
