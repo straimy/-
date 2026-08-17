@@ -12,7 +12,7 @@ import net.minecraftforge.registries.ForgeRegistries;
 
 /** Server-owned Classic Arena three-gun loadout and round cleanup. */
 public final class ClassicArenaLoadoutService {
-    public static final String VERSION = "GGO-CLASSIC-LOADOUT-V2";
+    public static final String VERSION = "GGO-CLASSIC-LOADOUT-V1";
 
     private static final List<String> CATALOG = List.of(
         "jeg:semi_auto_pistol",
