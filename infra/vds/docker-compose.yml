@@ -17,6 +17,29 @@ services:
       - caddy_config:/config
     networks:
       - edge
+      - app
+    mem_limit: 384m
+    cpus: 0.50
+
+  account-api:
+    build:
+      context: ./account-api
+    container_name: ggo-account-api
+    restart: unless-stopped
+    profiles: ["backend"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ggo}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ggo}
+      REDIS_URL: redis://redis:6379/0
+      GGO_JWT_SECRET: ${GGO_JWT_SECRET}
+      GGO_JWT_ISSUER: ${GGO_SITE_HOST}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - app
+      - backend
     mem_limit: 384m
     cpus: 0.50
 
@@ -56,6 +79,8 @@ services:
 
 networks:
   edge:
+  app:
+    internal: true
   backend:
     internal: true
 
