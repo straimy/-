@@ -13,12 +13,14 @@ on:
       - 'hotfix/ui/ClanScreen.java'
       - 'hotfix/ui/MainArenaScreen.java'
       - 'hotfix/ui/UiTheme.java'
+      - 'hotfix/ui/UiEffects.java'
       - 'hotfix/ui/JegNoAmmoFeedback.java'
   workflow_dispatch:
 
 env:
   SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
   FINAL_RP: GunnerArena-ResourcePack-1.20.1-v1.zip
+  V31_BASE_SHA: 9261dc518aa49be2b7434951ce749e6e50947f22
 
 jobs:
   final:
@@ -54,15 +56,21 @@ jobs:
           print('\n'.join(out).rstrip())
           PY
 
-      - name: Prepare v31 source natively
+      - name: Prepare verified v31 source
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p /tmp/v33-new/hotfix/ui /tmp/v33-new/hotfix
+          for f in hotfix/GgoIdentityBridge.java hotfix/FriendService.java hotfix/FriendNetwork.java hotfix/ClanService.java hotfix/ClanNetwork.java; do cp "$f" "/tmp/v33-new/$f"; done
+          for f in hotfix/ui/FriendsScreen.java hotfix/ui/ClanScreen.java hotfix/ui/MainArenaScreen.java hotfix/ui/UiTheme.java hotfix/ui/UiEffects.java hotfix/ui/JegNoAmmoFeedback.java; do cp "$f" "/tmp/v33-new/$f"; done
+          git fetch --no-tags --depth=1 origin "$V31_BASE_SHA"
+          git checkout "$V31_BASE_SHA" -- .
           python3 /tmp/extract.py .github/workflows/gun-glory-online-v31-inventory-commandblock-fence.yml 'Prepare v30 source' >/tmp/base.sh
           bash /tmp/base.sh
           python3 /tmp/extract.py .github/workflows/gun-glory-online-v31-inventory-commandblock-fence.yml 'Apply v31 consistency fence UI admin' >/tmp/v31.sh
           bash /tmp/v31.sh
           test -f ga-build/gradle.properties
+          cp -a /tmp/v33-new/hotfix/. hotfix/
 
       - name: Apply v33 social clans ammo
         shell: bash
@@ -78,6 +86,7 @@ jobs:
           cp hotfix/ui/ClanScreen.java ga-build/client-ui/src/main/java/arena/client/ui/ClanScreen.java
           cp hotfix/ui/MainArenaScreen.java ga-build/client-ui/src/main/java/arena/client/ui/MainArenaScreen.java
           cp hotfix/ui/UiTheme.java ga-build/client-ui/src/main/java/arena/client/ui/UiTheme.java
+          cp hotfix/ui/UiEffects.java ga-build/client-ui/src/main/java/arena/client/ui/UiEffects.java
           cp hotfix/ui/JegNoAmmoFeedback.java ga-build/client-ui/src/main/java/arena/client/ui/JegNoAmmoFeedback.java
           python3 - <<'PY'
           from pathlib import Path
@@ -90,6 +99,7 @@ jobs:
           grep -q 'DEPUTY' ga-build/src/main/java/arena/forge/ClanService.java
           grep -q 'reserve>0||loaded<0' ga-build/client-ui/src/main/java/arena/client/ui/JegNoAmmoFeedback.java
           grep -q 'КЛАНЫ' ga-build/client-ui/src/main/java/arena/client/ui/MainArenaScreen.java
+          grep -q 'animatedSheen' ga-build/client-ui/src/main/java/arena/client/ui/UiEffects.java
 
       - name: Build Core
         shell: bash
@@ -121,9 +131,10 @@ jobs:
           cp final-artifacts/server/mods/* ready-pack/server/mods/
           cp final-artifacts/client/mods/* ready-pack/client/mods/
           for c in GgoIdentityBridge FriendService FriendNetwork ClanService ClanNetwork ArenaBeltGuard ArenaSessionConsistencyGuard LegacyCommandBlockFence; do jar tf "$CORE" | grep -q "^arena/forge/$c.class$"; done
-          for c in FriendsScreen ClanScreen MainArenaScreen UiTheme JegNoAmmoFeedback ArenaBeltOverlay MatchShopScreen; do jar tf "$UI" | grep -q "^arena/client/ui/$c.class$"; done
+          for c in FriendsScreen ClanScreen MainArenaScreen UiTheme UiEffects JegNoAmmoFeedback ArenaBeltOverlay MatchShopScreen; do jar tf "$UI" | grep -q "^arena/client/ui/$c.class$"; done
           cat > final-artifacts/VERIFICATION.txt <<'EOF'
           GUNGLORYONLINE_V33=PASS
+          VERIFIED_V31_BASE_PINNED=PASS
           CONSERVATIVE_AMMO_WARNING=PASS
           MAGAZINE_OR_RESERVE_SUPPRESSES_NO_AMMO=PASS
           FRIEND_REQUESTS_BIDIRECTIONAL=PASS
@@ -137,6 +148,7 @@ jobs:
           CLAN_ROLES_OWNER_DEPUTY_VETERAN_MEMBER=PASS
           CLAN_MEMBER_MANAGEMENT=PASS
           CLAN_UI=PASS
+          ANIMATED_GRADIENT_UI=PASS
           EOF
           cp final-artifacts/VERIFICATION.txt ready-pack/VERIFICATION.txt
           sha256sum final-artifacts/server/mods/* final-artifacts/client/mods/* > final-artifacts/SHA256SUMS.txt
