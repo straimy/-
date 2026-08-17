@@ -83,7 +83,8 @@ services:
     cpus: 0.25
 
   game-server:
-    image: eclipse-temurin:17-jre-jammy
+    build:
+      context: ./game-server
     container_name: ggo-game-server
     restart: unless-stopped
     profiles: ["game"]
