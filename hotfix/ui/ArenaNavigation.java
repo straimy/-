@@ -21,10 +21,10 @@ final class ArenaNavigation {
     }
 
     private static void add(AbstractArenaScreen s,UiRoute cur,UiRoute target,UiLayout.Rect r,String text){
-        ArenaButton b=new ArenaButton(r,Component.literal(text),x->navigate(target));b.active=cur!=target;s.addArenaWidget(b);
+        ArenaButton b=new ArenaButton(r,Component.literal(text),x->navigate(target));b.active=cur!=target;s.addArenaButton(b);
     }
     private static void addDirect(AbstractArenaScreen s,UiLayout.Rect r,String text,boolean current,java.util.function.Supplier<net.minecraft.client.gui.screens.Screen> factory){
-        ArenaButton b=new ArenaButton(r,Component.literal(text),x->Minecraft.getInstance().setScreen(factory.get()));b.active=!current;s.addArenaWidget(b);
+        ArenaButton b=new ArenaButton(r,Component.literal(text),x->Minecraft.getInstance().setScreen(factory.get()));b.active=!current;s.addArenaButton(b);
     }
     static void navigate(UiRoute target){Minecraft mc=Minecraft.getInstance();if(mc.player==null||target==null)return;switch(target){case MAIN->mc.setScreen(new MainArenaScreen());case SHOP->mc.setScreen(new LobbyShopScreen());case PROFILE->mc.setScreen(new ProfileScreen());case SKILLS->mc.setScreen(new SkillsScreen());}}
 }
