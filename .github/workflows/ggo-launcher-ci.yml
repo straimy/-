@@ -43,6 +43,26 @@ jobs:
           GGO_JWT_SECRET=ci-only-secret-012345678901234567890123456789 \
           docker compose --profile backend --profile game -f docker-compose.yml config >/dev/null
 
+          tmp="$(mktemp -d)"
+          mkdir -p "$tmp/pkg/client/mods"
+          printf 'core' > "$tmp/pkg/client/mods/gungloryonline-core-ci.jar"
+          printf 'ui' > "$tmp/pkg/client/mods/gungloryonline-ui-ci.jar"
+          (cd "$tmp/pkg" && zip -qr "$tmp/ready.zip" client)
+          printf 'rp' > "$tmp/rp.zip"
+          printf 'server-core' > "$tmp/server-core.jar"
+          python3 build_full_bundle.py \
+            --ready-pack "$tmp/ready.zip" \
+            --resource-pack "$tmp/rp.zip" \
+            --server-core "$tmp/server-core.jar" \
+            --version ci \
+            --output "$tmp/GunGloryOnline-FULL-VDS.zip"
+          unzip -Z1 "$tmp/GunGloryOnline-FULL-VDS.zip" | grep -q 'GunGloryOnline-FULL-VDS/BUNDLE.json'
+          if unzip -Z1 "$tmp/GunGloryOnline-FULL-VDS.zip" | grep -qE '(^|/)\.env$'; then
+            echo 'FULL-VDS archive leaked .env' >&2
+            exit 1
+          fi
+          rm -rf "$tmp"
+
       - name: Install Tauri Linux prerequisites
         run: |
           sudo apt-get update
