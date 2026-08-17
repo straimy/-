@@ -8,7 +8,7 @@ fi
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y ca-certificates curl git ufw openssl unzip
+apt-get install -y ca-certificates curl git ufw openssl unzip cron
 
 install -m 0755 -d /etc/apt/keyrings
 if [[ ! -f /etc/apt/keyrings/docker.asc ]]; then
@@ -27,6 +27,7 @@ EOF
 apt-get update
 apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 systemctl enable --now docker
+systemctl enable --now cron
 
 ufw default deny incoming
 ufw default allow outgoing
@@ -37,9 +38,16 @@ ufw allow 24842/tcp comment 'GGO game server'
 ufw --force enable
 
 mkdir -p /opt/ggo/{infra,backups}
-chmod 750 /opt/ggo
+chmod 750 /opt/ggo /opt/ggo/backups
+
+# Local disaster-recovery snapshot every night. The backup includes .env, so keep it root-only.
+cat >/etc/cron.d/ggo-backup <<'EOF'
+20 4 * * * root cd /opt/ggo/infra && /opt/ggo/infra/backup_now.sh >>/var/log/ggo-backup.log 2>&1
+EOF
+chmod 600 /etc/cron.d/ggo-backup
 
 echo
 printf '%s\n' 'GGO single-node host bootstrap complete.'
 printf '%s\n' 'Next: copy infra/vds contents to /opt/ggo/infra and run ./deploy_all.sh.'
+printf '%s\n' 'Daily local backups: /opt/ggo/backups (7-day rotation by default).'
 printf '%s\n' 'Do not expose PostgreSQL or Redis ports publicly.'
