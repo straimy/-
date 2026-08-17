@@ -10,15 +10,9 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.registries.ForgeRegistries;
 
-/**
- * Server-owned Classic Arena three-gun loadout.
- *
- * Replaces #selected_gun_1_id/#selected_gun_2_id/#selected_gun_3_id, item-display copying and
- * command-block hotbar replacement. The recovered legacy catalog contains exactly six JEG weapons;
- * every round chooses three distinct entries and installs them into slots 0/1/2.
- */
+/** Server-owned Classic Arena three-gun loadout and round cleanup. */
 public final class ClassicArenaLoadoutService {
-    public static final String VERSION = "GGO-CLASSIC-LOADOUT-V1";
+    public static final String VERSION = "GGO-CLASSIC-LOADOUT-V2";
 
     private static final List<String> CATALOG = List.of(
         "jeg:semi_auto_pistol",
@@ -35,8 +29,6 @@ public final class ClassicArenaLoadoutService {
 
     public static synchronized List<String> selectRound(ServerLevel level) {
         List<String> pool = new ArrayList<>(CATALOG);
-        // Fisher-Yates with the world RNG keeps the selection server-authoritative and reproducible
-        // inside the running world without relying on scoreboard increment loops.
         for (int i = pool.size() - 1; i > 0; i--) {
             int j = level.getRandom().nextInt(i + 1);
             Collections.swap(pool, i, j);
@@ -54,7 +46,6 @@ public final class ClassicArenaLoadoutService {
     }
 
     private static boolean give(ServerPlayer player, List<String> loadout) {
-        // Classic owns the combat hotbar during the round. Do not clear armor/profile/cosmetic state.
         for (int slot = 0; slot < 3; slot++) {
             Item item = item(loadout.get(slot));
             if (item == null) return false;
@@ -65,9 +56,23 @@ public final class ClassicArenaLoadoutService {
         return true;
     }
 
-    public static List<String> selectedWeapons() {
-        return selected;
+    /**
+     * Removes only Classic-owned guns from the three combat slots. It intentionally does not clear
+     * the entire inventory so profile/cosmetic/server items cannot be destroyed by round cleanup.
+     */
+    public static void cleanupPlayer(ServerPlayer player) {
+        for (int slot = 0; slot < 3; slot++) {
+            ItemStack stack = player.getInventory().getItem(slot);
+            if (isClassicWeapon(stack)) player.getInventory().setItem(slot, ItemStack.EMPTY);
+        }
+        player.getInventory().setChanged();
     }
+
+    public static synchronized void finishRound() {
+        selected = List.of();
+    }
+
+    public static List<String> selectedWeapons() { return selected; }
 
     public static String selectedWeapon(int slot) {
         List<String> current = selected;
