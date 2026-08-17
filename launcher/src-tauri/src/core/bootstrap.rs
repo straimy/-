@@ -23,7 +23,7 @@ impl BootstrapInfo {
 
         Self {
             launcher_version: env!("CARGO_PKG_VERSION"),
-            game_version: "v35",
+            game_version: "v40",
             channel: "beta",
             runtime: "minecraft-forge",
             server: "31.77.232.254:24842",
