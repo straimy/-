@@ -13,7 +13,10 @@ import java.util.Locale;
 import java.util.Properties;
 import java.util.UUID;
 
-/** Stable identity bridge used by new GunGloryOnline systems instead of exposing Minecraft UUIDs. */
+/**
+ * Stable GunGloryOnline identity layer. Minecraft UUID is only a temporary bootstrap binding until launcher auth is attached;
+ * all gameplay/social systems consume the generated GGO account id and public GGO-ID instead.
+ */
 public final class GgoIdentityBridge {
     private static final Object LOCK = new Object();
     private static final Properties IDS = new Properties();
@@ -24,21 +27,30 @@ public final class GgoIdentityBridge {
 
     public static UUID idFor(ServerPlayer player) {
         if (player == null) return new UUID(0L, 0L);
-        UUID id=idForMinecraft(player.getUUID());
+        UUID id=idForBootstrap(player.getUUID());
         rememberName(player.getGameProfile().getName(),id);
         publicIdFor(id);
         return id;
     }
 
-    public static UUID idForMinecraft(UUID minecraftId) {
+    /** Temporary compatibility alias. New code should never persist/use a Minecraft UUID outside this bridge. */
+    @Deprecated public static UUID idForMinecraft(UUID minecraftId){return idForBootstrap(minecraftId);}
+
+    private static UUID idForBootstrap(UUID minecraftId) {
         if (minecraftId == null) return new UUID(0L, 0L);
         synchronized (LOCK) {
             load();
-            String key = "minecraft." + minecraftId;
+            String key = "bootstrap.minecraft." + minecraftId;
             String value = IDS.getProperty(key);
+            if(value==null)value=IDS.getProperty("minecraft."+minecraftId); // migrate old mapping without changing account id
             if (value != null) {
-                try { return UUID.fromString(value); }
-                catch (IllegalArgumentException ignored) {}
+                try {
+                    UUID ggo=UUID.fromString(value);
+                    IDS.setProperty(key,ggo.toString());
+                    IDS.remove("minecraft."+minecraftId);
+                    save();
+                    return ggo;
+                } catch (IllegalArgumentException ignored) {}
             }
             UUID ggo = UUID.randomUUID();
             IDS.setProperty(key, ggo.toString());
@@ -60,11 +72,12 @@ public final class GgoIdentityBridge {
         }
     }
 
+    /** Lookup accepts only GGO-ID or remembered display name. Raw UUID lookup is intentionally disabled. */
     public static UUID findKnown(String token){
         if(token==null||token.isBlank())return null;
         synchronized(LOCK){
             load(); String t=token.trim().toLowerCase(Locale.ROOT); String v=IDS.getProperty(t.startsWith("ggo-")?"lookup."+t:"name."+t);
-            if(v==null){ try{return UUID.fromString(token.trim());}catch(Exception ignored){return null;} }
+            if(v==null)return null;
             try{return UUID.fromString(v);}catch(Exception ignored){return null;}
         }
     }
