@@ -14,6 +14,7 @@ on:
       - 'hotfix/ui/GgoSkinResolver.java'
       - 'hotfix/ui/GgoIdentityBridge.java'
       - 'hotfix/ui/GgoSkinRuntime.java'
+      - 'hotfix/ui/GgoNetworkSkinRuntime.java'
       - 'hotfix/ui/mixin/**'
       - 'hotfix/ui/gungloryonline_ui.mixins.json'
       - 'hotfix/ui/apply_ggo_skin_mixin.py'
@@ -81,16 +82,18 @@ jobs:
           cp hotfix/ui/GgoSkinResolver.java "$UI_DIR/GgoSkinResolver.java"
           cp hotfix/ui/GgoIdentityBridge.java "$UI_DIR/GgoIdentityBridge.java"
           cp hotfix/ui/GgoSkinRuntime.java "$UI_DIR/GgoSkinRuntime.java"
+          cp hotfix/ui/GgoNetworkSkinRuntime.java "$UI_DIR/GgoNetworkSkinRuntime.java"
           python3 hotfix/ui/apply_ggo_skin_mixin.py
           grep -q 'GUNGLORY RUNTIME v1' "$UI_DIR/GgoTitleScreen.java"
           grep -q 'BACK TO GAME' "$UI_DIR/GgoPauseScreen.java"
-          grep -q 'GgoSkinRuntime.tick' "$UI_DIR/GgoVanillaScreenGuard.java"
+          grep -q 'GgoNetworkSkinRuntime.tick' "$UI_DIR/GgoVanillaScreenGuard.java"
           grep -q 'CONNECTING TO GUNGLORY ONLINE' "$UI_DIR/GgoConnectionOverlay.java"
           grep -q 'CONNECTION LOST' "$UI_DIR/GgoDisconnectedScreen.java"
-          grep -q 'ggo-cache' "$UI_DIR/GgoSkinResolver.java"
+          grep -q 'resolveMinecraft' "$UI_DIR/GgoSkinResolver.java"
           grep -q '.ggo-profile.json' "$UI_DIR/GgoIdentityBridge.java"
           grep -q 'DynamicTexture' "$UI_DIR/GgoSkinRuntime.java"
-          grep -q 'getSkinTextureLocation' "$UI_DIR/mixin/AbstractClientPlayerMixin.java"
+          grep -q 'resolveMinecraft' "$UI_DIR/GgoNetworkSkinRuntime.java"
+          grep -q 'GgoNetworkSkinRuntime.texture' "$UI_DIR/mixin/AbstractClientPlayerMixin.java"
           grep -q 'gungloryonline_ui.refmap.json' ga-build/client-ui/build.gradle
 
       - name: Build Core dependency
@@ -114,7 +117,7 @@ jobs:
           CORE="$(find ga-build/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
           UI="$(find ga-build/client-ui/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
           test -n "$CORE"; test -n "$UI"
-          for c in GgoTitleScreen GgoPauseScreen GgoVanillaScreenGuard GgoConnectionOverlay GgoDisconnectedScreen GgoSkinResolver GgoIdentityBridge GgoSkinRuntime; do
+          for c in GgoTitleScreen GgoPauseScreen GgoVanillaScreenGuard GgoConnectionOverlay GgoDisconnectedScreen GgoSkinResolver GgoIdentityBridge GgoSkinRuntime GgoNetworkSkinRuntime; do
             jar tf "$UI" | grep -q "^arena/client/ui/$c.class$"
           done
           jar tf "$UI" | grep -q '^arena/client/ui/mixin/AbstractClientPlayerMixin.class$'
@@ -131,9 +134,9 @@ jobs:
           Replaces vanilla Title, Pause and Disconnected screens with GGO-owned screens.
           Covers vanilla connecting/receiving screens with a GGO loading presentation while Forge networking remains intact.
           Reads the launcher's non-secret .ggo-profile.json identity bridge.
-          Includes first-party GGO skin metadata/download cache keyed by ggo_player_id, SHA256 verification and texture registration.
-          Applies the registered GGO skin to the local player through a narrow client-only AbstractClientPlayer mixin.
-          Other players continue through the vanilla/Microsoft skin path until networked GGO identity distribution is added.
+          Includes first-party GGO skin metadata/download cache with SHA256 verification and texture registration.
+          Applies the registered GGO skin to the local player and linked remote players through a narrow client-only AbstractClientPlayer mixin.
+          Unknown/unlinked players keep the normal Minecraft/Microsoft skin path.
           Server Core behavior is unchanged.
           EOF
           sha256sum runtime-migration/server/mods/* runtime-migration/client/mods/* > runtime-migration/SHA256SUMS.txt
