@@ -20,18 +20,15 @@ import java.util.Locale;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
-/** OP-only admin tools. Credits commands intentionally support both self and target forms. */
+/** OP-only admin tools + shared safe credit mutator for server-owned rewards. */
 @Mod.EventBusSubscriber(modid="gunnerarena",bus=Mod.EventBusSubscriber.Bus.FORGE)
 public final class AdminToolsCommands {
     private AdminToolsCommands(){}
 
     @SubscribeEvent public static void commands(RegisterCommandsEvent e){
         e.getDispatcher().register(Commands.literal("gm").requires(s->s.hasPermission(2)).then(Commands.argument("mode",IntegerArgumentType.integer(0,3)).executes(ctx->{int mode=IntegerArgumentType.getInteger(ctx,"mode");if(mode==2){ctx.getSource().sendFailure(Component.literal("[GGO] Используй /gm 0, /gm 1 или /gm 3."));return 0;}ServerPlayer p=ctx.getSource().getPlayerOrException();GameType type=mode==1?GameType.CREATIVE:mode==3?GameType.SPECTATOR:GameType.ADVENTURE;p.setGameMode(type);p.sendSystemMessage(Component.literal("[GGO] Режим: "+(mode==1?"Креатив":mode==3?"Спектатор":"Игровой (Adventure)")));return 1;})));
-
         e.getDispatcher().register(Commands.literal("crystals").requires(s->s.hasPermission(2)).then(Commands.literal("give").then(Commands.argument("player",EntityArgument.player()).then(Commands.argument("amount",LongArgumentType.longArg(1,1_000_000L)).executes(ctx->{ServerPlayer target=EntityArgument.getPlayer(ctx,"player");long amount=LongArgumentType.getLong(ctx,"amount");var r=GunnerArenaMod.RUNTIME;if(r==null)return 0;var profile=r.players().profile(target);if(profile==null)return 0;profile.crystals=profile.crystals>Long.MAX_VALUE-amount?Long.MAX_VALUE:profile.crystals+amount;r.profiles().markDirty(target.getUUID());ctx.getSource().sendSuccess(()->Component.literal("[GGO] +"+amount+" ◆ → "+target.getGameProfile().getName()).withStyle(ChatFormatting.AQUA),true);return 1;})))));
-
-        registerCredits(e,"credits");
-        registerCredits(e,"credit");
+        registerCredits(e,"credits");registerCredits(e,"credit");
     }
 
     private static void registerCredits(RegisterCommandsEvent e,String root){
@@ -45,11 +42,10 @@ public final class AdminToolsCommands {
             .then(Commands.literal("get").executes(ctx->show(ctx.getSource(),ctx.getSource().getPlayerOrException())).then(Commands.argument("player",EntityArgument.player()).executes(ctx->show(ctx.getSource(),EntityArgument.getPlayer(ctx,"player"))))));
     }
 
-    /** Shared authoritative helper for gameplay rewards such as NPC kills. */
-    public static boolean grantRoundCredits(ServerPlayer target,int amount){
-        if(target==null||amount<=0)return false;
-        var r=GunnerArenaMod.RUNTIME;if(r==null)return false;
-        Object manager=r.players(),session=r.players().roundSession(target);
+    /** Shared reward path used by server combat NPCs. */
+    public static boolean grantCredits(ServerPlayer target,int amount){
+        if(target==null||amount<=0||GunnerArenaMod.RUNTIME==null)return false;
+        Object manager=GunnerArenaMod.RUNTIME.players(),session=GunnerArenaMod.RUNTIME.players().roundSession(target);
         boolean ok=addCreditsReflective(session,amount);
         if(!ok)ok=managerCreditsReflective(manager,target,amount,false);
         return ok;
@@ -57,10 +53,7 @@ public final class AdminToolsCommands {
 
     private static int change(CommandSourceStack src,ServerPlayer target,int amount,boolean set){
         var r=GunnerArenaMod.RUNTIME;if(r==null){src.sendFailure(Component.literal("[GGO] Runtime ещё не готов."));return 0;}
-        Object manager=r.players(),session=r.players().roundSession(target);
-        boolean ok=set?setCreditsReflective(session,amount):addCreditsReflective(session,amount);
-        if(!ok)ok=managerCreditsReflective(manager,target,amount,set);
-        Integer now=readCredits(session);
+        Object manager=r.players(),session=r.players().roundSession(target);boolean ok=set?setCreditsReflective(session,amount):addCreditsReflective(session,amount);if(!ok)ok=managerCreditsReflective(manager,target,amount,set);Integer now=readCredits(session);
         if(!ok){src.sendFailure(Component.literal("[GGO] Не удалось изменить кредиты. Используй /credits get — runtime несовместим."));return 0;}
         String value=now==null?"?":Integer.toString(now);src.sendSuccess(()->Component.literal("[GGO] $"+value+" → "+target.getGameProfile().getName()).withStyle(ChatFormatting.GOLD),true);target.sendSystemMessage(Component.literal("$ Матчевые кредиты: "+value).withStyle(ChatFormatting.GOLD));return 1;
     }
