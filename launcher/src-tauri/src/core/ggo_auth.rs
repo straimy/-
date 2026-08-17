@@ -163,7 +163,10 @@ pub async fn login(http: &Client, api_url: &str, store: &GgoSessionStore) -> Res
             .await
             .map_err(|error| error.to_string())?;
 
-        if response.status() == StatusCode::PRECONDITION_REQUIRED {
+        // 428 is used by our device-flow API while the browser approval is still pending.
+        // Compare the numeric code instead of relying on an http/reqwest named constant,
+        // because older dependency versions do not expose PRECONDITION_REQUIRED.
+        if response.status().as_u16() == 428 {
             continue;
         }
         if response.status() == StatusCode::NOT_FOUND {
