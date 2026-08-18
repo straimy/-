@@ -8,6 +8,7 @@ on:
       - '.github/workflows/ggo-runtime-migration-v1.yml'
       - 'hotfix/ui/GgoTitleScreen.java'
       - 'hotfix/ui/GgoPauseScreen.java'
+      - 'hotfix/ui/GgoModeSelectScreen.java'
       - 'hotfix/ui/GgoVanillaScreenGuard.java'
       - 'hotfix/ui/GgoConnectionOverlay.java'
       - 'hotfix/ui/GgoDisconnectedScreen.java'
@@ -78,6 +79,7 @@ jobs:
           mkdir -p "$UI_DIR"
           cp hotfix/ui/GgoTitleScreen.java "$UI_DIR/GgoTitleScreen.java"
           cp hotfix/ui/GgoPauseScreen.java "$UI_DIR/GgoPauseScreen.java"
+          cp hotfix/ui/GgoModeSelectScreen.java "$UI_DIR/GgoModeSelectScreen.java"
           cp hotfix/ui/GgoVanillaScreenGuard.java "$UI_DIR/GgoVanillaScreenGuard.java"
           cp hotfix/ui/GgoConnectionOverlay.java "$UI_DIR/GgoConnectionOverlay.java"
           cp hotfix/ui/GgoDisconnectedScreen.java "$UI_DIR/GgoDisconnectedScreen.java"
@@ -89,7 +91,9 @@ jobs:
           cp hotfix/ui/GgoNetworkSkinRuntime.java "$UI_DIR/GgoNetworkSkinRuntime.java"
           python3 hotfix/ui/apply_ggo_skin_mixin.py
           grep -q 'GUNGLORY RUNTIME v1' "$UI_DIR/GgoTitleScreen.java"
-          grep -q 'BACK TO GAME' "$UI_DIR/GgoPauseScreen.java"
+          grep -q 'PLAY / CHANGE MODE' "$UI_DIR/GgoPauseScreen.java"
+          grep -q 'GGO-MODE-SELECT-V1' "$UI_DIR/GgoModeSelectScreen.java"
+          grep -q 'sendCommand("play " + mode)' "$UI_DIR/GgoModeSelectScreen.java"
           grep -q 'GgoLaunchMode.isTraining' "$UI_DIR/GgoVanillaScreenGuard.java"
           grep -q 'CONNECTING TO GUNGLORY ONLINE' "$UI_DIR/GgoConnectionOverlay.java"
           grep -q 'CONNECTION LOST' "$UI_DIR/GgoDisconnectedScreen.java"
@@ -123,7 +127,7 @@ jobs:
           CORE="$(find ga-build/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
           UI="$(find ga-build/client-ui/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
           test -n "$CORE"; test -n "$UI"
-          for c in GgoTitleScreen GgoPauseScreen GgoVanillaScreenGuard GgoConnectionOverlay GgoDisconnectedScreen GgoLaunchMode GgoTrainingScreen GgoSkinResolver GgoIdentityBridge GgoSkinRuntime GgoNetworkSkinRuntime; do
+          for c in GgoTitleScreen GgoPauseScreen GgoModeSelectScreen GgoVanillaScreenGuard GgoConnectionOverlay GgoDisconnectedScreen GgoLaunchMode GgoTrainingScreen GgoSkinResolver GgoIdentityBridge GgoSkinRuntime GgoNetworkSkinRuntime; do
             jar tf "$UI" | grep -q "^arena/client/ui/$c.class$"
           done
           jar tf "$UI" | grep -q '^arena/client/ui/mixin/AbstractClientPlayerMixin.class$'
@@ -138,13 +142,14 @@ jobs:
           GunGloryOnline Runtime Migration v1
           Client-only shell experiment based on v40.
           Replaces vanilla Title, Pause and Disconnected screens with GGO-owned screens.
+          Includes a GGO-owned game-mode chooser; enabled selections submit /play requests and server authority decides the result.
           Supports a launcher-owned `ggo.launch.mode=training` offline shell without exposing Minecraft singleplayer UX.
           Covers vanilla connecting/receiving screens with a GGO loading presentation while Forge networking remains intact.
           Reads the launcher's non-secret .ggo-profile.json identity bridge.
           Includes first-party GGO skin metadata/download cache with SHA256 verification and texture registration.
           Applies the registered GGO skin to the local player and linked remote players through a narrow client-only AbstractClientPlayer mixin.
           Unknown/unlinked players keep the normal Minecraft/Microsoft skin path.
-          Server Core behavior is unchanged.
+          Server Core behavior is unchanged by the client mode chooser.
           EOF
           sha256sum runtime-migration/server/mods/* runtime-migration/client/mods/* > runtime-migration/SHA256SUMS.txt
 
