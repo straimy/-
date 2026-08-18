@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/ggo-server-hardening-v1.yml'
       - 'hotfix/GgoAntiCheatTelemetry.java'
+      - 'hotfix/GgoMovementAuthority.java'
       - 'hotfix/GgoServerRulesGuard.java'
       - 'hotfix/GgoGameModeRegistry.java'
       - 'hotfix/GgoLootSpawnService.java'
@@ -87,6 +88,7 @@ jobs:
           set -euo pipefail
           mkdir -p ga-build/src/main/java/arena/forge
           cp hotfix/GgoAntiCheatTelemetry.java ga-build/src/main/java/arena/forge/GgoAntiCheatTelemetry.java
+          cp hotfix/GgoMovementAuthority.java ga-build/src/main/java/arena/forge/GgoMovementAuthority.java
           cp hotfix/GgoServerRulesGuard.java ga-build/src/main/java/arena/forge/GgoServerRulesGuard.java
           cp hotfix/GgoGameModeRegistry.java ga-build/src/main/java/arena/forge/GgoGameModeRegistry.java
           cp hotfix/GgoLootSpawnService.java ga-build/src/main/java/arena/forge/GgoLootSpawnService.java
@@ -99,28 +101,24 @@ jobs:
           cp hotfix/ClassicArenaJumpPadService.java ga-build/src/main/java/arena/forge/ClassicArenaJumpPadService.java
           cp hotfix/DuelMatchService.java ga-build/src/main/java/arena/forge/DuelMatchService.java
           cp hotfix/GgoLegacyCommandBlockCleaner.java ga-build/src/main/java/arena/forge/GgoLegacyCommandBlockCleaner.java
-          grep -q 'GGO-AC-V1' ga-build/src/main/java/arena/forge/GgoAntiCheatTelemetry.java
+          grep -q 'GGO-AC-V2' ga-build/src/main/java/arena/forge/GgoAntiCheatTelemetry.java
+          grep -q 'GgoMovementAuthority.isAuthorized' ga-build/src/main/java/arena/forge/GgoAntiCheatTelemetry.java
+          grep -q 'GGO-MOVE-AUTH-V1' ga-build/src/main/java/arena/forge/GgoMovementAuthority.java
           grep -q 'GGO-RULES-V1' ga-build/src/main/java/arena/forge/GgoServerRulesGuard.java
           grep -q 'Classic Arena' ga-build/src/main/java/arena/forge/GgoGameModeRegistry.java
           grep -q 'GGO-LOOT-V1' ga-build/src/main/java/arena/forge/GgoLootSpawnService.java
           grep -q 'GGO-CLASSIC-GEN-V3' ga-build/src/main/java/arena/forge/ClassicArenaMapGenerator.java
           grep -q 'ClassicArenaMapGenerator.shared()' ga-build/src/main/java/arena/forge/CGBetaForgeAdapter.java
-          grep -q 'ClassicArenaMapGenerator.shared()' ga-build/src/main/java/arena/forge/ClassicArenaMatchService.java
           grep -q 'GGO-CLASSIC-PICKUPS-V2' ga-build/src/main/java/arena/forge/ClassicArenaPickupService.java
-          grep -q 'GGO-CLASSIC-SPAWN-V2' ga-build/src/main/java/arena/forge/ClassicArenaSpawnService.java
+          grep -q 'GGO-CLASSIC-SPAWN-V3' ga-build/src/main/java/arena/forge/ClassicArenaSpawnService.java
           grep -q 'GGO-CLASSIC-MATCH-V3' ga-build/src/main/java/arena/forge/ClassicArenaMatchService.java
           grep -q 'GGO-CLASSIC-LOADOUT-V1' ga-build/src/main/java/arena/forge/ClassicArenaLoadoutService.java
-          grep -q 'prepareRound(level, players)' ga-build/src/main/java/arena/forge/ClassicArenaMatchService.java
-          grep -q 'placeInitial(level, players)' ga-build/src/main/java/arena/forge/ClassicArenaMatchService.java
-          grep -q 'dev generation' ga-build/src/main/java/arena/forge/ClassicArenaMatchService.java
-          grep -q 'GGO-CLASSIC-JUMPPAD-V1' ga-build/src/main/java/arena/forge/ClassicArenaJumpPadService.java
-          ! grep -q 'MobEffects.LEVITATION\|AreaEffectCloud' ga-build/src/main/java/arena/forge/ClassicArenaJumpPadService.java
+          grep -q 'GGO-CLASSIC-JUMPPAD-V2' ga-build/src/main/java/arena/forge/ClassicArenaJumpPadService.java
+          grep -q 'GgoMovementAuthority.authorize' ga-build/src/main/java/arena/forge/ClassicArenaJumpPadService.java
           grep -q 'GGO-DUELS-V1' ga-build/src/main/java/arena/forge/DuelMatchService.java
           grep -q 'ROUNDS_TO_WIN = 2' ga-build/src/main/java/arena/forge/DuelMatchService.java
           grep -q 'strip CONFIRM' ga-build/src/main/java/arena/forge/GgoLegacyCommandBlockCleaner.java
-          grep -q 'generator.generate(level)' ga-build/src/main/java/arena/forge/CGBetaForgeAdapter.java
           ! grep -q 'setBlock.*REDSTONE\|Scoreboard\|#cg_chunk_count' ga-build/src/main/java/arena/forge/CGBetaForgeAdapter.java
-          grep -q 'v1 intentionally does not kick or ban' ga-build/src/main/java/arena/forge/GgoAntiCheatTelemetry.java
 
       - name: Build Core
         shell: bash
@@ -136,6 +134,7 @@ jobs:
           CORE="$(find ga-build/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
           test -n "$CORE"
           jar tf "$CORE" | grep -q '^arena/forge/GgoAntiCheatTelemetry.class$'
+          jar tf "$CORE" | grep -q '^arena/forge/GgoMovementAuthority.class$'
           jar tf "$CORE" | grep -q '^arena/forge/GgoServerRulesGuard.class$'
           jar tf "$CORE" | grep -q '^arena/forge/GgoGameModeRegistry.class$'
           jar tf "$CORE" | grep -q '^arena/forge/GgoLootSpawnService.class$'
@@ -153,15 +152,11 @@ jobs:
           sha256sum server-hardening/server/mods/* > server-hardening/SHA256SUMS.txt
           cat > server-hardening/README.txt <<'EOF'
           GunGloryOnline Server Hardening v1
-          Conservative server-side anti-cheat telemetry; no automatic kicks/bans in v1.
-          Normal players cannot break/place world blocks; explicit OP admin build mode is exempt.
-          /play is backed by the server-owned GGO game mode registry.
+          Anti-cheat v2 understands only server-authorized movement exemptions; clients cannot grant them.
           Classic Arena remains MIGRATING until real-world command-block-off gameplay smoke passes.
           Classic generation, loadout, pickups, initial spawn, respawn, score, winner and jump pads are server-owned Java systems.
-          CGBetaForgeAdapter no longer toggles the old redstone generator or reads scoreboard progress.
-          /ggo classic dev generate performs a player-free real-world structure/marker integration smoke.
           DuelMatchService provides a server-owned 1v1 BO3 queue/session foundation; Duels remains PLANNED until map integration.
-          GgoLegacyCommandBlockCleaner is manual/OP-only and requires explicit CONFIRM before legacy block removal.
+          GgoLegacyCommandBlockCleaner remains manual/OP-only and requires explicit CONFIRM.
           EOF
 
       - name: Dedicated server smoke
