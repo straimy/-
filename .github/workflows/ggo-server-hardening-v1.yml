@@ -20,6 +20,7 @@ on:
       - 'hotfix/ClassicArenaJumpPadService.java'
       - 'hotfix/DuelMatchService.java'
       - 'hotfix/BattleRoyaleService.java'
+      - 'hotfix/BattleRoyaleLootService.java'
       - 'hotfix/GgoLegacyCommandBlockCleaner.java'
       - 'docs/command-block-migration.md'
       - 'docs/current-server-build-audit-2026-08-17.md'
@@ -102,6 +103,7 @@ jobs:
           cp hotfix/ClassicArenaJumpPadService.java ga-build/src/main/java/arena/forge/ClassicArenaJumpPadService.java
           cp hotfix/DuelMatchService.java ga-build/src/main/java/arena/forge/DuelMatchService.java
           cp hotfix/BattleRoyaleService.java ga-build/src/main/java/arena/forge/BattleRoyaleService.java
+          cp hotfix/BattleRoyaleLootService.java ga-build/src/main/java/arena/forge/BattleRoyaleLootService.java
           cp hotfix/GgoLegacyCommandBlockCleaner.java ga-build/src/main/java/arena/forge/GgoLegacyCommandBlockCleaner.java
           grep -q 'GGO-AC-V2' ga-build/src/main/java/arena/forge/GgoAntiCheatTelemetry.java
           grep -q 'GgoMovementAuthority.isAuthorized' ga-build/src/main/java/arena/forge/GgoAntiCheatTelemetry.java
@@ -119,8 +121,10 @@ jobs:
           grep -q 'GgoMovementAuthority.authorize' ga-build/src/main/java/arena/forge/ClassicArenaJumpPadService.java
           grep -q 'GGO-DUELS-V1' ga-build/src/main/java/arena/forge/DuelMatchService.java
           grep -q 'ROUNDS_TO_WIN = 2' ga-build/src/main/java/arena/forge/DuelMatchService.java
-          grep -q 'GGO-BR-V1' ga-build/src/main/java/arena/forge/BattleRoyaleService.java
-          grep -q 'RADII = { 300.0D, 220.0D, 140.0D, 70.0D, 30.0D }' ga-build/src/main/java/arena/forge/BattleRoyaleService.java
+          grep -q 'GGO-BR-V2' ga-build/src/main/java/arena/forge/BattleRoyaleService.java
+          grep -q 'BattleRoyaleLootService.prepareRound' ga-build/src/main/java/arena/forge/BattleRoyaleService.java
+          grep -q 'GGO-BR-LOOT-V1' ga-build/src/main/java/arena/forge/BattleRoyaleLootService.java
+          grep -q 'br-loot.properties' ga-build/src/main/java/arena/forge/BattleRoyaleLootService.java
           ! grep -q 'WorldBorder\|scoreboard\|CommandBlock' ga-build/src/main/java/arena/forge/BattleRoyaleService.java
           grep -q 'strip CONFIRM' ga-build/src/main/java/arena/forge/GgoLegacyCommandBlockCleaner.java
           ! grep -q 'setBlock.*REDSTONE\|Scoreboard\|#cg_chunk_count' ga-build/src/main/java/arena/forge/CGBetaForgeAdapter.java
@@ -152,6 +156,7 @@ jobs:
           jar tf "$CORE" | grep -q '^arena/forge/ClassicArenaJumpPadService.class$'
           jar tf "$CORE" | grep -q '^arena/forge/DuelMatchService.class$'
           jar tf "$CORE" | grep -q '^arena/forge/BattleRoyaleService.class$'
+          jar tf "$CORE" | grep -q '^arena/forge/BattleRoyaleLootService.class$'
           jar tf "$CORE" | grep -q '^arena/forge/GgoLegacyCommandBlockCleaner.class$'
           mkdir -p server-hardening/server/mods
           cp "$CORE" server-hardening/server/mods/gungloryonline-core-0.9.7-v40-server-hardening1.jar
@@ -162,7 +167,7 @@ jobs:
           Classic Arena remains MIGRATING until real-world command-block-off gameplay smoke passes.
           Classic generation, loadout, pickups, initial spawn, respawn, score, winner and jump pads are server-owned Java systems.
           DuelMatchService provides a server-owned 1v1 BO3 queue/session foundation; Duels remains PLANNED until map integration.
-          BattleRoyaleService provides server-owned alive state and shrinking safe-zone phases; BR remains PLANNED until map/loot integration.
+          Battle Royale has server-owned alive state, shrinking safe-zone phases and typed config-driven loot markers; BR remains PLANNED until map integration.
           GgoLegacyCommandBlockCleaner remains manual/OP-only and requires explicit CONFIRM.
           EOF
 
