@@ -17,7 +17,7 @@ public final class CGBetaForgeAdapter {
     @Deprecated
     public static final BlockPos GENERATOR_TRIGGER = new BlockPos(44, 63, 3);
 
-    private final ClassicArenaMapGenerator generator = new ClassicArenaMapGenerator();
+    private final ClassicArenaMapGenerator generator = ClassicArenaMapGenerator.shared();
 
     public void trigger(ServerLevel level) {
         generator.generate(level);
@@ -36,8 +36,6 @@ public final class CGBetaForgeAdapter {
             );
         }
 
-        // CGBetaRegenerator keeps its existing timeout/error behavior. During synchronous generation
-        // this state is normally observed only before the first trigger or after a placement error.
         return new CGBetaSnapshot(
             Math.max(0, state.placed()),
             state.empty(), ClassicArenaMapGenerator.EMPTY_CELLS,
