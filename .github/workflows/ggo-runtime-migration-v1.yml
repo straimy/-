@@ -90,7 +90,8 @@ jobs:
           cp hotfix/ui/GgoSkinRuntime.java "$UI_DIR/GgoSkinRuntime.java"
           cp hotfix/ui/GgoNetworkSkinRuntime.java "$UI_DIR/GgoNetworkSkinRuntime.java"
           python3 hotfix/ui/apply_ggo_skin_mixin.py
-          grep -q 'GUNGLORY RUNTIME v1' "$UI_DIR/GgoTitleScreen.java"
+          grep -q 'GGO-TITLE-V2' "$UI_DIR/GgoTitleScreen.java"
+          grep -q 'new GgoModeSelectScreen(this)' "$UI_DIR/GgoTitleScreen.java"
           grep -q 'PLAY / CHANGE MODE' "$UI_DIR/GgoPauseScreen.java"
           grep -q 'GGO-MODE-SELECT-V1' "$UI_DIR/GgoModeSelectScreen.java"
           grep -q 'sendCommand("play " + mode)' "$UI_DIR/GgoModeSelectScreen.java"
@@ -141,15 +142,14 @@ jobs:
           cat > runtime-migration/README.txt <<'EOF'
           GunGloryOnline Runtime Migration v1
           Client-only shell experiment based on v40.
-          Replaces vanilla Title, Pause and Disconnected screens with GGO-owned screens.
-          Includes a GGO-owned game-mode chooser; enabled selections submit /play requests and server authority decides the result.
+          GGO title PLAY and pause PLAY / CHANGE MODE route to the GGO-owned game-mode chooser.
+          Enabled selections submit /play requests and server authority decides the result.
           Supports a launcher-owned `ggo.launch.mode=training` offline shell without exposing Minecraft singleplayer UX.
           Covers vanilla connecting/receiving screens with a GGO loading presentation while Forge networking remains intact.
           Reads the launcher's non-secret .ggo-profile.json identity bridge.
           Includes first-party GGO skin metadata/download cache with SHA256 verification and texture registration.
           Applies the registered GGO skin to the local player and linked remote players through a narrow client-only AbstractClientPlayer mixin.
           Unknown/unlinked players keep the normal Minecraft/Microsoft skin path.
-          Server Core behavior is unchanged by the client mode chooser.
           EOF
           sha256sum runtime-migration/server/mods/* runtime-migration/client/mods/* > runtime-migration/SHA256SUMS.txt
 
