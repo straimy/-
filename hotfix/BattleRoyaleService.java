@@ -22,12 +22,12 @@ import net.minecraftforge.fml.common.Mod;
  * Server-owned Battle Royale foundation.
  *
  * This intentionally does not depend on Minecraft world-border commands, scoreboards, command
- * blocks or chests. The eventual BR map is content; match state and zone authority live here.
- * BR stays PLANNED until a redistributable map and loot-spawn integration are completed.
+ * blocks, vanilla chest loot or client-owned match state. The eventual BR map is content;
+ * match state, safe-zone authority and typed loot points live in GGO Core.
  */
 @Mod.EventBusSubscriber(modid = "gunnerarena", bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class BattleRoyaleService {
-    public static final String VERSION = "GGO-BR-V1";
+    public static final String VERSION = "GGO-BR-V2";
 
     public enum State { IDLE, COUNTDOWN, RUNNING, FINISHED }
 
@@ -47,6 +47,7 @@ public final class BattleRoyaleService {
     private static int phase;
     private static long deadline;
     private static UUID winner;
+    private static int spawnedLoot;
 
     private BattleRoyaleService() {}
 
@@ -71,7 +72,7 @@ public final class BattleRoyaleService {
     private static int status(net.minecraft.commands.CommandSourceStack source) {
         source.sendSuccess(() -> Component.literal(
             "[GGO] BR state=" + state + " alive=" + ALIVE.size() + "/" + PARTICIPANTS.size()
-                + " phase=" + phase + " radius=" + Math.round(radius())
+                + " phase=" + phase + " radius=" + Math.round(radius()) + " loot=" + spawnedLoot
                 + (winner == null ? "" : " winner=" + winner)
         ).withStyle(ChatFormatting.AQUA), false);
         return Command.SINGLE_SUCCESS;
@@ -86,7 +87,7 @@ public final class BattleRoyaleService {
             return 0;
         }
         begin(target, players, source.getPosition().x, source.getPosition().z);
-        source.sendSuccess(() -> Component.literal("[GGO] BR dev session started.").withStyle(ChatFormatting.GREEN), true);
+        source.sendSuccess(() -> Component.literal("[GGO] BR dev session started. loot=" + spawnedLoot).withStyle(ChatFormatting.GREEN), true);
         return Command.SINGLE_SUCCESS;
     }
 
@@ -109,6 +110,8 @@ public final class BattleRoyaleService {
         centerZ = z;
         phase = 0;
         winner = null;
+        BattleRoyaleLootService.cleanup(target);
+        spawnedLoot = BattleRoyaleLootService.prepareRound(target);
         state = State.COUNTDOWN;
         deadline = target.getServer().getTickCount() + COUNTDOWN_TICKS;
         broadcast(target.getServer(), "BATTLE ROYALE • GET READY", ChatFormatting.GOLD);
@@ -191,6 +194,7 @@ public final class BattleRoyaleService {
     }
 
     private static void reset() {
+        if (level != null) BattleRoyaleLootService.cleanup(level);
         PARTICIPANTS.clear();
         ALIVE.clear();
         state = State.IDLE;
@@ -198,5 +202,6 @@ public final class BattleRoyaleService {
         phase = 0;
         deadline = 0L;
         winner = null;
+        spawnedLoot = 0;
     }
 }
