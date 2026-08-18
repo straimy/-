@@ -28,7 +28,7 @@ import org.slf4j.Logger;
  * ammo-slot assignment and placement are owned by versioned GGO Java code.
  */
 public final class ClassicArenaMapGenerator {
-    public static final String VERSION = "GGO-CLASSIC-GEN-V2";
+    public static final String VERSION = "GGO-CLASSIC-GEN-V3";
     public static final int GRID_SIZE = 8;
     public static final int TOTAL_CELLS = GRID_SIZE * GRID_SIZE;
     public static final int EMPTY_CELLS = 16;
@@ -47,6 +47,7 @@ public final class ClassicArenaMapGenerator {
     private static final AABB ARENA_ENTITIES = new AABB(47.0D, 68.0D, 47.0D, 113.0D, 105.0D, 113.0D);
 
     private static final Logger LOG = LogUtils.getLogger();
+    private static final ClassicArenaMapGenerator SHARED = new ClassicArenaMapGenerator();
 
     public enum State { IDLE, GENERATING, READY, ERROR }
     public enum CellKind { FLAT, EMPTY, GUN, HEALTH }
@@ -60,6 +61,15 @@ public final class ClassicArenaMapGenerator {
 
     public ClassicArenaMapGenerator() {
         resetCounters();
+    }
+
+    /**
+     * Single server-runtime generator state used by Classic match flow and the v40 compatibility
+     * bridge. This prevents the old RoundManager snapshot path from observing a different generator
+     * instance than /ggo classic and the actual Classic match.
+     */
+    public static ClassicArenaMapGenerator shared() {
+        return SHARED;
     }
 
     public synchronized boolean generate(ServerLevel level) {
