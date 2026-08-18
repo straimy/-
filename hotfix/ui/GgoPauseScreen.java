@@ -18,16 +18,18 @@ public final class GgoPauseScreen extends Screen {
     protected void init() {
         int width = Math.min(300, Math.max(220, this.width / 3));
         int x = (this.width - width) / 2;
-        int y = Math.max(95, this.height / 2 - 58);
+        int y = Math.max(82, this.height / 2 - 72);
 
         addRenderableWidget(Button.builder(Component.literal("BACK TO GAME"), button -> minecraft.setScreen(null))
             .bounds(x, y, width, 22).build());
-        addRenderableWidget(Button.builder(Component.literal("GAME FILES"), button -> Util.getPlatform().openFile(Minecraft.getInstance().gameDirectory))
+        addRenderableWidget(Button.builder(Component.literal("PLAY / CHANGE MODE"), button -> minecraft.setScreen(new GgoModeSelectScreen(this)))
             .bounds(x, y + 28, width, 22).build());
-        addRenderableWidget(Button.builder(Component.literal("SETTINGS"), button -> minecraft.setScreen(new OptionsScreen(this, minecraft.options)))
+        addRenderableWidget(Button.builder(Component.literal("GAME FILES"), button -> Util.getPlatform().openFile(Minecraft.getInstance().gameDirectory))
             .bounds(x, y + 56, width, 22).build());
-        addRenderableWidget(Button.builder(Component.literal("EXIT GAME"), button -> minecraft.stop())
+        addRenderableWidget(Button.builder(Component.literal("SETTINGS"), button -> minecraft.setScreen(new OptionsScreen(this, minecraft.options)))
             .bounds(x, y + 84, width, 22).build());
+        addRenderableWidget(Button.builder(Component.literal("EXIT GAME"), button -> minecraft.stop())
+            .bounds(x, y + 112, width, 22).build());
     }
 
     @Override
@@ -35,7 +37,7 @@ public final class GgoPauseScreen extends Screen {
         renderBackground(graphics);
         long now = System.currentTimeMillis();
         int cardW = Math.min(390, width - 40);
-        int cardH = 215;
+        int cardH = 245;
         int x = (width - cardW) / 2;
         int y = (height - cardH) / 2;
         UiEffects.verticalGradient(graphics, x, y, x + cardW, y + cardH, 0xE1142030, 0xE10A0E18);
