@@ -8,8 +8,10 @@ import net.minecraft.client.gui.screens.OptionsScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
-/** Standalone-facing title shell. Normal players should reach gameplay from the GGO launcher, not vanilla menus. */
+/** Standalone-facing GGO shell. Minecraft/Forge remains an internal Runtime v1 implementation detail. */
 public final class GgoTitleScreen extends Screen {
+    public static final String VERSION = "GGO-TITLE-V2";
+
     public GgoTitleScreen() {
         super(Component.literal("GunGloryOnline"));
     }
@@ -18,14 +20,24 @@ public final class GgoTitleScreen extends Screen {
     protected void init() {
         int width = Math.min(310, Math.max(230, this.width / 3));
         int x = (this.width - width) / 2;
-        int y = Math.max(150, this.height / 2 - 18);
+        int y = Math.max(142, this.height / 2 - 28);
+
+        Button play = Button.builder(Component.literal("PLAY"), button -> openPlay())
+            .bounds(x, y, width, 28).build();
+        play.active = minecraft != null && minecraft.player != null && minecraft.player.connection != null;
+        addRenderableWidget(play);
 
         addRenderableWidget(Button.builder(Component.literal("GAME FILES"), button -> openGameFiles())
-            .bounds(x, y, width, 22).build());
+            .bounds(x, y + 36, width, 22).build());
         addRenderableWidget(Button.builder(Component.literal("SETTINGS"), button -> minecraft.setScreen(new OptionsScreen(this, minecraft.options)))
-            .bounds(x, y + 28, width, 22).build());
+            .bounds(x, y + 64, width, 22).build());
         addRenderableWidget(Button.builder(Component.literal("EXIT GAME"), button -> minecraft.stop())
-            .bounds(x, y + 56, width, 22).build());
+            .bounds(x, y + 92, width, 22).build());
+    }
+
+    private void openPlay() {
+        if (minecraft == null || minecraft.player == null || minecraft.player.connection == null) return;
+        minecraft.setScreen(new GgoModeSelectScreen(this));
     }
 
     private void openGameFiles() {
@@ -40,15 +52,15 @@ public final class GgoTitleScreen extends Screen {
         UiEffects.verticalGradient(graphics, 0, 0, width, height, 0xFF07111D, 0xFF18070E);
         int cardW = Math.min(420, width - 40);
         int cardX = (width - cardW) / 2;
-        int cardY = Math.max(48, height / 2 - 150);
-        UiEffects.verticalGradient(graphics, cardX, cardY, cardX + cardW, cardY + 270, 0xD9152235, 0xD90B101A);
-        UiEffects.animatedSheen(graphics, cardX, cardY, cardW, 270, now, UiTheme.ACCENT);
-        UiEffects.pulseBorder(graphics, cardX, cardY, cardW, 270, now, UiTheme.ACCENT);
+        int cardY = Math.max(42, height / 2 - 158);
+        UiEffects.verticalGradient(graphics, cardX, cardY, cardX + cardW, cardY + 292, 0xD9152235, 0xD90B101A);
+        UiEffects.animatedSheen(graphics, cardX, cardY, cardW, 292, now, UiTheme.ACCENT);
+        UiEffects.pulseBorder(graphics, cardX, cardY, cardW, 292, now, UiTheme.ACCENT);
 
-        graphics.drawCenteredString(font, Component.literal("GUN GLORY ONLINE"), width / 2, cardY + 38, UiTheme.TEXT);
-        graphics.drawCenteredString(font, Component.literal("GUNGLORY RUNTIME v1"), width / 2, cardY + 58, UiTheme.ACCENT_2);
-        graphics.drawCenteredString(font, Component.literal("Launch and choose servers from the GunGloryOnline launcher"), width / 2, cardY + 82, UiTheme.MUTED);
-        graphics.drawCenteredString(font, Component.literal("Minecraft 1.20.1 + Forge is an internal runtime"), width / 2, cardY + 96, UiTheme.DIM);
+        graphics.drawCenteredString(font, Component.literal("GUN GLORY ONLINE"), width / 2, cardY + 34, UiTheme.TEXT);
+        graphics.drawCenteredString(font, Component.literal("ONLINE OPERATIONS"), width / 2, cardY + 54, UiTheme.ACCENT_2);
+        graphics.drawCenteredString(font, Component.literal("Choose a GGO game mode and enter the operation"), width / 2, cardY + 78, UiTheme.MUTED);
+        graphics.drawCenteredString(font, Component.literal("Runtime v1"), width / 2, cardY + 94, UiTheme.DIM);
         super.render(graphics, mouseX, mouseY, partialTick);
     }
 
