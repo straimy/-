@@ -99,7 +99,9 @@ jobs:
           grep -q 'GGO-RULES-V1' ga-build/src/main/java/arena/forge/GgoServerRulesGuard.java
           grep -q 'Classic Arena' ga-build/src/main/java/arena/forge/GgoGameModeRegistry.java
           grep -q 'GGO-LOOT-V1' ga-build/src/main/java/arena/forge/GgoLootSpawnService.java
-          grep -q 'GGO-CLASSIC-GEN-V2' ga-build/src/main/java/arena/forge/ClassicArenaMapGenerator.java
+          grep -q 'GGO-CLASSIC-GEN-V3' ga-build/src/main/java/arena/forge/ClassicArenaMapGenerator.java
+          grep -q 'ClassicArenaMapGenerator.shared()' ga-build/src/main/java/arena/forge/CGBetaForgeAdapter.java
+          grep -q 'ClassicArenaMapGenerator.shared()' ga-build/src/main/java/arena/forge/ClassicArenaMatchService.java
           grep -q 'GGO-CLASSIC-PICKUPS-V2' ga-build/src/main/java/arena/forge/ClassicArenaPickupService.java
           grep -q 'GGO-CLASSIC-SPAWN-V2' ga-build/src/main/java/arena/forge/ClassicArenaSpawnService.java
           grep -q 'GGO-CLASSIC-MATCH-V3' ga-build/src/main/java/arena/forge/ClassicArenaMatchService.java
@@ -149,6 +151,7 @@ jobs:
           /play is backed by the server-owned GGO game mode registry.
           Classic Arena is registered as MIGRATING from the recovered legacy command-block game.
           ClassicArenaMapGenerator directly places the recovered 8x8 cg.pregen templates and assigns 4/3/3 ammo slots in Java.
+          One shared ClassicArenaMapGenerator state is used by match flow and the v40 compatibility bridge.
           ClassicArenaLoadoutService chooses three distinct recovered weapons and owns combat hotbar 0/1/2.
           ClassicArenaSpawnService owns initial placement and safe delayed respawns.
           ClassicArenaPickupService migrates health and three legacy ammo slots without scoreboard command logic.
