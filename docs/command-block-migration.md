@@ -38,6 +38,8 @@ A second direct region/NBT scan of the saved copy reported:
 
 This proves the removal mechanism itself. It does **not** by itself mean every legacy gameplay behavior is already migrated; the clean copy remains an integration target until Classic Arena and remaining map presentation/trigger services pass gameplay smoke.
 
+Latest validation rule: every newly migrated Classic subsystem must pass both clean Forge 1.20.1 / Java 17 CI and a real imported-world smoke with command execution disabled before Classic is promoted from `MIGRATING` to `ACTIVE`.
+
 ## Already migrated from the legacy command graph
 
 - Classic 8×8 procedural arena generation -> `ClassicArenaMapGenerator` using `StructureTemplate` directly;
