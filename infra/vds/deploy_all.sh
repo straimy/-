@@ -24,7 +24,7 @@ source .env
 set +a
 
 chmod +x bootstrap_ubuntu.sh deploy_all.sh backup_now.sh health_check.sh game-server/run.sh 2>/dev/null || true
-mkdir -p public site game-server/mods game-server/config
+mkdir -p public site game-server/mods game-server/config/gunnerarena
 
 # Validate every configured profile before touching running containers.
 docker compose --profile backend --profile game config >/dev/null
@@ -35,12 +35,17 @@ docker compose --profile backend up -d --build
 core_count=$(find game-server/mods -maxdepth 1 -type f \( -name 'gungloryonline-core-*.jar' -o -name 'gunnerarena-*.jar' \) | wc -l | tr -d ' ')
 world_ready=false
 if [[ -f game-server/world/level.dat ]]; then world_ready=true; fi
+migration_ready=false
+if [[ -f game-server/.ggo-world-ready ]]; then migration_ready=true; fi
 
-if [[ "$core_count" == "1" && "$world_ready" == "true" ]]; then
-  echo "Final Core + world detected; starting game server on this VDS..."
+if [[ "$core_count" == "1" && "$world_ready" == "true" && "$migration_ready" == "true" ]]; then
+  echo "Final Core + audited clean world detected; starting game server on this VDS..."
   docker compose --profile game up -d --build game-server
 else
-  echo "Game server not started yet: requires exactly one Core jar and game-server/world/level.dat."
+  echo "Game server not started yet. Production requires:"
+  echo "  - exactly one Core jar"
+  echo "  - game-server/world/level.dat"
+  echo "  - game-server/.ggo-world-ready created only after command-block audit reports 0"
 fi
 
 echo
@@ -51,7 +56,7 @@ echo
 echo "Public endpoints:"
 echo "  https://${GGO_SITE_HOST:-ggo.kvicloud.ru}"
 echo "  https://${GGO_UPDATES_HOST:-updates.ggo.kvicloud.ru}"
-echo "  ${GGO_GAME_HOST:-play.ggo.kvicloud.ru}:${GGO_GAME_PORT:-24842} (when game world is installed)"
+echo "  ${GGO_GAME_HOST:-play.ggo.kvicloud.ru}:${GGO_GAME_PORT:-24842} (when audited game world is installed)"
 
 echo
 echo "Waiting for public readiness..."
