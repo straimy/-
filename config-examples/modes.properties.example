@@ -1,0 +1,7 @@
+# GunGloryOnline server-owned mode availability
+# Values: ACTIVE, MIGRATING, PLANNED
+# Copy to config/gunnerarena/modes.properties on the game server.
+arena=ACTIVE
+classic=MIGRATING
+duels=PLANNED
+br=PLANNED
