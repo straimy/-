@@ -28,6 +28,7 @@ on:
       - 'docs/current-server-build-audit-2026-08-17.md'
       - 'docs/runtime-mod-cleanup-plan-2026-08-17.md'
       - 'tools/world_command_audit.py'
+      - 'tools/mark_world_ready.py'
       - 'tools/real_world_classic_smoke.py'
   workflow_dispatch:
 
@@ -50,8 +51,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m py_compile tools/world_command_audit.py tools/real_world_classic_smoke.py
+          python3 -m py_compile tools/world_command_audit.py tools/mark_world_ready.py tools/real_world_classic_smoke.py
           python3 tools/world_command_audit.py --help >/dev/null
+          python3 tools/mark_world_ready.py --help >/dev/null
           python3 tools/real_world_classic_smoke.py --help >/dev/null
 
       - name: Prepare extractor
