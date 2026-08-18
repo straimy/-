@@ -41,7 +41,7 @@ public final class ClassicArenaMatchService {
     private static final long COUNTDOWN_TICKS = 60L;
     private static final long FINISH_HOLD_TICKS = 100L;
     private static final AABB ARENA_MARKERS = new AABB(47.0D, 60.0D, 47.0D, 113.0D, 110.0D, 113.0D);
-    private static final ClassicArenaMapGenerator GENERATOR = new ClassicArenaMapGenerator();
+    private static final ClassicArenaMapGenerator GENERATOR = ClassicArenaMapGenerator.shared();
     private static final Set<UUID> PARTICIPANTS = new HashSet<>();
     private static final Map<UUID, Integer> KILLS = new HashMap<>();
 
