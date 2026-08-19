@@ -2,6 +2,6 @@
 # Values: ACTIVE, MIGRATING, PLANNED
 # Copy to config/gunnerarena/modes.properties on the game server.
 arena=ACTIVE
-classic=MIGRATING
+classic=ACTIVE
 duels=PLANNED
 br=PLANNED
