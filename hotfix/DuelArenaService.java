@@ -25,7 +25,7 @@ import org.slf4j.Logger;
  */
 @Mod.EventBusSubscriber(modid = "gunnerarena", bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class DuelArenaService {
-    public static final String VERSION = "GGO-DUEL-ARENA-V2";
+    public static final String VERSION = "GGO-DUEL-ARENA-V1";
     private static final Logger LOG = LogUtils.getLogger();
     private static final AABB SCAN = new AABB(-4096, -64, -4096, 4096, 384, 4096);
 
