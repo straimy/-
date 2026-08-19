@@ -46,8 +46,7 @@ jobs:
           import sys
           from pathlib import Path
           wf=Path(sys.argv[1]); wanted=sys.argv[2]; lines=wf.read_text().splitlines()
-          start=next((i for i,l in enumerate(lines) if l.strip()==f'- name: {wanted}'),None)
-          if start is None: raise SystemExit('step not found: '+wanted)
+          start=next((i for i,l in enumerate(lines)) if l.strip()==f'- name: {wanted}')
           run=None
           for i in range(start+1,len(lines)):
               if lines[i].startswith('      - name:') or lines[i].startswith('      - uses:'): break
@@ -93,8 +92,10 @@ jobs:
           grep -q 'GGO-TITLE-V2' "$UI_DIR/GgoTitleScreen.java"
           grep -q 'new GgoModeSelectScreen(this)' "$UI_DIR/GgoTitleScreen.java"
           grep -q 'PLAY / CHANGE MODE' "$UI_DIR/GgoPauseScreen.java"
-          grep -q 'GGO-MODE-SELECT-V1' "$UI_DIR/GgoModeSelectScreen.java"
+          grep -q 'GGO-MODE-SELECT-V2' "$UI_DIR/GgoModeSelectScreen.java"
           grep -q 'sendCommand("play " + mode)' "$UI_DIR/GgoModeSelectScreen.java"
+          grep -q 'Availability, readiness and matchmaking are decided by the GGO server' "$UI_DIR/GgoModeSelectScreen.java"
+          ! grep -q 'MIGRATING\|PLANNED\|ACTIVE' "$UI_DIR/GgoModeSelectScreen.java"
           grep -q 'GgoLaunchMode.isTraining' "$UI_DIR/GgoVanillaScreenGuard.java"
           grep -q 'CONNECTING TO GUNGLORY ONLINE' "$UI_DIR/GgoConnectionOverlay.java"
           grep -q 'CONNECTION LOST' "$UI_DIR/GgoDisconnectedScreen.java"
@@ -143,7 +144,7 @@ jobs:
           GunGloryOnline Runtime Migration v1
           Client-only shell experiment based on v40.
           GGO title PLAY and pause PLAY / CHANGE MODE route to the GGO-owned game-mode chooser.
-          Enabled selections submit /play requests and server authority decides the result.
+          Every mode card submits a /play request; availability, world readiness and matchmaking are server-authoritative.
           Supports a launcher-owned `ggo.launch.mode=training` offline shell without exposing Minecraft singleplayer UX.
           Covers vanilla connecting/receiving screens with a GGO loading presentation while Forge networking remains intact.
           Reads the launcher's non-secret .ggo-profile.json identity bridge.
