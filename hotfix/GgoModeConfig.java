@@ -33,7 +33,7 @@ public final class GgoModeConfig {
     private static Properties defaults() {
         Properties p = new Properties();
         p.setProperty("arena", "ACTIVE");
-        p.setProperty("classic", "MIGRATING");
+        p.setProperty("classic", "ACTIVE");
         p.setProperty("duels", "PLANNED");
         p.setProperty("br", "PLANNED");
         return p;
