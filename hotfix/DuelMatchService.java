@@ -10,25 +10,20 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
-/**
- * Server-owned Duels foundation for GGO.
- *
- * V1 deliberately does not teleport players or expose Duels through /play yet. It owns queueing,
- * pairing and a best-of-three round score so a future duel map is content rather than game logic.
- */
+/** Server-owned 1v1 BO3 matchmaking/session foundation. Duel-map logic is marker-only. */
 @Mod.EventBusSubscriber(modid = "gunnerarena", bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class DuelMatchService {
-    public static final String VERSION = "GGO-DUELS-V1";
+    public static final String VERSION = "GGO-DUELS-V2";
     public static final int ROUNDS_TO_WIN = 2;
 
     public enum State { WAITING, RUNNING, FINISHED }
-
     public record Snapshot(UUID playerA, UUID playerB, int winsA, int winsB, State state) {}
 
     private static final Deque<UUID> QUEUE = new ArrayDeque<>();
@@ -49,16 +44,13 @@ public final class DuelMatchService {
         );
     }
 
-    public static synchronized boolean queued(UUID playerId) {
-        return QUEUE.contains(playerId);
-    }
+    public static synchronized boolean queued(UUID playerId) { return QUEUE.contains(playerId); }
 
     public static synchronized Snapshot snapshot(UUID playerId) {
         DuelSession session = BY_PLAYER.get(playerId);
         return session == null ? null : session.snapshot();
     }
 
-    /** Future mode/matchmaking UI calls this after server-side eligibility checks. */
     public static synchronized boolean enqueue(ServerPlayer player) {
         UUID id = player.getUUID();
         if (BY_PLAYER.containsKey(id) || QUEUE.contains(id)) return false;
@@ -75,7 +67,7 @@ public final class DuelMatchService {
         BY_PLAYER.remove(other);
     }
 
-    /** Records a server-authoritative duel round result. No client score is ever trusted. */
+    /** Records a server-authoritative duel round result. No client score is trusted. */
     public static synchronized boolean recordRoundWinner(MinecraftServer server, UUID winnerId) {
         DuelSession session = BY_PLAYER.get(winnerId);
         if (session == null || session.state != State.RUNNING) return false;
@@ -130,8 +122,10 @@ public final class DuelMatchService {
 
     private static int status(MinecraftServer server, net.minecraft.commands.CommandSourceStack source) {
         long sessions = BY_PLAYER.values().stream().distinct().count();
-        source.sendSuccess(() -> Component.literal("[GGO] Duels queue=" + QUEUE.size() + " activeSessions=" + sessions)
-            .withStyle(ChatFormatting.AQUA), false);
+        ServerLevel level = source.getLevel();
+        source.sendSuccess(() -> Component.literal(
+            "[GGO] Duels queue=" + QUEUE.size() + " activeSessions=" + sessions + " arenaReady=" + DuelArenaService.ready(level)
+        ).withStyle(ChatFormatting.AQUA), false);
         return Command.SINGLE_SUCCESS;
     }
 
@@ -145,13 +139,24 @@ public final class DuelMatchService {
                 QUEUE.addFirst(a);
                 return;
             }
+
+            ServerPlayer pa = server.getPlayerList().getPlayer(a);
+            ServerPlayer pb = server.getPlayerList().getPlayer(b);
+            if (pa == null || pb == null) continue;
+
+            if (!DuelArenaService.placePair(pa, pb)) {
+                QUEUE.addFirst(b);
+                QUEUE.addFirst(a);
+                pa.sendSystemMessage(Component.literal("GGO • Duel arena is not ready yet").withStyle(ChatFormatting.YELLOW));
+                pb.sendSystemMessage(Component.literal("GGO • Duel arena is not ready yet").withStyle(ChatFormatting.YELLOW));
+                return;
+            }
+
             DuelSession session = new DuelSession(a, b);
             BY_PLAYER.put(a, session);
             BY_PLAYER.put(b, session);
-            ServerPlayer pa = server.getPlayerList().getPlayer(a);
-            ServerPlayer pb = server.getPlayerList().getPlayer(b);
-            if (pa != null) pa.sendSystemMessage(Component.literal("GGO • DUEL FOUND • BO3 vs " + name(pb)).withStyle(ChatFormatting.GOLD));
-            if (pb != null) pb.sendSystemMessage(Component.literal("GGO • DUEL FOUND • BO3 vs " + name(pa)).withStyle(ChatFormatting.GOLD));
+            pa.sendSystemMessage(Component.literal("GGO • DUEL FOUND • BO3 vs " + name(pb)).withStyle(ChatFormatting.GOLD));
+            pb.sendSystemMessage(Component.literal("GGO • DUEL FOUND • BO3 vs " + name(pa)).withStyle(ChatFormatting.GOLD));
         }
     }
 
@@ -173,9 +178,7 @@ public final class DuelMatchService {
         if (pl != null) pl.sendSystemMessage(Component.literal("GGO • DUEL LOST " + score).withStyle(ChatFormatting.RED));
     }
 
-    private static String name(ServerPlayer player) {
-        return player == null ? "opponent" : player.getGameProfile().getName();
-    }
+    private static String name(ServerPlayer player) { return player == null ? "opponent" : player.getGameProfile().getName(); }
 
     private static final class DuelSession {
         final UUID playerA;
@@ -189,12 +192,7 @@ public final class DuelMatchService {
             this.playerB = playerB;
         }
 
-        UUID other(UUID id) {
-            return playerA.equals(id) ? playerB : playerA;
-        }
-
-        Snapshot snapshot() {
-            return new Snapshot(playerA, playerB, winsA, winsB, state);
-        }
+        UUID other(UUID id) { return playerA.equals(id) ? playerB : playerA; }
+        Snapshot snapshot() { return new Snapshot(playerA, playerB, winsA, winsB, state); }
     }
 }
