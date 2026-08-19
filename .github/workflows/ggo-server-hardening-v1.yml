@@ -11,6 +11,7 @@ on:
       - 'hotfix/GgoServerRulesGuard.java'
       - 'hotfix/GgoGameModeRegistry.java'
       - 'hotfix/GgoModeConfig.java'
+      - 'hotfix/GgoClassicReadiness.java'
       - 'hotfix/GgoLootSpawnService.java'
       - 'hotfix/ClassicArenaMapGenerator.java'
       - 'hotfix/ClassicArenaStartupSmoke.java'
@@ -99,6 +100,7 @@ jobs:
           cp hotfix/GgoServerRulesGuard.java ga-build/src/main/java/arena/forge/GgoServerRulesGuard.java
           cp hotfix/GgoGameModeRegistry.java ga-build/src/main/java/arena/forge/GgoGameModeRegistry.java
           cp hotfix/GgoModeConfig.java ga-build/src/main/java/arena/forge/GgoModeConfig.java
+          cp hotfix/GgoClassicReadiness.java ga-build/src/main/java/arena/forge/GgoClassicReadiness.java
           cp hotfix/GgoLootSpawnService.java ga-build/src/main/java/arena/forge/GgoLootSpawnService.java
           cp hotfix/ClassicArenaMapGenerator.java ga-build/src/main/java/arena/forge/ClassicArenaMapGenerator.java
           cp hotfix/ClassicArenaStartupSmoke.java ga-build/src/main/java/arena/forge/ClassicArenaStartupSmoke.java
@@ -115,12 +117,14 @@ jobs:
           cp hotfix/GgoLegacyCommandBlockCleaner.java ga-build/src/main/java/arena/forge/GgoLegacyCommandBlockCleaner.java
           grep -q 'GGO-AC-V2' ga-build/src/main/java/arena/forge/GgoAntiCheatTelemetry.java
           grep -q 'GGO-MOVE-AUTH-V1' ga-build/src/main/java/arena/forge/GgoMovementAuthority.java
-          grep -q 'GGO-MODE-REGISTRY-V2' ga-build/src/main/java/arena/forge/GgoGameModeRegistry.java
+          grep -q 'GGO-MODE-REGISTRY-V3' ga-build/src/main/java/arena/forge/GgoGameModeRegistry.java
           grep -q 'GGO-MODE-CONFIG-V1' ga-build/src/main/java/arena/forge/GgoModeConfig.java
+          grep -q 'GGO-CLASSIC-READINESS-V1' ga-build/src/main/java/arena/forge/GgoClassicReadiness.java
           grep -q 'GGO-CLASSIC-QUEUE-V1' ga-build/src/main/java/arena/forge/ClassicArenaQueueService.java
-          grep -q 'ClassicArenaQueueService.enqueue' ga-build/src/main/java/arena/forge/GgoGameModeRegistry.java
+          grep -q 'GgoClassicReadiness.ready' ga-build/src/main/java/arena/forge/GgoGameModeRegistry.java
           grep -q 'GGO-CLASSIC-GEN-V3' ga-build/src/main/java/arena/forge/ClassicArenaMapGenerator.java
-          grep -q 'GGO-CLASSIC-STARTUP-SMOKE-V1' ga-build/src/main/java/arena/forge/ClassicArenaStartupSmoke.java
+          grep -q 'GGO-CLASSIC-STARTUP-SMOKE-V2' ga-build/src/main/java/arena/forge/ClassicArenaStartupSmoke.java
+          grep -q 'GgoClassicReadiness.writePass' ga-build/src/main/java/arena/forge/ClassicArenaStartupSmoke.java
           grep -q 'GGO-CLASSIC-PICKUPS-V2' ga-build/src/main/java/arena/forge/ClassicArenaPickupService.java
           grep -q 'GGO-CLASSIC-SPAWN-V3' ga-build/src/main/java/arena/forge/ClassicArenaSpawnService.java
           grep -q 'GGO-CLASSIC-MATCH-V3' ga-build/src/main/java/arena/forge/ClassicArenaMatchService.java
@@ -145,7 +149,7 @@ jobs:
           set -euo pipefail
           CORE="$(find ga-build/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
           test -n "$CORE"
-          for c in GgoAntiCheatTelemetry GgoMovementAuthority GgoServerRulesGuard GgoGameModeRegistry GgoModeConfig GgoLootSpawnService ClassicArenaMapGenerator ClassicArenaStartupSmoke CGBetaForgeAdapter ClassicArenaPickupService ClassicArenaSpawnService ClassicArenaMatchService ClassicArenaLoadoutService ClassicArenaJumpPadService ClassicArenaQueueService DuelMatchService BattleRoyaleService BattleRoyaleLootService GgoLegacyCommandBlockCleaner; do
+          for c in GgoAntiCheatTelemetry GgoMovementAuthority GgoServerRulesGuard GgoGameModeRegistry GgoModeConfig GgoClassicReadiness GgoLootSpawnService ClassicArenaMapGenerator ClassicArenaStartupSmoke CGBetaForgeAdapter ClassicArenaPickupService ClassicArenaSpawnService ClassicArenaMatchService ClassicArenaLoadoutService ClassicArenaJumpPadService ClassicArenaQueueService DuelMatchService BattleRoyaleService BattleRoyaleLootService GgoLegacyCommandBlockCleaner; do
             jar tf "$CORE" | grep -q "^arena/forge/$c.class$"
           done
           mkdir -p server-hardening/server/mods
@@ -155,7 +159,7 @@ jobs:
           GunGloryOnline Server Hardening v1
           Anti-cheat v2 understands only server-authorized movement exemptions; clients cannot grant them.
           Mode availability is runtime-configurable through config/gunnerarena/modes.properties.
-          Classic Arena remains MIGRATING by default; once promoted to ACTIVE, /play classic enters the server-owned matchmaking queue.
+          Classic can become ACTIVE only when the loaded world contains a valid .ggo-classic-ready marker created by a successful real-world startup smoke.
           Classic generation, loadout, pickups, spawn/respawn, score, winner and jump pads are server-owned Java systems.
           One-shot real-world Classic validation is available only with -Dggo.classic.smoke=true on a disposable copied world.
           Duels has a server-owned BO3 queue/session foundation; BR has server-owned alive state, zone phases and typed config-driven loot markers.
