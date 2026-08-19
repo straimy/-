@@ -12,17 +12,10 @@ import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import org.slf4j.Logger;
 
-/**
- * One-shot real-world integration smoke for Classic Arena.
- *
- * Disabled in normal runtime. Enable only with -Dggo.classic.smoke=true on a disposable copy of
- * the production world. It runs after the server is fully started, invokes the direct Java
- * generator, validates recovered marker quotas, emits one machine-readable result line, and then
- * stops the smoke server without saving the generated test state.
- */
+/** One-shot real-world Classic integration smoke. Disabled unless -Dggo.classic.smoke=true. */
 @Mod.EventBusSubscriber(modid = "gunnerarena", bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class ClassicArenaStartupSmoke {
-    public static final String VERSION = "GGO-CLASSIC-STARTUP-SMOKE-V1";
+    public static final String VERSION = "GGO-CLASSIC-STARTUP-SMOKE-V2";
     public static final String PROPERTY = "ggo.classic.smoke";
 
     private static final Logger LOG = LogUtils.getLogger();
@@ -36,6 +29,8 @@ public final class ClassicArenaStartupSmoke {
 
         MinecraftServer server = event.getServer();
         ServerLevel level = server.overworld();
+        GgoClassicReadiness.clear(server);
+
         ClassicArenaMapGenerator generator = ClassicArenaMapGenerator.shared();
         boolean generated = generator.generate(level);
         var snapshot = generator.snapshot();
@@ -54,7 +49,18 @@ public final class ClassicArenaStartupSmoke {
             && health == ClassicArenaMapGenerator.HEALTH_CELLS
             && respawn > 0;
 
-        LOG.info("[GGO-CLASSIC-REALWORLD-SMOKE] result={} generated={} cells={} ammo={}/{}/{} health={} respawn={} jumpPads={} error={}",
+        String markerResult = "not-written";
+        if (pass) {
+            try {
+                GgoClassicReadiness.writePass(server, snapshot.placed(), ammo1, ammo2, ammo3, health, respawn, jumpPads);
+                markerResult = "written";
+            } catch (Exception ex) {
+                pass = false;
+                markerResult = "write-failed:" + ex.getClass().getSimpleName();
+            }
+        }
+
+        LOG.info("[GGO-CLASSIC-REALWORLD-SMOKE] result={} generated={} cells={} ammo={}/{}/{} health={} respawn={} jumpPads={} marker={} error={}",
             pass ? "PASS" : "FAIL",
             generated,
             snapshot.placed(),
@@ -62,9 +68,9 @@ public final class ClassicArenaStartupSmoke {
             health,
             respawn,
             jumpPads,
+            markerResult,
             snapshot.error().isBlank() ? "none" : snapshot.error());
 
-        // This mode is only for a disposable copied world. Do not persist smoke generation changes.
         server.halt(false);
     }
 
