@@ -29,7 +29,7 @@ public final class DuelArenaService {
     private static final Logger LOG = LogUtils.getLogger();
     static final AABB SCAN = new AABB(-4096, -64, -4096, 4096, 384, 4096);
 
-    private static final int CENTER_X = 2048;
+    private static final int CENTER_X = 2040;
     private static final int FLOOR_Y = 80;
     private static final int CENTER_Z = 2048;
     private static final int HALF_X = 12;
@@ -55,8 +55,8 @@ public final class DuelArenaService {
 
         removeSpawnMarkers(level);
         buildPlatform(level);
-        createSpawn(level, "duel_spawn_a", CENTER_X - 8.0D, FLOOR_Y + 1.0D, CENTER_Z + 0.5D, -90.0F);
-        createSpawn(level, "duel_spawn_b", CENTER_X + 8.0D, FLOOR_Y + 1.0D, CENTER_Z + 0.5D, 90.0F);
+        createSpawn(level, "duel_spawn_a", CENTER_X - 5.0D, FLOOR_Y + 1.0D, CENTER_Z + 0.5D, -90.0F);
+        createSpawn(level, "duel_spawn_b", CENTER_X + 5.0D, FLOOR_Y + 1.0D, CENTER_Z + 0.5D, 90.0F);
         return true;
     }
 
