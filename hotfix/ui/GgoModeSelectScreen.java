@@ -6,11 +6,11 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
 /**
- * GGO game-mode chooser. The client never changes match state locally: an enabled card only sends
- * the typed /play request and the server-owned GgoGameModeRegistry decides whether it is allowed.
+ * GGO game-mode chooser. Every card is only a request: the server-owned registry decides whether
+ * the requested mode is ACTIVE, ready for this world and eligible for this player.
  */
 public final class GgoModeSelectScreen extends Screen {
-    public static final String VERSION = "GGO-MODE-SELECT-V1";
+    public static final String VERSION = "GGO-MODE-SELECT-V2";
 
     private final Screen parent;
 
@@ -27,20 +27,18 @@ public final class GgoModeSelectScreen extends Screen {
         int x = (width - total) / 2;
         int y = Math.max(108, height / 2 - 70);
 
-        addModeButton("ARENA  •  ACTIVE", "arena", x, y, cardW, true);
-        addModeButton("CLASSIC ARENA  •  MIGRATING", "classic", x + cardW + gap, y, cardW, false);
-        addModeButton("DUELS  •  PLANNED", "duels", x, y + 42, cardW, false);
-        addModeButton("BATTLE ROYALE  •  PLANNED", "br", x + cardW + gap, y + 42, cardW, false);
+        addModeButton("ARENA", "arena", x, y, cardW);
+        addModeButton("CLASSIC ARENA", "classic", x + cardW + gap, y, cardW);
+        addModeButton("DUELS", "duels", x, y + 42, cardW);
+        addModeButton("BATTLE ROYALE", "br", x + cardW + gap, y + 42, cardW);
 
         addRenderableWidget(Button.builder(Component.literal("BACK"), button -> minecraft.setScreen(parent))
             .bounds((width - 180) / 2, y + 100, 180, 22).build());
     }
 
-    private void addModeButton(String title, String command, int x, int y, int width, boolean enabled) {
-        Button button = Button.builder(Component.literal(title), ignored -> requestMode(command))
-            .bounds(x, y, width, 28).build();
-        button.active = enabled;
-        addRenderableWidget(button);
+    private void addModeButton(String title, String command, int x, int y, int width) {
+        addRenderableWidget(Button.builder(Component.literal(title), ignored -> requestMode(command))
+            .bounds(x, y, width, 28).build());
     }
 
     private void requestMode(String mode) {
@@ -64,7 +62,7 @@ public final class GgoModeSelectScreen extends Screen {
         graphics.drawCenteredString(font, Component.literal("PLAY"), width / 2, y + 28, UiTheme.TEXT);
         graphics.drawCenteredString(font, Component.literal("CHOOSE OPERATION"), width / 2, y + 47, UiTheme.ACCENT_2);
         graphics.drawCenteredString(font,
-            Component.literal("Mode availability is controlled by the GGO server"),
+            Component.literal("Availability, readiness and matchmaking are decided by the GGO server"),
             width / 2, y + 65, UiTheme.MUTED);
         super.render(graphics, mouseX, mouseY, partialTick);
     }
