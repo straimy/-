@@ -39,7 +39,9 @@ public final class ClassicArenaStartupSmoke {
         int ammo1 = countTag(markers, "gun_1_ammo");
         int ammo2 = countTag(markers, "gun_2_ammo");
         int ammo3 = countTag(markers, "gun_3_ammo");
-        int health = countTag(markers, "small_health_orb") + countTag(markers, "health_orb");
+        // Recovered s_health_* templates use small_health_orb. Generic health_orb markers can
+        // already exist in the legacy world and are not generated Classic health cells.
+        int health = countTag(markers, "small_health_orb");
         int respawn = countTag(markers, "respawn_point");
         int jumpPads = countTag(markers, "jump_pad_marker");
 
