@@ -31,6 +31,7 @@ public final class GgoModeConfig {
     }
 
     private static Properties defaults() {
+        // Classic, Duels and BR defaults are promoted only after their imported-world gates pass.
         Properties p = new Properties();
         p.setProperty("arena", "ACTIVE");
         p.setProperty("classic", "ACTIVE");
