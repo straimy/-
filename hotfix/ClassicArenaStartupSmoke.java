@@ -39,22 +39,25 @@ public final class ClassicArenaStartupSmoke {
         int ammo1 = countTag(markers, "gun_1_ammo");
         int ammo2 = countTag(markers, "gun_2_ammo");
         int ammo3 = countTag(markers, "gun_3_ammo");
-        // Recovered s_health_* templates use small_health_orb. Generic health_orb markers can
-        // already exist in the legacy world and are not generated Classic health cells.
-        int health = countTag(markers, "small_health_orb");
+        // HEALTH_CELLS is a generator cell quota. Recovered s_health_* templates may legitimately
+        // contain one or two small_health_orb markers, so marker count is not the cell count.
+        int healthCells = snapshot.health();
+        int healthMarkers = countTag(markers, "small_health_orb");
         int respawn = countTag(markers, "respawn_point");
         int jumpPads = countTag(markers, "jump_pad_marker");
 
         boolean pass = generated
             && snapshot.placed() == ClassicArenaMapGenerator.TOTAL_CELLS
             && ammo1 == 4 && ammo2 == 3 && ammo3 == 3
-            && health == ClassicArenaMapGenerator.HEALTH_CELLS
+            && healthCells == ClassicArenaMapGenerator.HEALTH_CELLS
+            && healthMarkers >= healthCells
             && respawn > 0;
 
         String markerResult = "not-written";
         if (pass) {
             try {
-                GgoClassicReadiness.writePass(server, snapshot.placed(), ammo1, ammo2, ammo3, health, respawn, jumpPads);
+                // Readiness stores the stable generator quota, not the template-internal marker count.
+                GgoClassicReadiness.writePass(server, snapshot.placed(), ammo1, ammo2, ammo3, healthCells, respawn, jumpPads);
                 markerResult = "written";
             } catch (Exception ex) {
                 pass = false;
@@ -62,12 +65,13 @@ public final class ClassicArenaStartupSmoke {
             }
         }
 
-        LOG.info("[GGO-CLASSIC-REALWORLD-SMOKE] result={} generated={} cells={} ammo={}/{}/{} health={} respawn={} jumpPads={} marker={} error={}",
+        LOG.info("[GGO-CLASSIC-REALWORLD-SMOKE] result={} generated={} cells={} ammo={}/{}/{} health={} healthMarkers={} respawn={} jumpPads={} marker={} error={}",
             pass ? "PASS" : "FAIL",
             generated,
             snapshot.placed(),
             ammo1, ammo2, ammo3,
-            health,
+            healthCells,
+            healthMarkers,
             respawn,
             jumpPads,
             markerResult,
