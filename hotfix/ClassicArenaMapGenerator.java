@@ -44,7 +44,7 @@ public final class ClassicArenaMapGenerator {
     private static final int PLACE_Y = 70;
     private static final int CELL_SIZE = 8;
     private static final int CELL_HEIGHT = 32;
-    private static final AABB ARENA_ENTITIES = new AABB(47.0D, 68.0D, 47.0D, 113.0D, 105.0D, 113.0D);
+    private static final AABB ARENA_ENTITIES = new AABB(47.0D, 60.0D, 47.0D, 113.0D, 110.0D, 113.0D);
 
     private static final Logger LOG = LogUtils.getLogger();
     private static final ClassicArenaMapGenerator SHARED = new ClassicArenaMapGenerator();
@@ -232,6 +232,8 @@ public final class ClassicArenaMapGenerator {
                 || tags.contains("has_items")
                 || tags.contains("respawn_point")
                 || tags.contains("small_health_orb")
+                || tags.contains("health_orb")
+                || tags.contains("jump_pad_marker")
                 || tags.contains("random_gun_ammo")
                 || tags.contains("gun_1_ammo")
                 || tags.contains("gun_2_ammo")
