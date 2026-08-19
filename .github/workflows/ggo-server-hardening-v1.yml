@@ -22,6 +22,7 @@ on:
       - 'hotfix/ClassicArenaLoadoutService.java'
       - 'hotfix/ClassicArenaJumpPadService.java'
       - 'hotfix/ClassicArenaQueueService.java'
+      - 'hotfix/DuelArenaService.java'
       - 'hotfix/DuelMatchService.java'
       - 'hotfix/BattleRoyaleService.java'
       - 'hotfix/BattleRoyaleLootService.java'
@@ -111,6 +112,7 @@ jobs:
           cp hotfix/ClassicArenaLoadoutService.java ga-build/src/main/java/arena/forge/ClassicArenaLoadoutService.java
           cp hotfix/ClassicArenaJumpPadService.java ga-build/src/main/java/arena/forge/ClassicArenaJumpPadService.java
           cp hotfix/ClassicArenaQueueService.java ga-build/src/main/java/arena/forge/ClassicArenaQueueService.java
+          cp hotfix/DuelArenaService.java ga-build/src/main/java/arena/forge/DuelArenaService.java
           cp hotfix/DuelMatchService.java ga-build/src/main/java/arena/forge/DuelMatchService.java
           cp hotfix/BattleRoyaleService.java ga-build/src/main/java/arena/forge/BattleRoyaleService.java
           cp hotfix/BattleRoyaleLootService.java ga-build/src/main/java/arena/forge/BattleRoyaleLootService.java
@@ -130,7 +132,9 @@ jobs:
           grep -q 'GGO-CLASSIC-MATCH-V3' ga-build/src/main/java/arena/forge/ClassicArenaMatchService.java
           grep -q 'GGO-CLASSIC-LOADOUT-V1' ga-build/src/main/java/arena/forge/ClassicArenaLoadoutService.java
           grep -q 'GGO-CLASSIC-JUMPPAD-V2' ga-build/src/main/java/arena/forge/ClassicArenaJumpPadService.java
-          grep -q 'GGO-DUELS-V1' ga-build/src/main/java/arena/forge/DuelMatchService.java
+          grep -q 'GGO-DUEL-ARENA-V1' ga-build/src/main/java/arena/forge/DuelArenaService.java
+          grep -q 'GGO-DUELS-V2' ga-build/src/main/java/arena/forge/DuelMatchService.java
+          grep -q 'DuelArenaService.placePair' ga-build/src/main/java/arena/forge/DuelMatchService.java
           grep -q 'GGO-BR-V2' ga-build/src/main/java/arena/forge/BattleRoyaleService.java
           grep -q 'GGO-BR-LOOT-V1' ga-build/src/main/java/arena/forge/BattleRoyaleLootService.java
           grep -q 'strip CONFIRM' ga-build/src/main/java/arena/forge/GgoLegacyCommandBlockCleaner.java
@@ -149,7 +153,7 @@ jobs:
           set -euo pipefail
           CORE="$(find ga-build/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
           test -n "$CORE"
-          for c in GgoAntiCheatTelemetry GgoMovementAuthority GgoServerRulesGuard GgoGameModeRegistry GgoModeConfig GgoClassicReadiness GgoLootSpawnService ClassicArenaMapGenerator ClassicArenaStartupSmoke CGBetaForgeAdapter ClassicArenaPickupService ClassicArenaSpawnService ClassicArenaMatchService ClassicArenaLoadoutService ClassicArenaJumpPadService ClassicArenaQueueService DuelMatchService BattleRoyaleService BattleRoyaleLootService GgoLegacyCommandBlockCleaner; do
+          for c in GgoAntiCheatTelemetry GgoMovementAuthority GgoServerRulesGuard GgoGameModeRegistry GgoModeConfig GgoClassicReadiness GgoLootSpawnService ClassicArenaMapGenerator ClassicArenaStartupSmoke CGBetaForgeAdapter ClassicArenaPickupService ClassicArenaSpawnService ClassicArenaMatchService ClassicArenaLoadoutService ClassicArenaJumpPadService ClassicArenaQueueService DuelArenaService DuelMatchService BattleRoyaleService BattleRoyaleLootService GgoLegacyCommandBlockCleaner; do
             jar tf "$CORE" | grep -q "^arena/forge/$c.class$"
           done
           mkdir -p server-hardening/server/mods
@@ -162,7 +166,8 @@ jobs:
           Classic can become ACTIVE only when the loaded world contains a valid .ggo-classic-ready marker created by a successful real-world startup smoke.
           Classic generation, loadout, pickups, spawn/respawn, score, winner and jump pads are server-owned Java systems.
           One-shot real-world Classic validation is available only with -Dggo.classic.smoke=true on a disposable copied world.
-          Duels has a server-owned BO3 queue/session foundation; BR has server-owned alive state, zone phases and typed config-driven loot markers.
+          Duels uses a server-owned BO3 queue and refuses pairing until duel_spawn_a / duel_spawn_b map markers exist.
+          BR has server-owned alive state, zone phases and typed config-driven loot markers.
           GgoLegacyCommandBlockCleaner remains manual/OP-only and requires explicit CONFIRM.
           EOF
 
