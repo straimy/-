@@ -1,6 +1,8 @@
 package arena.forge;
 
 import com.mojang.brigadier.Command;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -19,15 +21,14 @@ import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
 /**
- * Server-owned Battle Royale foundation.
+ * Server-owned Battle Royale runtime.
  *
- * This intentionally does not depend on Minecraft world-border commands, scoreboards, command
- * blocks, vanilla chest loot or client-owned match state. The eventual BR map is content;
- * match state, safe-zone authority and typed loot points live in GGO Core.
+ * Match state, queueing, alive authority, safe-zone phases and typed loot are owned by GGO Core.
+ * Maps are content only and may optionally provide typed BR loot markers.
  */
 @Mod.EventBusSubscriber(modid = "gunnerarena", bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class BattleRoyaleService {
-    public static final String VERSION = "GGO-BR-V2";
+    public static final String VERSION = "GGO-BR-V3";
 
     public enum State { IDLE, COUNTDOWN, RUNNING, FINISHED }
 
@@ -38,6 +39,7 @@ public final class BattleRoyaleService {
     private static final double[] RADII = { 300.0D, 220.0D, 140.0D, 70.0D, 30.0D };
     private static final float OUTSIDE_DAMAGE = 2.0F;
 
+    private static final Deque<UUID> QUEUE = new ArrayDeque<>();
     private static final Set<UUID> PARTICIPANTS = new HashSet<>();
     private static final Set<UUID> ALIVE = new HashSet<>();
     private static State state = State.IDLE;
@@ -52,9 +54,22 @@ public final class BattleRoyaleService {
     private BattleRoyaleService() {}
 
     public static boolean isParticipant(ServerPlayer player) { return PARTICIPANTS.contains(player.getUUID()); }
+    public static synchronized boolean queued(UUID playerId) { return QUEUE.contains(playerId); }
     public static State state() { return state; }
     public static int phase() { return phase; }
     public static double radius() { return RADII[Math.min(phase, RADII.length - 1)]; }
+
+    public static synchronized boolean enqueue(ServerPlayer player) {
+        UUID id = player.getUUID();
+        if (state != State.IDLE || PARTICIPANTS.contains(id) || QUEUE.contains(id)) return false;
+        QUEUE.addLast(id);
+        tryStart(player.getServer());
+        return true;
+    }
+
+    public static synchronized void remove(UUID playerId) {
+        QUEUE.remove(playerId);
+    }
 
     @SubscribeEvent
     public static void commands(RegisterCommandsEvent event) {
@@ -71,7 +86,7 @@ public final class BattleRoyaleService {
 
     private static int status(net.minecraft.commands.CommandSourceStack source) {
         source.sendSuccess(() -> Component.literal(
-            "[GGO] BR state=" + state + " alive=" + ALIVE.size() + "/" + PARTICIPANTS.size()
+            "[GGO] BR state=" + state + " queue=" + QUEUE.size() + " alive=" + ALIVE.size() + "/" + PARTICIPANTS.size()
                 + " phase=" + phase + " radius=" + Math.round(radius()) + " loot=" + spawnedLoot
                 + (winner == null ? "" : " winner=" + winner)
         ).withStyle(ChatFormatting.AQUA), false);
@@ -102,6 +117,7 @@ public final class BattleRoyaleService {
         PARTICIPANTS.clear();
         ALIVE.clear();
         for (ServerPlayer player : players) {
+            QUEUE.remove(player.getUUID());
             PARTICIPANTS.add(player.getUUID());
             ALIVE.add(player.getUUID());
         }
@@ -161,7 +177,7 @@ public final class BattleRoyaleService {
     }
 
     @SubscribeEvent
-    public static void death(LivingDeathEvent event) {
+    public static synchronized void death(LivingDeathEvent event) {
         if (state != State.RUNNING || !(event.getEntity() instanceof ServerPlayer player)) return;
         if (!ALIVE.remove(player.getUUID())) return;
         MinecraftServer server = player.getServer();
@@ -169,12 +185,39 @@ public final class BattleRoyaleService {
     }
 
     @SubscribeEvent
-    public static void logout(PlayerEvent.PlayerLoggedOutEvent event) {
+    public static synchronized void logout(PlayerEvent.PlayerLoggedOutEvent event) {
         UUID id = event.getEntity().getUUID();
+        QUEUE.remove(id);
         PARTICIPANTS.remove(id);
         ALIVE.remove(id);
         MinecraftServer server = event.getEntity().getServer();
         if (server != null && state == State.RUNNING) checkWinner(server);
+    }
+
+    private static void tryStart(MinecraftServer server) {
+        if (server == null || state != State.IDLE) return;
+        QUEUE.removeIf(id -> server.getPlayerList().getPlayer(id) == null);
+        if (QUEUE.size() < MIN_PLAYERS) return;
+
+        ServerPlayer first = null;
+        for (UUID id : QUEUE) {
+            ServerPlayer candidate = server.getPlayerList().getPlayer(id);
+            if (candidate != null && !candidate.isSpectator() && candidate.level() instanceof ServerLevel) {
+                first = candidate;
+                break;
+            }
+        }
+        if (first == null || !(first.level() instanceof ServerLevel target)) return;
+
+        List<ServerPlayer> players = QUEUE.stream()
+            .map(id -> server.getPlayerList().getPlayer(id))
+            .filter(player -> player != null && !player.isSpectator() && player.level() == target)
+            .toList();
+        if (players.size() < MIN_PLAYERS) return;
+
+        double x = players.stream().mapToDouble(ServerPlayer::getX).average().orElse(first.getX());
+        double z = players.stream().mapToDouble(ServerPlayer::getZ).average().orElse(first.getZ());
+        begin(target, players, x, z);
     }
 
     private static void checkWinner(MinecraftServer server) {
