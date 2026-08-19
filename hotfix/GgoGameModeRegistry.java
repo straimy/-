@@ -10,6 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
@@ -19,10 +20,10 @@ import net.minecraftforge.fml.common.Mod;
 /** Server-owned GGO mode catalog and /play router. */
 @Mod.EventBusSubscriber(modid = "gunnerarena", bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class GgoGameModeRegistry {
-    public static final String VERSION = "GGO-MODE-REGISTRY-V2";
+    public static final String VERSION = "GGO-MODE-REGISTRY-V3";
     public enum Availability { ACTIVE, MIGRATING, PLANNED }
     public record Mode(String id, String title, String description, Availability defaultAvailability) {
-        public Availability availability() { return GgoModeConfig.availability(id, defaultAvailability); }
+        public Availability configuredAvailability() { return GgoModeConfig.availability(id, defaultAvailability); }
     }
 
     private static final Map<String, Mode> MODES = new LinkedHashMap<>();
@@ -40,6 +41,14 @@ public final class GgoGameModeRegistry {
     private static void register(Mode mode) { MODES.put(mode.id(), mode); }
     public static Map<String, Mode> modes() { return Map.copyOf(MODES); }
     public static String selectedMode(ServerPlayer player) { return SELECTED.getOrDefault(player.getUUID(), "arena"); }
+
+    public static Availability effectiveAvailability(MinecraftServer server, Mode mode) {
+        Availability configured = mode.configuredAvailability();
+        if ("classic".equals(mode.id()) && configured == Availability.ACTIVE && !GgoClassicReadiness.ready(server)) {
+            return Availability.MIGRATING;
+        }
+        return configured;
+    }
 
     @SubscribeEvent
     public static void commands(RegisterCommandsEvent event) {
@@ -59,8 +68,12 @@ public final class GgoGameModeRegistry {
                         return Command.SINGLE_SUCCESS;
                     }))
                     .then(Commands.literal("status").executes(ctx -> {
+                        MinecraftServer server = ctx.getSource().getServer();
                         StringBuilder out = new StringBuilder("[GGO] Modes:");
-                        for (Mode mode : MODES.values()) out.append(' ').append(mode.id()).append('=').append(mode.availability());
+                        for (Mode mode : MODES.values()) {
+                            out.append(' ').append(mode.id()).append('=').append(effectiveAvailability(server, mode));
+                        }
+                        out.append(" classicReady=").append(GgoClassicReadiness.ready(server));
                         ctx.getSource().sendSuccess(() -> Component.literal(out.toString()).withStyle(ChatFormatting.AQUA), false);
                         return Command.SINGLE_SUCCESS;
                     })))
@@ -70,8 +83,9 @@ public final class GgoGameModeRegistry {
     private static int showModes(ServerPlayer player) {
         player.sendSystemMessage(Component.literal("GunGloryOnline • PLAY").withStyle(ChatFormatting.AQUA, ChatFormatting.BOLD));
         String selected = selectedMode(player);
+        MinecraftServer server = player.getServer();
         for (Mode mode : MODES.values()) {
-            Availability availability = mode.availability();
+            Availability availability = effectiveAvailability(server, mode);
             ChatFormatting color = switch (availability) {
                 case ACTIVE -> ChatFormatting.GREEN;
                 case MIGRATING -> ChatFormatting.GOLD;
@@ -91,9 +105,11 @@ public final class GgoGameModeRegistry {
             player.sendSystemMessage(Component.literal("[GGO] Unknown mode: " + raw).withStyle(ChatFormatting.RED));
             return 0;
         }
-        Availability availability = mode.availability();
+        Availability availability = effectiveAvailability(player.getServer(), mode);
         if (availability != Availability.ACTIVE) {
-            player.sendSystemMessage(Component.literal("[GGO] " + mode.title() + " is " + availability.name().toLowerCase(Locale.ROOT) + ".")
+            String suffix = "classic".equals(id) && mode.configuredAvailability() == Availability.ACTIVE
+                ? " (real-world smoke not approved for this world)" : "";
+            player.sendSystemMessage(Component.literal("[GGO] " + mode.title() + " is " + availability.name().toLowerCase(Locale.ROOT) + suffix + ".")
                 .withStyle(availability == Availability.MIGRATING ? ChatFormatting.GOLD : ChatFormatting.GRAY));
             return 0;
         }
