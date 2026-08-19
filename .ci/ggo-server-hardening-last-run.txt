@@ -1,0 +1,5 @@
+run_id=32201966048
+run_attempt=1
+head_sha=b9099e068d718a87e2efe642fe9d79e861f3f82b
+job_status=success
+artifact=GunGloryOnline-v40-server-hardening-v1
