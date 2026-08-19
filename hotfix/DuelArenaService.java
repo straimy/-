@@ -27,7 +27,7 @@ import org.slf4j.Logger;
 public final class DuelArenaService {
     public static final String VERSION = "GGO-DUEL-ARENA-V1";
     private static final Logger LOG = LogUtils.getLogger();
-    private static final AABB SCAN = new AABB(-4096, -64, -4096, 4096, 384, 4096);
+    static final AABB SCAN = new AABB(-4096, -64, -4096, 4096, 384, 4096);
 
     private static final int CENTER_X = 2048;
     private static final int FLOOR_Y = 80;
@@ -124,8 +124,52 @@ public final class DuelArenaService {
         }
     }
 
-    private static Marker spawn(ServerLevel level, String tag) {
+    static Marker spawn(ServerLevel level, String tag) {
         List<Marker> markers = level.getEntities(EntityType.MARKER, SCAN, marker -> marker.getTags().contains(tag));
         return markers.stream().min(Comparator.comparingDouble(marker -> marker.distanceToSqr(0.0D, marker.getY(), 0.0D))).orElse(null);
+    }
+}
+
+/** One-shot real-world Duels arena smoke. Disabled unless -Dggo.duels.smoke=true. */
+@Mod.EventBusSubscriber(modid = "gunnerarena", bus = Mod.EventBusSubscriber.Bus.FORGE)
+final class DuelArenaStartupSmoke {
+    static final String VERSION = "GGO-DUELS-STARTUP-SMOKE-V1";
+    static final String PROPERTY = "ggo.duels.smoke";
+    private static final Logger LOG = LogUtils.getLogger();
+
+    private DuelArenaStartupSmoke() {}
+
+    @SubscribeEvent
+    public static void started(ServerStartedEvent event) {
+        if (!Boolean.getBoolean(PROPERTY)) return;
+
+        var server = event.getServer();
+        ServerLevel level = server.overworld();
+        boolean created = false;
+        String error = "none";
+        boolean pass;
+        int spawnA = 0;
+        int spawnB = 0;
+
+        try {
+            created = DuelArenaService.ensureArena(level);
+            List<Marker> markers = level.getEntities(EntityType.MARKER, DuelArenaService.SCAN, marker -> true);
+            spawnA = countTag(markers, "duel_spawn_a");
+            spawnB = countTag(markers, "duel_spawn_b");
+            pass = DuelArenaService.ready(level) && spawnA > 0 && spawnB > 0;
+        } catch (Exception ex) {
+            pass = false;
+            error = ex.getClass().getSimpleName() + ":" + String.valueOf(ex.getMessage());
+        }
+
+        LOG.info("[GGO-DUELS-REALWORLD-SMOKE] result={} ready={} created={} spawnA={} spawnB={} error={}",
+            pass ? "PASS" : "FAIL", DuelArenaService.ready(level), created, spawnA, spawnB, error);
+        server.halt(false);
+    }
+
+    private static int countTag(List<Marker> markers, String tag) {
+        int count = 0;
+        for (Marker marker : markers) if (marker.getTags().contains(tag)) count++;
+        return count;
     }
 }
