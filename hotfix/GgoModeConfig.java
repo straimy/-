@@ -34,7 +34,7 @@ public final class GgoModeConfig {
         Properties p = new Properties();
         p.setProperty("arena", "ACTIVE");
         p.setProperty("classic", "ACTIVE");
-        p.setProperty("duels", "PLANNED");
+        p.setProperty("duels", "ACTIVE");
         p.setProperty("br", "PLANNED");
         return p;
     }
