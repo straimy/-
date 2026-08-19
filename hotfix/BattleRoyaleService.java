@@ -111,7 +111,7 @@ public final class BattleRoyaleService {
         phase = 0;
         winner = null;
         BattleRoyaleLootService.cleanup(target);
-        spawnedLoot = BattleRoyaleLootService.prepareRound(target);
+        spawnedLoot = BattleRoyaleLootService.prepareRound(target, x, z);
         state = State.COUNTDOWN;
         deadline = target.getServer().getTickCount() + COUNTDOWN_TICKS;
         broadcast(target.getServer(), "BATTLE ROYALE • GET READY", ChatFormatting.GOLD);
