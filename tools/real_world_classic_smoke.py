@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Disposable imported-world smoke for GunGloryOnline Classic Arena.
+"""Disposable imported-world startup smoke for GunGloryOnline Classic Arena.
 
 Inputs are never modified. The tool extracts a temporary server copy, replaces only the GGO Core
 with the supplied hardening artifact, disables command blocks, binds the server to localhost, starts
-Forge, waits for readiness, runs `ggo classic dev generate`, requires `result=PASS`, saves and stops.
+Forge with -Dggo.classic.smoke=true, requires the exact startup-smoke PASS line and readiness marker,
+and lets the one-shot smoke halt the disposable server itself.
 """
 
 from __future__ import annotations
 
 import argparse
-import os
 from pathlib import Path
 import queue
 import shutil
@@ -27,6 +27,8 @@ KEEP_FILES = {
     "ops.json", "whitelist.json", "banned-players.json", "banned-ips.json",
     "usercache.json", "usernamecache.json",
 }
+SMOKE_PREFIX = "[GGO-CLASSIC-REALWORLD-SMOKE]"
+READY_MARKER = ".ggo-classic-ready"
 
 
 def parse_args() -> argparse.Namespace:
@@ -104,6 +106,18 @@ def wait_for(lines: queue.Queue[str], needle: str, deadline: float) -> str:
     raise TimeoutError(f"timed out waiting for {needle!r}")
 
 
+def verify_readiness_marker(root: Path) -> str:
+    marker = root / "world" / READY_MARKER
+    if not marker.is_file():
+        raise RuntimeError(f"startup smoke reported PASS but {READY_MARKER} was not written")
+    text = marker.read_text(encoding="utf-8", errors="replace")
+    required = ("result=PASS", "cells=64", "ammo=4/3/3", "health=4")
+    missing = [entry for entry in required if entry not in text]
+    if missing:
+        raise RuntimeError(f"invalid {READY_MARKER}; missing {', '.join(missing)}")
+    return text
+
+
 def run_smoke(root: Path, java: str, timeout: int) -> None:
     (root / "eula.txt").write_text("eula=true\n", encoding="utf-8")
     props = root / "server.properties"
@@ -112,6 +126,7 @@ def run_smoke(root: Path, java: str, timeout: int) -> None:
 
     cmd = [
         java,
+        "-Dggo.classic.smoke=true",
         "@user_jvm_args.txt",
         "@libraries/net/minecraftforge/forge/1.20.1-47.4.10/unix_args.txt",
         "nogui",
@@ -133,21 +148,21 @@ def run_smoke(root: Path, java: str, timeout: int) -> None:
     deadline = time.monotonic() + timeout
 
     try:
-        ready = wait_for(q, "Done (", deadline)
-        print(ready.rstrip())
-        proc.stdin.write("ggo classic dev generate\n")
-        proc.stdin.flush()
-        result = wait_for(q, "[GGO] Classic dev generation:", deadline)
+        result = wait_for(q, SMOKE_PREFIX, deadline)
         print(result.rstrip())
         if "result=PASS" not in result:
-            raise RuntimeError("Classic imported-world generation returned CHECK/FAIL")
-        proc.stdin.write("save-all\n")
-        proc.stdin.write("stop\n")
-        proc.stdin.flush()
+            raise RuntimeError("Classic startup smoke returned FAIL")
+
+        marker_text = verify_readiness_marker(root)
+        print(f"{READY_MARKER}=PASS")
+        for line in marker_text.splitlines():
+            if line.startswith(("generator=", "cells=", "ammo=", "health=", "respawn=", "jumpPads=")):
+                print(f"ready.{line}")
+
         remaining = max(1.0, deadline - time.monotonic())
         rc = proc.wait(timeout=remaining)
         if rc != 0:
-            raise RuntimeError(f"server exited with {rc}")
+            raise RuntimeError(f"server exited with {rc} after startup smoke PASS")
     finally:
         if proc.poll() is None:
             try:
@@ -173,6 +188,8 @@ def main() -> int:
         core = install_core(args.hardening_artifact, temp)
         print(f"workdir={temp}")
         print(f"core={core.name}")
+        print("enable-command-block=false")
+        print("ggo.classic.smoke=true")
         run_smoke(temp, args.java, args.timeout)
         print("REAL_WORLD_CLASSIC_SMOKE=PASS")
         return 0
