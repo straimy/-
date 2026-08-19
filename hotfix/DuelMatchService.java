@@ -13,6 +13,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.event.RegisterCommandsEvent;
+import net.minecraftforge.event.entity.living.LivingDeathEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -70,9 +71,10 @@ public final class DuelMatchService {
     /** Records a server-authoritative duel round result. No client score is trusted. */
     public static synchronized boolean recordRoundWinner(MinecraftServer server, UUID winnerId) {
         DuelSession session = BY_PLAYER.get(winnerId);
-        if (session == null || session.state != State.RUNNING) return false;
+        if (session == null || session.state != State.RUNNING || session.awaitingRespawn) return false;
         if (!session.playerA.equals(winnerId) && !session.playerB.equals(winnerId)) return false;
 
+        session.awaitingRespawn = true;
         if (session.playerA.equals(winnerId)) session.winsA++;
         else session.winsB++;
 
@@ -82,8 +84,39 @@ public final class DuelMatchService {
             BY_PLAYER.remove(session.playerA);
             BY_PLAYER.remove(session.playerB);
             tryPair(server);
+        } else {
+            announceRound(server, session, winnerId);
         }
         return true;
+    }
+
+    @SubscribeEvent
+    public static synchronized void death(LivingDeathEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer loser)) return;
+        DuelSession session = BY_PLAYER.get(loser.getUUID());
+        if (session == null || session.state != State.RUNNING || session.awaitingRespawn) return;
+        UUID winnerId = session.other(loser.getUUID());
+        MinecraftServer server = loser.getServer();
+        if (server != null) recordRoundWinner(server, winnerId);
+    }
+
+    @SubscribeEvent
+    public static synchronized void respawn(PlayerEvent.PlayerRespawnEvent event) {
+        ServerPlayer player = (ServerPlayer) event.getEntity();
+        DuelSession session = BY_PLAYER.get(player.getUUID());
+        if (session == null || session.state != State.RUNNING || !session.awaitingRespawn) return;
+
+        MinecraftServer server = player.getServer();
+        if (server == null) return;
+        ServerPlayer a = server.getPlayerList().getPlayer(session.playerA);
+        ServerPlayer b = server.getPlayerList().getPlayer(session.playerB);
+        if (a == null || b == null) return;
+
+        if (DuelArenaService.placePair(a, b)) {
+            session.awaitingRespawn = false;
+            a.sendSystemMessage(Component.literal("GGO • NEXT DUEL ROUND • " + session.winsA + "-" + session.winsB).withStyle(ChatFormatting.GOLD));
+            b.sendSystemMessage(Component.literal("GGO • NEXT DUEL ROUND • " + session.winsA + "-" + session.winsB).withStyle(ChatFormatting.GOLD));
+        }
     }
 
     @SubscribeEvent
@@ -168,6 +201,15 @@ public final class DuelMatchService {
         return null;
     }
 
+    private static void announceRound(MinecraftServer server, DuelSession session, UUID winnerId) {
+        ServerPlayer winner = server == null ? null : server.getPlayerList().getPlayer(winnerId);
+        UUID loserId = session.other(winnerId);
+        ServerPlayer loser = server == null ? null : server.getPlayerList().getPlayer(loserId);
+        String score = session.winsA + "-" + session.winsB;
+        if (winner != null) winner.sendSystemMessage(Component.literal("GGO • ROUND WON • " + score).withStyle(ChatFormatting.GREEN));
+        if (loser != null) loser.sendSystemMessage(Component.literal("GGO • ROUND LOST • " + score).withStyle(ChatFormatting.RED));
+    }
+
     private static void announce(MinecraftServer server, DuelSession session) {
         UUID winner = session.winsA > session.winsB ? session.playerA : session.playerB;
         UUID loser = session.other(winner);
@@ -185,6 +227,7 @@ public final class DuelMatchService {
         final UUID playerB;
         int winsA;
         int winsB;
+        boolean awaitingRespawn;
         State state = State.RUNNING;
 
         DuelSession(UUID playerA, UUID playerB) {
