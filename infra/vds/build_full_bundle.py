@@ -77,6 +77,34 @@ def validate_world_marker(path: Path) -> dict[str, object]:
     return payload
 
 
+def read_properties(path: Path) -> dict[str, str]:
+    out: dict[str, str] = {}
+    if not path.is_file():
+        return out
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = line.strip()
+        if not line or line.startswith(("#", "!")) or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        out[key.strip()] = value.strip()
+    return out
+
+
+def classic_world_ready(world: Path) -> tuple[bool, dict[str, str]]:
+    props = read_properties(world / ".ggo-classic-ready")
+    ready = (
+        props.get("result", "").upper() == "PASS"
+        and props.get("cells") == "64"
+        and props.get("ammo") == "4/3/3"
+        and props.get("health") == "4"
+    )
+    try:
+        ready = ready and int(props.get("respawn", "0")) > 0
+    except ValueError:
+        ready = False
+    return ready, props
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Build GunGloryOnline FULL-VDS deployment ZIP")
     parser.add_argument("--ready-pack", type=Path, required=True)
@@ -121,6 +149,8 @@ def main() -> int:
         server_target = mods / args.server_core.name
         shutil.copy2(args.server_core, server_target)
 
+        classic_ready = False
+        classic_props: dict[str, str] = {}
         if args.world:
             world_input = args.world.expanduser().resolve()
             if not world_input.exists():
@@ -128,6 +158,7 @@ def main() -> int:
             destination = root / "game-server" / "world"
             shutil.rmtree(destination, ignore_errors=True)
             copy_world(world_input, destination)
+            classic_ready, classic_props = classic_world_ready(destination)
             (root / "game-server" / ".ggo-world-ready").write_text(
                 json.dumps(world_marker_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
             )
@@ -150,12 +181,15 @@ def main() -> int:
         (root / "site" / "downloads.json").write_text(json.dumps(downloads, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
         manifest = {
-            "schemaVersion": 2,
+            "schemaVersion": 3,
             "gameVersion": args.version,
             "serverCore": {"file": server_target.name, "sha256": sha256(server_target)},
             "worldIncluded": bool(args.world),
             "worldAuditReady": bool(world_marker_payload),
             "worldCommandBlockCount": 0 if world_marker_payload else None,
+            "classicWorldReady": classic_ready,
+            "classicGenerator": classic_props.get("generator") if classic_ready else None,
+            "classicReadyGeneratedAt": classic_props.get("generatedAt") if classic_ready else None,
             "productionSecretsIncluded": False,
         }
         (root / "BUNDLE.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
@@ -172,6 +206,7 @@ def main() -> int:
 
     print(f"bundle: {output}")
     print(f"sha256: {sha256(output)}")
+    print(f"classic-world-ready: {classic_ready}")
     return 0
 
 
