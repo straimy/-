@@ -3,5 +3,5 @@
 # Copy to config/gunnerarena/modes.properties on the game server.
 arena=ACTIVE
 classic=ACTIVE
-duels=PLANNED
+duels=ACTIVE
 br=PLANNED
