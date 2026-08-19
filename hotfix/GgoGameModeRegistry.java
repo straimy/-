@@ -123,6 +123,15 @@ public final class GgoGameModeRegistry {
             player.sendSystemMessage(Component.literal("GGO • Joined Duels queue").withStyle(ChatFormatting.AQUA));
             return Command.SINGLE_SUCCESS;
         }
+        if ("br".equals(id)) {
+            if (!BattleRoyaleService.enqueue(player)) {
+                player.sendSystemMessage(Component.literal("GGO • BR queue is unavailable while a match is running or you are already queued.")
+                    .withStyle(ChatFormatting.YELLOW));
+                return 0;
+            }
+            player.sendSystemMessage(Component.literal("GGO • Joined Battle Royale queue").withStyle(ChatFormatting.AQUA));
+            return Command.SINGLE_SUCCESS;
+        }
         player.sendSystemMessage(Component.literal("[GGO] Selected: " + mode.title()).withStyle(ChatFormatting.GREEN));
         return Command.SINGLE_SUCCESS;
     }
@@ -131,5 +140,6 @@ public final class GgoGameModeRegistry {
     public static void logout(PlayerEvent.PlayerLoggedOutEvent event) {
         SELECTED.remove(event.getEntity().getUUID());
         ClassicArenaQueueService.remove(event.getEntity().getUUID());
+        BattleRoyaleService.remove(event.getEntity().getUUID());
     }
 }
