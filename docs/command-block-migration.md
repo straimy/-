@@ -40,6 +40,8 @@ This proves the removal mechanism itself. It does **not** by itself mean every l
 
 Latest validation rule: every newly migrated Classic subsystem must pass both clean Forge 1.20.1 / Java 17 CI and a real imported-world smoke with command execution disabled before Classic is promoted from `MIGRATING` to `ACTIVE`.
 
+Classic has now passed its imported-world startup gate with command execution disabled. Duels follows the same evidence-first rule: the server-owned fallback arena must pass `[GGO-DUELS-REALWORLD-SMOKE] result=PASS` on the supplied world before its availability is promoted beyond `PLANNED`.
+
 ## Already migrated from the legacy command graph
 
 - Classic 8×8 procedural arena generation -> `ClassicArenaMapGenerator` using `StructureTemplate` directly;
