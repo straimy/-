@@ -114,7 +114,9 @@ public final class DuelArenaService {
         marker.setYRot(yaw);
         marker.addTag(tag);
         marker.addTag("ggo_duel_arena");
-        level.getChunkAt(BlockPos.containing(x, y, z));
+        BlockPos pos = BlockPos.containing(x, y, z);
+        level.setChunkForced(pos.getX() >> 4, pos.getZ() >> 4, true);
+        level.getChunkAt(pos);
         if (!level.addFreshEntity(marker)) throw new IllegalStateException("Could not add Duels marker " + tag);
     }
 
