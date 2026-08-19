@@ -37,6 +37,8 @@ world_ready=false
 if [[ -f game-server/world/level.dat ]]; then world_ready=true; fi
 migration_ready=false
 if [[ -f game-server/.ggo-world-ready ]]; then migration_ready=true; fi
+classic_ready=false
+if [[ -f game-server/world/.ggo-classic-ready ]] && grep -Eq '^result[=:]PASS$' game-server/world/.ggo-classic-ready; then classic_ready=true; fi
 
 if [[ "$core_count" == "1" && "$world_ready" == "true" && "$migration_ready" == "true" ]]; then
   echo "Final Core + audited clean world detected; starting game server on this VDS..."
@@ -51,6 +53,14 @@ fi
 echo
 echo "GunGloryOnline single-node status:"
 docker compose --profile backend --profile game ps || true
+
+echo
+echo "World readiness:"
+echo "  clean-world: ${migration_ready}"
+echo "  classic-smoke: ${classic_ready}"
+if [[ "$migration_ready" == "true" && "$classic_ready" != "true" ]]; then
+  echo "  Classic stays MIGRATING even if modes.properties requests ACTIVE."
+fi
 
 echo
 echo "Public endpoints:"
