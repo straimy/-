@@ -28,7 +28,7 @@ import net.minecraftforge.fml.common.Mod;
  */
 @Mod.EventBusSubscriber(modid = "gunnerarena", bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class BattleRoyaleService {
-    public static final String VERSION = "GGO-BR-V3";
+    public static final String VERSION = "GGO-BR-V2";
 
     public enum State { IDLE, COUNTDOWN, RUNNING, FINISHED }
 
