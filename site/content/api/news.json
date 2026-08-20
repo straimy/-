@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "items": [
+    {
+      "id": "launcher-beta-021",
+      "date": "2026-08-20",
+      "title": {
+        "en": "Launcher 0.2.1 Beta",
+        "ru": "Launcher 0.2.1 Beta",
+        "uk": "Launcher 0.2.1 Beta"
+      },
+      "body": {
+        "en": "Public launcher bootstrap, automatic Runtime v1 setup and production server catalog are being prepared.",
+        "ru": "Готовим публичный лаунчер, автоматическую установку Runtime v1 и подключение к основному серверу.",
+        "uk": "Готуємо публічний лаунчер, автоматичне встановлення Runtime v1 та підключення до основного сервера."
+      }
+    }
+  ]
+}
