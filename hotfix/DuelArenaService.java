@@ -16,13 +16,7 @@ import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import org.slf4j.Logger;
 
-/**
- * Server-owned Duels arena adapter.
- *
- * Existing maps may expose duel_spawn_a / duel_spawn_b markers. If they do not, Core creates a
- * small isolated arena and the two markers itself, so BO3 matchmaking does not depend on command
- * blocks or manual map edits.
- */
+/** Server-owned Duels arena adapter with marker-optional deterministic fallback spawns. */
 @Mod.EventBusSubscriber(modid = "gunnerarena", bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class DuelArenaService {
     public static final String VERSION = "GGO-DUEL-ARENA-V1";
@@ -34,6 +28,10 @@ public final class DuelArenaService {
     private static final int CENTER_Z = 2048;
     private static final int HALF_X = 12;
     private static final int HALF_Z = 7;
+    private static final SpawnPoint FALLBACK_A = new SpawnPoint(CENTER_X - 5.0D, FLOOR_Y + 1.0D, CENTER_Z + 0.5D, -90.0F);
+    private static final SpawnPoint FALLBACK_B = new SpawnPoint(CENTER_X + 5.0D, FLOOR_Y + 1.0D, CENTER_Z + 0.5D, 90.0F);
+
+    record SpawnPoint(double x, double y, double z, float yaw) {}
 
     private DuelArenaService() {}
 
@@ -41,39 +39,55 @@ public final class DuelArenaService {
     public static void started(ServerStartedEvent event) {
         ServerLevel level = event.getServer().overworld();
         boolean created = ensureArena(level);
-        LOG.info("[GGO-DUELS-ARENA] ready={} created={} spawnA={} spawnB={}",
-            ready(level), created, spawn(level, "duel_spawn_a") != null, spawn(level, "duel_spawn_b") != null);
+        LOG.info("[GGO-DUELS-ARENA] ready={} created={} authoredA={} authoredB={} fallback={}",
+            ready(level), created, authoredSpawn(level, "duel_spawn_a") != null,
+            authoredSpawn(level, "duel_spawn_b") != null, fallbackReady(level));
     }
 
     public static boolean ready(ServerLevel level) {
-        return spawn(level, "duel_spawn_a") != null && spawn(level, "duel_spawn_b") != null;
+        boolean authored = authoredSpawn(level, "duel_spawn_a") != null && authoredSpawn(level, "duel_spawn_b") != null;
+        return authored || fallbackReady(level);
     }
 
-    /** Creates the fallback arena only when the map has no complete Duels marker pair. */
+    /** Creates only world geometry for fallback. Fallback spawns are coordinates, not entities. */
     public static synchronized boolean ensureArena(ServerLevel level) {
         if (ready(level)) return false;
-
-        removeSpawnMarkers(level);
+        removeOwnedFallbackMarkers(level);
         buildPlatform(level);
-        createSpawn(level, "duel_spawn_a", CENTER_X - 5.0D, FLOOR_Y + 1.0D, CENTER_Z + 0.5D, -90.0F);
-        createSpawn(level, "duel_spawn_b", CENTER_X + 5.0D, FLOOR_Y + 1.0D, CENTER_Z + 0.5D, 90.0F);
         return true;
     }
 
     public static boolean placePair(ServerPlayer a, ServerPlayer b) {
         if (!(a.level() instanceof ServerLevel level) || b.level() != level) return false;
         if (!ready(level)) ensureArena(level);
-        Marker spawnA = spawn(level, "duel_spawn_a");
-        Marker spawnB = spawn(level, "duel_spawn_b");
+        SpawnPoint spawnA = resolvedSpawn(level, true);
+        SpawnPoint spawnB = resolvedSpawn(level, false);
         if (spawnA == null || spawnB == null) return false;
 
         GgoMovementAuthority.authorize(a, 30L);
         GgoMovementAuthority.authorize(b, 30L);
-        a.teleportTo(level, spawnA.getX(), spawnA.getY(), spawnA.getZ(), spawnA.getYRot(), spawnA.getXRot());
-        b.teleportTo(level, spawnB.getX(), spawnB.getY(), spawnB.getZ(), spawnB.getYRot(), spawnB.getXRot());
+        a.teleportTo(level, spawnA.x(), spawnA.y(), spawnA.z(), spawnA.yaw(), 0.0F);
+        b.teleportTo(level, spawnB.x(), spawnB.y(), spawnB.z(), spawnB.yaw(), 0.0F);
         a.setHealth(a.getMaxHealth());
         b.setHealth(b.getMaxHealth());
         return true;
+    }
+
+    static SpawnPoint resolvedSpawn(ServerLevel level, boolean first) {
+        Marker a = authoredSpawn(level, "duel_spawn_a");
+        Marker b = authoredSpawn(level, "duel_spawn_b");
+        if (a != null && b != null) {
+            Marker marker = first ? a : b;
+            return new SpawnPoint(marker.getX(), marker.getY(), marker.getZ(), marker.getYRot());
+        }
+        if (!fallbackReady(level)) return null;
+        return first ? FALLBACK_A : FALLBACK_B;
+    }
+
+    private static boolean fallbackReady(ServerLevel level) {
+        return level.getBlockState(new BlockPos(CENTER_X, FLOOR_Y, CENTER_Z)).is(Blocks.SMOOTH_STONE)
+            && level.getBlockState(BlockPos.containing(FALLBACK_A.x(), FALLBACK_A.y(), FALLBACK_A.z())).isAir()
+            && level.getBlockState(BlockPos.containing(FALLBACK_B.x(), FALLBACK_B.y(), FALLBACK_B.z())).isAir();
     }
 
     private static void buildPlatform(ServerLevel level) {
@@ -88,7 +102,6 @@ public final class DuelArenaService {
                 }
             }
         }
-
         for (int x = CENTER_X - HALF_X; x <= CENTER_X + HALF_X; x++) {
             wall(level, x, CENTER_Z - HALF_Z);
             wall(level, x, CENTER_Z + HALF_Z);
@@ -107,27 +120,12 @@ public final class DuelArenaService {
         }
     }
 
-    private static void createSpawn(ServerLevel level, String tag, double x, double y, double z, float yaw) {
-        Marker marker = EntityType.MARKER.create(level);
-        if (marker == null) throw new IllegalStateException("Could not create Duels marker " + tag);
-        marker.setPos(x, y, z);
-        marker.setYRot(yaw);
-        marker.addTag(tag);
-        marker.addTag("ggo_duel_arena");
-        BlockPos pos = BlockPos.containing(x, y, z);
-        level.setChunkForced(pos.getX() >> 4, pos.getZ() >> 4, true);
-        level.getChunkAt(pos);
-        if (!level.addFreshEntity(marker)) throw new IllegalStateException("Could not add Duels marker " + tag);
+    private static void removeOwnedFallbackMarkers(ServerLevel level) {
+        for (Marker marker : level.getEntities(EntityType.MARKER, SCAN,
+            entity -> entity.getTags().contains("ggo_duel_arena"))) marker.discard();
     }
 
-    private static void removeSpawnMarkers(ServerLevel level) {
-        for (Marker marker : level.getEntities(EntityType.MARKER, SCAN, entity ->
-            entity.getTags().contains("duel_spawn_a") || entity.getTags().contains("duel_spawn_b"))) {
-            marker.discard();
-        }
-    }
-
-    static Marker spawn(ServerLevel level, String tag) {
+    static Marker authoredSpawn(ServerLevel level, String tag) {
         List<Marker> markers = level.getEntities(EntityType.MARKER, SCAN, marker -> marker.getTags().contains(tag));
         return markers.stream().min(Comparator.comparingDouble(marker -> marker.distanceToSqr(0.0D, marker.getY(), 0.0D))).orElse(null);
     }
@@ -136,7 +134,7 @@ public final class DuelArenaService {
 /** One-shot real-world Duels arena smoke. Disabled unless -Dggo.duels.smoke=true. */
 @Mod.EventBusSubscriber(modid = "gunnerarena", bus = Mod.EventBusSubscriber.Bus.FORGE)
 final class DuelArenaStartupSmoke {
-    static final String VERSION = "GGO-DUELS-STARTUP-SMOKE-V1";
+    static final String VERSION = "GGO-DUELS-STARTUP-SMOKE-V2";
     static final String PROPERTY = "ggo.duels.smoke";
     private static final Logger LOG = LogUtils.getLogger();
 
@@ -145,34 +143,24 @@ final class DuelArenaStartupSmoke {
     @SubscribeEvent
     public static void started(ServerStartedEvent event) {
         if (!Boolean.getBoolean(PROPERTY)) return;
-
         var server = event.getServer();
         ServerLevel level = server.overworld();
         boolean created = false;
         String error = "none";
         boolean pass;
-        int spawnA = 0;
-        int spawnB = 0;
-
+        boolean spawnA = false;
+        boolean spawnB = false;
         try {
             created = DuelArenaService.ensureArena(level);
-            List<Marker> markers = level.getEntities(EntityType.MARKER, DuelArenaService.SCAN, marker -> true);
-            spawnA = countTag(markers, "duel_spawn_a");
-            spawnB = countTag(markers, "duel_spawn_b");
-            pass = DuelArenaService.ready(level) && spawnA > 0 && spawnB > 0;
+            spawnA = DuelArenaService.resolvedSpawn(level, true) != null;
+            spawnB = DuelArenaService.resolvedSpawn(level, false) != null;
+            pass = DuelArenaService.ready(level) && spawnA && spawnB;
         } catch (Exception ex) {
             pass = false;
             error = ex.getClass().getSimpleName() + ":" + String.valueOf(ex.getMessage());
         }
-
         LOG.info("[GGO-DUELS-REALWORLD-SMOKE] result={} ready={} created={} spawnA={} spawnB={} error={}",
             pass ? "PASS" : "FAIL", DuelArenaService.ready(level), created, spawnA, spawnB, error);
         server.halt(false);
-    }
-
-    private static int countTag(List<Marker> markers, String tag) {
-        int count = 0;
-        for (Marker marker : markers) if (marker.getTags().contains(tag)) count++;
-        return count;
     }
 }
