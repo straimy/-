@@ -28,9 +28,18 @@ fn safe_child(root: &Path, kind: &str) -> Result<PathBuf, String> {
         "logs" => "logs",
         "crash-reports" => "crash-reports",
         "config" => "config",
+        "saves" => "saves",
         _ => return Err(format!("unsupported GGO folder: {kind}")),
     };
     Ok(root.join(child))
+}
+
+fn safe_file_name(name: &str) -> Result<&str, String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() || trimmed == "." || trimmed == ".." || trimmed.contains('/') || trimmed.contains('\\') {
+        return Err("invalid client file name".to_string());
+    }
+    Ok(trimmed)
 }
 
 pub fn open_client_folder(install_dir: &Path, kind: &str) -> Result<(), String> {
@@ -62,6 +71,51 @@ pub fn list_client_files(install_dir: &Path, kind: &str) -> Result<Vec<ClientFil
     }
     entries.sort_by(|a,b| a.name.to_ascii_lowercase().cmp(&b.name.to_ascii_lowercase()));
     Ok(entries)
+}
+
+pub fn set_mod_enabled(install_dir: &Path, file_name: &str, enabled: bool) -> Result<ClientFileEntry, String> {
+    let file_name = safe_file_name(file_name)?;
+    let mods = safe_child(install_dir, "mods")?;
+    fs::create_dir_all(&mods).map_err(|e| e.to_string())?;
+    let source = mods.join(file_name);
+    if !source.is_file() { return Err(format!("mod file not found: {file_name}")); }
+
+    let lower = file_name.to_ascii_lowercase();
+    let target_name = if enabled {
+        if lower.ends_with(".disabled") {
+            file_name[..file_name.len() - ".disabled".len()].to_string()
+        } else if lower.ends_with(".off") {
+            file_name[..file_name.len() - ".off".len()].to_string()
+        } else {
+            return file_entry(&source);
+        }
+    } else {
+        if lower.ends_with(".disabled") || lower.ends_with(".off") {
+            return file_entry(&source);
+        }
+        if !lower.ends_with(".jar") {
+            return Err("only .jar mods can be disabled from the launcher".to_string());
+        }
+        format!("{file_name}.disabled")
+    };
+
+    let target = mods.join(target_name);
+    if target.exists() { return Err(format!("target already exists: {}", target.display())); }
+    fs::rename(&source, &target).map_err(|e| e.to_string())?;
+    file_entry(&target)
+}
+
+fn file_entry(path: &Path) -> Result<ClientFileEntry, String> {
+    let meta = fs::metadata(path).map_err(|e| e.to_string())?;
+    let name = path.file_name().and_then(|v| v.to_str()).unwrap_or_default().to_string();
+    let lower = name.to_ascii_lowercase();
+    Ok(ClientFileEntry {
+        name,
+        path: path.to_string_lossy().into_owned(),
+        size_bytes: meta.len(),
+        modified_unix_ms: meta.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_millis()).unwrap_or(0),
+        disabled: lower.ends_with(".disabled") || lower.ends_with(".off"),
+    })
 }
 
 fn read_tail(path: &Path, limit: usize) -> Result<LogSnapshot, String> {
