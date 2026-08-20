@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "gameVersion": "v40",
+  "runtime": "minecraft-forge",
+  "channel": "beta",
+  "files": [
+    {
+      "path": "mods/gungloryonline-core-0.9.7-v40-server-hardening1.jar",
+      "url": "https://ggo.kvicloud.ru/content/files/v40/gungloryonline-core-0.9.7-v40-server-hardening1.jar",
+      "sha256": "e6521e2bb37e1d46b30a8fbc2e31fad29ff9bca9be0163ffb8018ecb5ae9f624",
+      "size": 590957,
+      "required": true,
+      "side": "client",
+      "version": "v40",
+      "kind": "mod"
+    },
+    {
+      "path": "mods/gungloryonline-ui-0.9.7-v40.jar",
+      "url": "https://ggo.kvicloud.ru/content/files/v40/gungloryonline-ui-0.9.7-v40.jar",
+      "sha256": "41b506852bae157bcd75c9577dba8b498924f902089e5d54254e49df62c7fae0",
+      "size": 109961,
+      "required": true,
+      "side": "client",
+      "version": "v40",
+      "kind": "mod"
+    },
+    {
+      "path": "resourcepacks/GunGloryOnline-ResourcePack-1.20.1-v5-swittie-social.zip",
+      "url": "https://ggo.kvicloud.ru/content/files/v40/GunGloryOnline-ResourcePack-1.20.1-v5-swittie-social.zip",
+      "sha256": "33c40c492ce5db2b8312dc09326a64bdec4f11006ace07ab09a41a213a9308b7",
+      "size": 12668450,
+      "required": true,
+      "side": "client",
+      "version": "v5-swittie-social",
+      "kind": "resourcepack"
+    }
+  ]
+}
