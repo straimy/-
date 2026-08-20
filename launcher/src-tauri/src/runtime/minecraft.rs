@@ -18,7 +18,7 @@ pub const DEFAULT_SERVER_PORT: u16 = 24842;
 pub enum MinecraftRuntimeError {
     #[error("minecraft runtime is incomplete: {0}")]
     Incomplete(String),
-    #[error("minecraft runtime launch is not implemented until identity is available")]
+    #[error("minecraft runtime launch requires an identity-aware launch path")]
     IdentityRequired,
 }
 
@@ -79,6 +79,11 @@ impl GameRuntime for MinecraftForgeRuntime {
         } else {
             Err(MinecraftRuntimeError::Incomplete(check.missing.join(", ")))
         }
+    }
+
+    fn launch(&self, install_dir: &Path) -> Result<(), Self::Error> {
+        self.verify(install_dir)?;
+        Err(MinecraftRuntimeError::IdentityRequired)
     }
 }
 
