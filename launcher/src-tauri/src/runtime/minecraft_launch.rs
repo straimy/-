@@ -30,6 +30,8 @@ pub enum LaunchError {
     MissingClientJar(String),
     #[error("unresolved launcher placeholder: {0}")]
     UnresolvedPlaceholder(String),
+    #[error("unsafe custom JVM argument: {0}")]
+    UnsafeJvmArgument(String),
     #[error("failed to start Java: {0}")]
     Spawn(String),
 }
@@ -39,6 +41,10 @@ pub enum LaunchError {
 pub struct LaunchOptions {
     #[serde(default = "default_ram")]
     pub ram_mb: u32,
+    #[serde(default = "default_min_ram")]
+    pub min_ram_mb: u32,
+    #[serde(default)]
+    pub extra_jvm_args: Vec<String>,
     #[serde(default = "default_width")]
     pub width: u32,
     #[serde(default = "default_height")]
@@ -52,6 +58,7 @@ pub struct LaunchOptions {
 }
 
 fn default_ram() -> u32 { 4096 }
+fn default_min_ram() -> u32 { 512 }
 fn default_width() -> u32 { 1280 }
 fn default_height() -> u32 { 720 }
 fn default_connect_server() -> bool { true }
@@ -163,15 +170,8 @@ fn build_launch(
     collect_libraries(install_dir, &vanilla, &mut classpath, &mut seen)?;
     collect_libraries(install_dir, &forge, &mut classpath, &mut seen)?;
 
-    // Forge 47's processor creates the canonical SRG Minecraft runtime. Some generated
-    // profiles also expose additional processor/output jars through the inherited classpath.
-    // If more than one of those jars contains Minecraft classes, Java 17 treats them as
-    // separate modules (for example `minecraft` and `_1._20._1`) and ModLauncher aborts.
-    // Inspect jar contents and keep only the SRG Minecraft runtime in the classpath.
     filter_duplicate_minecraft_runtime_jars(&mut classpath);
 
-    // Keep the vanilla client jar on disk for Forge installation/repair, but never append it
-    // manually to the Forge classpath. The SRG runtime above is the Minecraft game module.
     let client_jar = install_dir.join("versions").join(inherited).join(format!("{inherited}.jar"));
     if !client_jar.exists() { return Err(LaunchError::MissingClientJar(client_jar.display().to_string())); }
 
@@ -213,9 +213,17 @@ fn build_launch(
         jvm_args.push("${classpath}".into());
     }
     jvm_args.retain(|arg| !arg.starts_with("-Xmx") && !arg.starts_with("-Xms"));
+    let max_ram = options.ram_mb.clamp(1024, 32768);
+    let min_ram = options.min_ram_mb.clamp(256, max_ram);
     jvm_args.insert(0, format!("-Dggo.launch.mode={launch_mode}"));
-    jvm_args.insert(0, format!("-Xmx{}M", options.ram_mb.clamp(1024, 32768)));
-    jvm_args.insert(0, "-Xms512M".into());
+    jvm_args.insert(0, format!("-Xmx{max_ram}M"));
+    jvm_args.insert(0, format!("-Xms{min_ram}M"));
+    for arg in &options.extra_jvm_args {
+        let arg = arg.trim();
+        if arg.is_empty() { continue; }
+        validate_custom_jvm_arg(arg)?;
+        jvm_args.push(arg.to_string());
+    }
     substitute_all(&mut jvm_args, &vars);
     ensure_no_placeholders(&jvm_args)?;
 
@@ -235,6 +243,22 @@ fn build_launch(
     }
 
     Ok(BuiltLaunch { java_path, main_class, game_directory: install_dir.to_path_buf(), classpath_entries: classpath.len(), jvm_args, game_args })
+}
+
+fn validate_custom_jvm_arg(arg: &str) -> Result<(), LaunchError> {
+    let lower = arg.to_ascii_lowercase();
+    let reserved = lower.starts_with("-xmx")
+        || lower.starts_with("-xms")
+        || lower == "-cp"
+        || lower == "-classpath"
+        || lower == "--class-path"
+        || lower == "-p"
+        || lower == "--module-path"
+        || lower.starts_with("--module-path=")
+        || lower.starts_with("-djava.library.path=")
+        || arg.contains("${");
+    if reserved { return Err(LaunchError::UnsafeJvmArgument(arg.to_string())); }
+    Ok(())
 }
 
 fn collect_libraries(install_dir: &Path, version: &Value, output: &mut Vec<PathBuf>, seen: &mut HashSet<PathBuf>) -> Result<(), LaunchError> {
@@ -365,9 +389,19 @@ mod tests {
     }
 
     #[test]
+    fn custom_jvm_args_cannot_override_launcher_critical_args() {
+        assert!(validate_custom_jvm_arg("-XX:+UseG1GC").is_ok());
+        assert!(matches!(validate_custom_jvm_arg("-Xmx8G"), Err(LaunchError::UnsafeJvmArgument(_))));
+        assert!(matches!(validate_custom_jvm_arg("--module-path=/tmp/x"), Err(LaunchError::UnsafeJvmArgument(_))));
+        assert!(matches!(validate_custom_jvm_arg("-Djava.library.path=/tmp/x"), Err(LaunchError::UnsafeJvmArgument(_))));
+    }
+
+    #[test]
     fn launch_options_default_to_online_connection() {
         let options: LaunchOptions = serde_json::from_value(serde_json::json!({"ramMb":4096,"width":1280,"height":720,"fullscreen":false})).unwrap();
         assert!(options.connect_server);
         assert_eq!(options.launch_mode, "online");
+        assert_eq!(options.min_ram_mb, 512);
+        assert!(options.extra_jvm_args.is_empty());
     }
 }
