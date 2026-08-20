@@ -9,25 +9,26 @@ use thiserror::Error;
 use uuid::Uuid;
 use zip::ZipArchive;
 
-pub const GGO_VERSION: &str = "v35";
-pub const CORE_ARCHIVE_PATH: &str = "client/mods/gungloryonline-core-0.9.2-v35.jar";
-pub const UI_ARCHIVE_PATH: &str = "client/mods/gungloryonline-ui-0.9.2-v35.jar";
+pub const GGO_VERSION: &str = "v40";
+pub const CORE_ARCHIVE_PATH: &str =
+    "client/mods/gungloryonline-core-0.9.7-v40-server-hardening1.jar";
+pub const UI_ARCHIVE_PATH: &str = "client/mods/gungloryonline-ui-0.9.7-v40.jar";
 pub const RESOURCE_PACK_ARCHIVE_PATH: &str =
     "client/resourcepacks/GunGloryOnline-ResourcePack-1.20.1-v5-swittie-social.zip";
-pub const CORE_FILE_NAME: &str = "gungloryonline-core-0.9.2-v35.jar";
-pub const UI_FILE_NAME: &str = "gungloryonline-ui-0.9.2-v35.jar";
+pub const CORE_FILE_NAME: &str = "gungloryonline-core-0.9.7-v40-server-hardening1.jar";
+pub const UI_FILE_NAME: &str = "gungloryonline-ui-0.9.7-v40.jar";
 pub const RESOURCE_PACK_FILE_NAME: &str =
     "GunGloryOnline-ResourcePack-1.20.1-v5-swittie-social.zip";
 
 pub const CORE_SHA256: &str =
-    "61cf7220b4bb4f7635738280b33b0c23869fdf55debcd5cfe9bc03ff6aa275bf";
+    "e6521e2bb37e1d46b30a8fbc2e31fad29ff9bca9be0163ffb8018ecb5ae9f624";
 pub const UI_SHA256: &str =
-    "bec0febb77c97079a63f554e311e7d013dafa7c1b418418e1740a142642c9c67";
+    "41b506852bae157bcd75c9577dba8b498924f902089e5d54254e49df62c7fae0";
 pub const RESOURCE_PACK_SHA256: &str =
     "33c40c492ce5db2b8312dc09326a64bdec4f11006ace07ab09a41a213a9308b7";
 
-pub const CORE_SIZE: u64 = 442_056;
-pub const UI_SIZE: u64 = 102_812;
+pub const CORE_SIZE: u64 = 590_957;
+pub const UI_SIZE: u64 = 109_961;
 pub const RESOURCE_PACK_SIZE: u64 = 12_668_450;
 
 #[derive(Debug, Error)]
@@ -351,8 +352,8 @@ mod tests {
     }
 
     #[test]
-    fn current_version_is_v35() {
-        assert_eq!(GGO_VERSION, "v35");
+    fn current_version_is_v40() {
+        assert_eq!(GGO_VERSION, "v40");
     }
 
     #[test]
