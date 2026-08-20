@@ -19,5 +19,8 @@
     "icon": ["icons/icon.png"],
     "createUpdaterArtifacts": false,
     "windows": {"nsis":{"installMode":"currentUser"}}
+  },
+  "plugins": {
+    "updater": {}
   }
 }
