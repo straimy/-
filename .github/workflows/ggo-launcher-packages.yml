@@ -6,6 +6,7 @@ on:
     paths:
       - "launcher/**"
       - "site/**"
+      - "services/ggo-auth/**"
       - ".github/workflows/ggo-launcher-packages.yml"
   workflow_dispatch:
 
@@ -84,15 +85,37 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  auth:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Python syntax gate
+        run: python3 -m py_compile services/ggo-auth/server.py services/ggo-auth/test_auth.py
+      - name: GGO account API smoke
+        run: python3 services/ggo-auth/test_auth.py -v
+      - name: Validate systemd unit source
+        run: |
+          test -f services/ggo-auth/ggo-auth.service
+          grep -q '127.0.0.1' services/ggo-auth/ggo-auth.service
+          grep -q '/var/lib/ggo-auth/auth.db' services/ggo-auth/ggo-auth.service
+
   website:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-      - name: Validate static site and production manifest
+      - name: Validate portal and production manifest
         run: |
           set -euo pipefail
           test -f site/index.html
           test -f site/styles.css
+          test -f site/portal.css
+          test -f site/account/index.html
+          test -f site/account/device.html
+          test -f site/regions/index.html
+          test -f site/legal/terms.html
+          test -f site/legal/privacy.html
+          test -f site/legal/rules.html
+          test -f site/support/index.html
           test -f site/nginx/ggo.conf
           test -f site/DEPLOY-VDS.md
           python3 -m json.tool site/content/api/servers.json >/dev/null
@@ -107,6 +130,7 @@ jobs:
           grep -q 'GunGloryOnline-ClientPack-1.20.1-Forge47.4.10.zip' site/index.html
           grep -q 'gungloryonline-core-0.9.7-v40-server-hardening1.jar' site/content/manifests/beta.json
           grep -q 'GunGloryOnline-ResourcePack-1.20.1-v5-swittie-social.zip' site/content/manifests/beta.json
+          grep -q 'proxy_pass http://127.0.0.1:8787' site/nginx/ggo.conf
       - uses: actions/upload-artifact@v4
         with:
           name: GunGloryOnline-Website
@@ -116,7 +140,7 @@ jobs:
 
   report:
     if: always()
-    needs: [build, website]
+    needs: [build, auth, website]
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -132,6 +156,7 @@ jobs:
           run_attempt=${GITHUB_RUN_ATTEMPT}
           head_sha=${GITHUB_SHA}
           build_status=${{ needs.build.result }}
+          auth_status=${{ needs.auth.result }}
           website_status=${{ needs.website.result }}
           windows_artifact=GunGloryOnline-Launcher-Windows
           linux_artifact=GunGloryOnline-Launcher-Linux
