@@ -93,11 +93,14 @@ jobs:
         run: python3 -m py_compile services/ggo-auth/server.py services/ggo-auth/test_auth.py
       - name: GGO account API smoke
         run: python3 services/ggo-auth/test_auth.py -v
-      - name: Validate systemd unit source
+      - name: Validate systemd source
         run: |
+          set -euo pipefail
           test -f services/ggo-auth/ggo-auth.service
+          test -f services/ggo-auth/install.sh
           grep -q '127.0.0.1' services/ggo-auth/ggo-auth.service
           grep -q '/var/lib/ggo-auth/auth.db' services/ggo-auth/ggo-auth.service
+          grep -q 'GGO auth health: PASS' services/ggo-auth/install.sh
 
   website:
     runs-on: ubuntu-22.04
@@ -110,6 +113,7 @@ jobs:
           test -f site/styles.css
           test -f site/portal.css
           test -f site/account/index.html
+          test -f site/account/account.js
           test -f site/account/device.html
           test -f site/regions/index.html
           test -f site/legal/terms.html
@@ -134,7 +138,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: GunGloryOnline-Website
-          path: site/**
+          path: |
+            site/**
+            services/ggo-auth/**
           if-no-files-found: error
           retention-days: 30
 
