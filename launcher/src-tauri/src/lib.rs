@@ -302,6 +302,47 @@ async fn launch_training(
     .map_err(|error| error.to_string())
 }
 
+/// Compatibility command used by the React shell. It deliberately routes through the
+/// server-owned launch paths above so Online still requires a real Microsoft session,
+/// while Training can run as a local GGO/guest profile.
+#[tauri::command]
+async fn launch_game(
+    microsoft_store: State<'_, MicrosoftSessionStore>,
+    ggo_store: State<'_, GgoSessionStore>,
+    install_dir: String,
+    custom_java: Option<String>,
+    mut options: LaunchOptions,
+    server_address: Option<String>,
+    training: bool,
+    profile: Option<MinecraftProfile>,
+) -> Result<LaunchResult, String> {
+    if let Some(address) = server_address.as_deref() {
+        let expected = format!("{}:{}", minecraft::DEFAULT_SERVER, minecraft::DEFAULT_SERVER_PORT);
+        if !training && address != expected {
+            return Err(format!("unsupported server target: {address}; expected {expected}"));
+        }
+    }
+
+    if training {
+        let display_name = profile
+            .as_ref()
+            .map(|value| value.name.clone())
+            .unwrap_or_else(|| "Guest".to_string());
+        return launch_training(ggo_store, install_dir, custom_java, display_name, options).await;
+    }
+
+    options.connect_server = true;
+    options.launch_mode = "online".to_string();
+    launch_minecraft(
+        microsoft_store,
+        ggo_store,
+        install_dir,
+        custom_java,
+        options,
+    )
+    .await
+}
+
 #[tauri::command]
 async fn microsoft_login(
     store: State<'_, MicrosoftSessionStore>,
@@ -459,6 +500,7 @@ pub fn run() {
             preview_minecraft_launch,
             launch_minecraft,
             launch_training,
+            launch_game,
             microsoft_login,
             microsoft_auth_status,
             microsoft_logout,
