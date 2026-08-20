@@ -133,7 +133,8 @@ jobs:
           grep -q 'GunGloryOnline-Launcher-Fedora-RHEL.rpm' site/index.html
           grep -q 'GunGloryOnline-ClientPack-1.20.1-Forge47.4.10.zip' site/index.html
           grep -q 'gungloryonline-core-0.9.7-v40-server-hardening1.jar' site/content/manifests/beta.json
-          grep -q 'GunGloryOnline-ResourcePack-1.20.1-v5-swittie-social.zip' site/content/manifests/beta.json
+          ! grep -q 'GunGloryOnline-ResourcePack-1.20.1-v5-swittie-social.zip' site/content/manifests/beta.json
+          grep -q 'resource-pack' site/index.html
           grep -q 'proxy_pass http://127.0.0.1:8787' site/nginx/ggo.conf
       - uses: actions/upload-artifact@v4
         with:
