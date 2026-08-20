@@ -2,6 +2,7 @@ package arena.forge;
 
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.logging.LogUtils;
 import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.ChatFormatting;
@@ -13,13 +14,18 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraftforge.event.RegisterCommandsEvent;
+import net.minecraftforge.event.server.ServerStartedEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
+import org.slf4j.Logger;
 
 /** Explicit, OP-only migration cleaner for the imported Classic Arena command-block layer. */
 @Mod.EventBusSubscriber(modid = "gunnerarena", bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class GgoLegacyCommandBlockCleaner {
     public static final String VERSION = "GGO-LEGACY-CLEAN-V1";
+    public static final String STARTUP_PROPERTY = "ggo.legacy.cleanup";
+    public static final String EXPECTED_PROPERTY = "ggo.legacy.cleanup.expected";
+    private static final Logger LOG = LogUtils.getLogger();
 
     // Exact bounds recovered from the supplied world audit; all 992 legacy blocks are inside.
     private static final int MIN_X = 32, MAX_X = 213;
@@ -45,12 +51,37 @@ public final class GgoLegacyCommandBlockCleaner {
                         ctx.getSource(),
                         StringArgumentType.getString(ctx, "confirmation")
                     ))));
-
         event.getDispatcher().register(
             Commands.literal("ggo")
                 .requires(source -> source.hasPermission(2))
                 .then(Commands.literal("legacy").then(commandBlocks))
         );
+    }
+
+    /** One-shot destructive cleanup for a disposable/final candidate copy only. */
+    @SubscribeEvent
+    public static void startupCleanup(ServerStartedEvent event) {
+        if (!Boolean.getBoolean(STARTUP_PROPERTY)) return;
+        var server = event.getServer();
+        ServerLevel level = server.overworld();
+        int expected = Integer.getInteger(EXPECTED_PROPERTY, 992);
+        int before = -1;
+        int removed = 0;
+        int after = -1;
+        String error = "none";
+        boolean pass;
+        try {
+            before = find(level).size();
+            if (before == expected) removed = stripLevel(level);
+            after = find(level).size();
+            pass = before == expected && removed == expected && after == 0;
+        } catch (Exception ex) {
+            pass = false;
+            error = ex.getClass().getSimpleName() + ":" + String.valueOf(ex.getMessage());
+        }
+        LOG.info("[GGO-LEGACY-CLEAN-STARTUP] result={} expected={} before={} removed={} after={} error={}",
+            pass ? "PASS" : "FAIL", expected, before, removed, after, error);
+        server.halt(false);
     }
 
     private static int strip(ServerLevel level, net.minecraft.commands.CommandSourceStack source, String confirmation) {
@@ -60,24 +91,25 @@ public final class GgoLegacyCommandBlockCleaner {
             ));
             return 0;
         }
-
         List<BlockPos> found = find(level);
         if (found.isEmpty()) {
             source.sendSuccess(() -> Component.literal("[GGO] No legacy command blocks found.").withStyle(ChatFormatting.GREEN), false);
             return Command.SINGLE_SUCCESS;
         }
+        int removed = stripLevel(level);
+        source.sendSuccess(() -> Component.literal(
+            "[GGO] Removed " + removed + " legacy command blocks. Restart/audit the clean world before production."
+        ).withStyle(ChatFormatting.RED, ChatFormatting.BOLD), true);
+        return removed > 0 ? Command.SINGLE_SUCCESS : 0;
+    }
 
+    private static int stripLevel(ServerLevel level) {
         int removed = 0;
-        for (BlockPos pos : found) {
+        for (BlockPos pos : find(level)) {
             if (!isCommandBlock(level, pos)) continue;
             if (level.setBlockAndUpdate(pos, Blocks.AIR.defaultBlockState())) removed++;
         }
-
-        int finalRemoved = removed;
-        source.sendSuccess(() -> Component.literal(
-            "[GGO] Removed " + finalRemoved + " legacy command blocks. Restart/audit the clean world before production."
-        ).withStyle(ChatFormatting.RED, ChatFormatting.BOLD), true);
-        return finalRemoved > 0 ? Command.SINGLE_SUCCESS : 0;
+        return removed;
     }
 
     private static List<BlockPos> find(ServerLevel level) {
@@ -86,7 +118,6 @@ public final class GgoLegacyCommandBlockCleaner {
         int maxChunkX = Math.floorDiv(MAX_X, 16);
         int minChunkZ = Math.floorDiv(MIN_Z, 16);
         int maxChunkZ = Math.floorDiv(MAX_Z, 16);
-
         for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
             for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
                 LevelChunk chunk = level.getChunk(chunkX, chunkZ);
