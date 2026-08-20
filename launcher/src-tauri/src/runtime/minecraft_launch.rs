@@ -3,7 +3,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
     collections::HashSet,
-    env, fs,
+    env,
+    fs::{self, File},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
 };
@@ -162,11 +163,15 @@ fn build_launch(
     collect_libraries(install_dir, &vanilla, &mut classpath, &mut seen)?;
     collect_libraries(install_dir, &forge, &mut classpath, &mut seen)?;
 
-    // Forge 47's installer produces a full SRG Minecraft module under libraries/net/minecraft/client.
-    // Adding the inherited versions/1.20.1/1.20.1.jar as well makes Java resolve two modules
-    // exporting net.minecraft.* (minecraft + automatic module _1._20._1), which crashes ModLauncher.
-    // Keep the vanilla client jar on disk for runtime installation/repair, but do not place it on
-    // the Forge launch classpath.
+    // Forge 47's processor creates the canonical SRG Minecraft runtime. Some generated
+    // profiles also expose additional processor/output jars through the inherited classpath.
+    // If more than one of those jars contains Minecraft classes, Java 17 treats them as
+    // separate modules (for example `minecraft` and `_1._20._1`) and ModLauncher aborts.
+    // Inspect jar contents and keep only the SRG Minecraft runtime in the classpath.
+    filter_duplicate_minecraft_runtime_jars(&mut classpath);
+
+    // Keep the vanilla client jar on disk for Forge installation/repair, but never append it
+    // manually to the Forge classpath. The SRG runtime above is the Minecraft game module.
     let client_jar = install_dir.join("versions").join(inherited).join(format!("{inherited}.jar"));
     if !client_jar.exists() { return Err(LaunchError::MissingClientJar(client_jar.display().to_string())); }
 
@@ -244,6 +249,32 @@ fn collect_libraries(install_dir: &Path, version: &Value, output: &mut Vec<PathB
         if seen.insert(full.clone()) { output.push(full); }
     }
     Ok(())
+}
+
+fn filter_duplicate_minecraft_runtime_jars(classpath: &mut Vec<PathBuf>) {
+    classpath.retain(|path| {
+        if !jar_contains_minecraft_runtime(path) {
+            return true;
+        }
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.ends_with("-srg.jar"))
+    });
+}
+
+fn jar_contains_minecraft_runtime(path: &Path) -> bool {
+    let Ok(file) = File::open(path) else { return false; };
+    let Ok(mut archive) = zip::ZipArchive::new(file) else { return false; };
+    for marker in [
+        "net/minecraft/client/Minecraft.class",
+        "net/minecraft/server/MinecraftServer.class",
+        "com/mojang/blaze3d/systems/RenderSystem.class",
+    ] {
+        if archive.by_name(marker).is_ok() {
+            return true;
+        }
+    }
+    false
 }
 
 fn maven_path(name: &str) -> Option<PathBuf> {
