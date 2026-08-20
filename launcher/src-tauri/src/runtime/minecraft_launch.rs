@@ -161,9 +161,15 @@ fn build_launch(
     let mut seen = HashSet::new();
     collect_libraries(install_dir, &vanilla, &mut classpath, &mut seen)?;
     collect_libraries(install_dir, &forge, &mut classpath, &mut seen)?;
+
+    // Forge 47's installer produces a full SRG Minecraft module under libraries/net/minecraft/client.
+    // Adding the inherited versions/1.20.1/1.20.1.jar as well makes Java resolve two modules
+    // exporting net.minecraft.* (minecraft + automatic module _1._20._1), which crashes ModLauncher.
+    // Keep the vanilla client jar on disk for runtime installation/repair, but do not place it on
+    // the Forge launch classpath.
     let client_jar = install_dir.join("versions").join(inherited).join(format!("{inherited}.jar"));
     if !client_jar.exists() { return Err(LaunchError::MissingClientJar(client_jar.display().to_string())); }
-    classpath.push(client_jar);
+
     let classpath_string = env::join_paths(&classpath).map_err(|e| LaunchError::Runtime(format!("invalid classpath: {e}")))?.to_string_lossy().into_owned();
 
     let game_dir_owned = install_dir.to_string_lossy().into_owned();
