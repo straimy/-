@@ -5,11 +5,12 @@ on:
     branches: ["launcher/bootstrap-v0.1"]
     paths:
       - "launcher/**"
+      - "site/**"
       - ".github/workflows/ggo-launcher-packages.yml"
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -92,3 +93,32 @@ jobs:
           path: site/**
           if-no-files-found: error
           retention-days: 30
+
+  report:
+    if: always()
+    needs: [build, website]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+      - name: Publish observable launcher run status
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .ci
+          cat > .ci/ggo-launcher-last-run.txt <<EOF
+          run_id=${GITHUB_RUN_ID}
+          run_attempt=${GITHUB_RUN_ATTEMPT}
+          head_sha=${GITHUB_SHA}
+          build_status=${{ needs.build.result }}
+          website_status=${{ needs.website.result }}
+          windows_artifact=GunGloryOnline-Launcher-Windows
+          linux_artifact=GunGloryOnline-Launcher-Linux
+          website_artifact=GunGloryOnline-Website
+          EOF
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .ci/ggo-launcher-last-run.txt
+          git commit -m "ci: publish launcher run ${GITHUB_RUN_ID}" || exit 0
+          git push origin HEAD:launcher/bootstrap-v0.1
