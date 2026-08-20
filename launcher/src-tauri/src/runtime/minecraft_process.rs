@@ -1,12 +1,14 @@
 use crate::core::microsoft_auth::MicrosoftSession;
 use serde_json::Value;
-use std::{fs, path::Path};
+use std::{env, fs, path::Path};
 
 use super::{
     minecraft::{check_runtime, MINECRAFT_VERSION},
     minecraft_launch::{self, LaunchError, LaunchOptions, LaunchResult},
     minecraft_natives,
 };
+
+const FORGE_JAVA_COMPAT: &str = "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED";
 
 pub fn launch_with_natives(
     install_dir: &Path,
@@ -42,5 +44,32 @@ pub fn launch_with_natives(
         &natives_dir,
     )?;
 
-    minecraft_launch::launch(install_dir, custom_java, session, options)
+    let previous = env::var("JDK_JAVA_OPTIONS").ok();
+    let mut combined = previous.clone().unwrap_or_default();
+    if !combined.contains(FORGE_JAVA_COMPAT) {
+        if !combined.trim().is_empty() {
+            combined.push(' ');
+        }
+        combined.push_str(FORGE_JAVA_COMPAT);
+    }
+    env::set_var("JDK_JAVA_OPTIONS", &combined);
+
+    let result = minecraft_launch::launch(install_dir, custom_java, session, options);
+
+    match previous {
+        Some(value) => env::set_var("JDK_JAVA_OPTIONS", value),
+        None => env::remove_var("JDK_JAVA_OPTIONS"),
+    }
+
+    result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn forge_compat_opens_java_lang_invoke() {
+        assert_eq!(FORGE_JAVA_COMPAT, "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED");
+    }
 }
