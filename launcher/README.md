@@ -16,13 +16,14 @@ The current Minecraft stack is treated as `GunGlory Runtime v1`, not as the perm
 The launcher can currently:
 
 - use a native folder picker for the game directory;
-- use native ZIP pickers for the supplied GunGloryOnline v29 package and Resource Pack v5;
-- verify the pinned size and SHA256 of the GGO client files before installing them;
+- use native ZIP pickers for a local GunGloryOnline fallback package;
+- verify pinned size and SHA256 values before installing game files;
 - install/verify Minecraft 1.20.1 + Forge 47.4.10 Runtime v1;
 - authenticate through the Microsoft/Minecraft provider;
-- launch with configured RAM, resolution/fullscreen and the GGO server target.
+- launch with configured RAM, resolution/fullscreen and the GGO server target;
+- load the production server/news catalogs from the public GGO site when production content is available.
 
-Without a production manifest/VDS, the local ZIP import path is used for GGO game files.
+Production Runtime v1 server target: `2.26.100.125:24842`.
 
 ## Development
 
@@ -37,14 +38,20 @@ npm install
 npm run tauri dev
 ```
 
-## Test packages
+## Launcher packages
 
-`.github/workflows/ggo-launcher-packages.yml` builds downloadable unsigned test artifacts on the native target OS:
+`.github/workflows/ggo-launcher-packages.yml` builds downloadable unsigned beta artifacts on the native target OS:
 
 - Windows: NSIS `.exe`
 - Linux: `.AppImage` built on Ubuntu 22.04 for a conservative glibc baseline
+- Website: static `site/` bundle with download page, guide and launcher content catalogs
 
-These are test builds. Production releases still need signing, the production artifact manifest/CDN, and updater signing.
+The CI output names are normalized to:
+
+- `GunGloryOnline-Launcher-Windows.exe`
+- `GunGloryOnline-Launcher-Linux.AppImage`
+
+Production releases still need signing and updater signing. The game-content manifest is intentionally fail-closed until final client artifacts are published.
 
 ## Security
 
