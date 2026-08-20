@@ -11,7 +11,7 @@ use thiserror::Error;
 pub const MINECRAFT_VERSION: &str = "1.20.1";
 pub const FORGE_VERSION: &str = "47.4.10";
 pub const REQUIRED_JAVA_MAJOR: u8 = 17;
-pub const DEFAULT_SERVER: &str = "31.77.232.254";
+pub const DEFAULT_SERVER: &str = "2.26.100.125";
 pub const DEFAULT_SERVER_PORT: u16 = 24842;
 
 #[derive(Debug, Error)]
@@ -80,49 +80,56 @@ impl GameRuntime for MinecraftForgeRuntime {
             Err(MinecraftRuntimeError::Incomplete(check.missing.join(", ")))
         }
     }
+}
 
-    fn launch(&self, _install_dir: &Path) -> Result<(), Self::Error> {
-        Err(MinecraftRuntimeError::IdentityRequired)
+pub fn detect_java(custom_java: Option<&str>) -> Vec<JavaRuntimeInfo> {
+    let mut candidates = Vec::new();
+    let mut seen = HashSet::new();
+
+    if let Some(path) = custom_java.map(str::trim).filter(|value| !value.is_empty()) {
+        push_candidate(&mut candidates, &mut seen, PathBuf::from(path), "custom");
     }
+    if let Ok(java_home) = env::var("JAVA_HOME") {
+        push_candidate(
+            &mut candidates,
+            &mut seen,
+            PathBuf::from(java_home).join("bin").join(java_binary()),
+            "JAVA_HOME",
+        );
+    }
+    if let Some(path) = find_on_path(java_binary()) {
+        push_candidate(&mut candidates, &mut seen, path, "PATH");
+    }
+
+    candidates
+        .into_iter()
+        .filter_map(|candidate| inspect_java(candidate).ok())
+        .collect()
 }
 
 pub fn check_runtime(install_dir: &Path, custom_java: Option<&str>) -> RuntimeCheck {
-    let forge_profile = format!("{MINECRAFT_VERSION}-forge-{FORGE_VERSION}");
-    let version_profile_path = install_dir
-        .join("versions")
-        .join(&forge_profile)
-        .join(format!("{forge_profile}.json"));
-    let vanilla_profile_path = install_dir
-        .join("versions")
-        .join(MINECRAFT_VERSION)
-        .join(format!("{MINECRAFT_VERSION}.json"));
-    let forge_library = install_dir
-        .join("libraries")
-        .join("net")
-        .join("minecraftforge")
-        .join("forge")
-        .join(format!("{MINECRAFT_VERSION}-{FORGE_VERSION}"));
-    let assets = install_dir.join("assets");
-    let libraries = install_dir.join("libraries");
-
-    let mut missing = Vec::new();
-    for (label, path) in [
-        ("Forge version profile", &version_profile_path),
-        ("Minecraft 1.20.1 profile", &vanilla_profile_path),
-        ("Forge libraries", &forge_library),
-        ("Minecraft libraries", &libraries),
-        ("Minecraft assets", &assets),
-    ] {
-        if !path.exists() {
-            missing.push(format!("{label}: {}", path.display()));
-        }
-    }
-
     let java = detect_java(custom_java)
         .into_iter()
         .find(|candidate| candidate.compatible);
+    let version_profile = format!("1.20.1-forge-{FORGE_VERSION}");
+    let mut missing = Vec::new();
+
     if java.is_none() {
-        missing.push("Java 17 runtime".to_string());
+        missing.push("Java 17".to_string());
+    }
+    let client_jar = install_dir
+        .join("versions")
+        .join(MINECRAFT_VERSION)
+        .join(format!("{MINECRAFT_VERSION}.jar"));
+    if !client_jar.is_file() {
+        missing.push(format!("Minecraft {MINECRAFT_VERSION}"));
+    }
+    let forge_json = install_dir
+        .join("versions")
+        .join(&version_profile)
+        .join(format!("{version_profile}.json"));
+    if !forge_json.is_file() {
+        missing.push(format!("Forge {FORGE_VERSION}"));
     }
 
     RuntimeCheck {
@@ -131,130 +138,92 @@ pub fn check_runtime(install_dir: &Path, custom_java: Option<&str>) -> RuntimeCh
         forge_version: FORGE_VERSION,
         java,
         missing,
-        version_profile: forge_profile,
+        version_profile,
         game_directory: install_dir.to_string_lossy().into_owned(),
     }
 }
 
 pub fn prepare_launch(install_dir: &Path, custom_java: Option<&str>) -> LaunchPreparation {
     let check = check_runtime(install_dir, custom_java);
-    let java_path = check.java.as_ref().map(|java| java.path.clone());
-    let blockers = check.missing.clone();
-
+    let mut extra_game_args = Vec::new();
+    extra_game_args.push("--server".to_string());
+    extra_game_args.push(DEFAULT_SERVER.to_string());
+    extra_game_args.push("--port".to_string());
+    extra_game_args.push(DEFAULT_SERVER_PORT.to_string());
     LaunchPreparation {
         ready: check.ready,
-        java_path,
+        java_path: check.java.as_ref().map(|java| java.path.clone()),
         game_directory: check.game_directory,
         version_profile: check.version_profile,
         server: DEFAULT_SERVER,
         port: DEFAULT_SERVER_PORT,
-        extra_game_args: vec![
-            "--server".to_string(),
-            DEFAULT_SERVER.to_string(),
-            "--port".to_string(),
-            DEFAULT_SERVER_PORT.to_string(),
-        ],
-        blockers,
+        extra_game_args,
+        blockers: check.missing,
     }
 }
 
-pub fn detect_java(custom_path: Option<&str>) -> Vec<JavaRuntimeInfo> {
-    let mut candidates = Vec::new();
-    if let Some(path) = custom_path.map(str::trim).filter(|path| !path.is_empty()) {
-        candidates.push(JavaCandidate {
-            path: PathBuf::from(path),
-            source: "custom",
-        });
-    }
-
-    if let Ok(java_home) = env::var("JAVA_HOME") {
-        let executable = if cfg!(windows) { "java.exe" } else { "java" };
-        candidates.push(JavaCandidate {
-            path: PathBuf::from(java_home).join("bin").join(executable),
-            source: "JAVA_HOME",
-        });
-    }
-
-    candidates.push(JavaCandidate {
-        path: PathBuf::from(if cfg!(windows) { "java.exe" } else { "java" }),
-        source: "PATH",
-    });
-
-    let mut seen = HashSet::new();
-    candidates
-        .into_iter()
-        .filter(|candidate| seen.insert(candidate.path.clone()))
-        .filter_map(probe_java)
-        .collect()
+fn java_binary() -> &'static str {
+    if cfg!(windows) { "java.exe" } else { "java" }
 }
 
-fn probe_java(candidate: JavaCandidate) -> Option<JavaRuntimeInfo> {
-    let output = Command::new(&candidate.path).arg("-version").output().ok()?;
-    if !output.status.success() {
-        return None;
+fn push_candidate(
+    candidates: &mut Vec<JavaCandidate>,
+    seen: &mut HashSet<String>,
+    path: PathBuf,
+    source: &'static str,
+) {
+    let key = path.to_string_lossy().to_ascii_lowercase();
+    if seen.insert(key) {
+        candidates.push(JavaCandidate { path, source });
     }
+}
 
-    let mut text = String::from_utf8_lossy(&output.stderr).to_string();
-    if text.trim().is_empty() {
-        text = String::from_utf8_lossy(&output.stdout).to_string();
-    }
-    let version = extract_java_version(&text)?;
-    let major = java_major(&version)?;
-
-    Some(JavaRuntimeInfo {
+fn inspect_java(candidate: JavaCandidate) -> Result<JavaRuntimeInfo, std::io::Error> {
+    let output = Command::new(&candidate.path).arg("-version").output()?;
+    let raw = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stderr),
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let major = parse_java_major(&raw).unwrap_or_default();
+    Ok(JavaRuntimeInfo {
         path: candidate.path.to_string_lossy().into_owned(),
-        version,
+        version: raw.lines().next().unwrap_or_default().trim().to_string(),
         major,
         compatible: major == REQUIRED_JAVA_MAJOR as u32,
         source: candidate.source,
     })
 }
 
-fn extract_java_version(text: &str) -> Option<String> {
-    let version_marker = "version \"";
-    if let Some(start) = text.find(version_marker) {
-        let rest = &text[start + version_marker.len()..];
-        return rest.find('"').map(|end| rest[..end].to_string());
+fn parse_java_major(raw: &str) -> Option<u32> {
+    let quoted = raw.split('"').nth(1)?;
+    let first = quoted.split('.').next()?;
+    let value = first.parse::<u32>().ok()?;
+    if value == 1 {
+        quoted.split('.').nth(1)?.parse::<u32>().ok()
+    } else {
+        Some(value)
     }
-
-    text.split_whitespace()
-        .find(|part| {
-            part.chars()
-                .next()
-                .is_some_and(|ch| ch.is_ascii_digit())
-                && part.contains('.')
-        })
-        .map(|part| part.trim_matches('"').to_string())
 }
 
-fn java_major(version: &str) -> Option<u32> {
-    let mut parts = version.split('.');
-    let first = parts.next()?.parse::<u32>().ok()?;
-    if first == 1 {
-        parts.next()?.parse::<u32>().ok()
-    } else {
-        Some(first)
-    }
+fn find_on_path(binary: &str) -> Option<PathBuf> {
+    let paths = env::var_os("PATH")?;
+    env::split_paths(&paths)
+        .map(|path| path.join(binary))
+        .find(|path| path.is_file())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{extract_java_version, java_major};
+    use super::parse_java_major;
 
     #[test]
-    fn parses_modern_openjdk_version() {
-        let text = "openjdk version \"17.0.12\" 2024-07-16\nOpenJDK Runtime Environment";
-        assert_eq!(extract_java_version(text).as_deref(), Some("17.0.12"));
-        assert_eq!(java_major("17.0.12"), Some(17));
+    fn parses_java_17() {
+        assert_eq!(parse_java_major("openjdk version \"17.0.12\" 2024-07-16"), Some(17));
     }
 
     #[test]
-    fn parses_legacy_java_major() {
-        assert_eq!(java_major("1.8.0_412"), Some(8));
-    }
-
-    #[test]
-    fn rejects_non_version_text() {
-        assert_eq!(extract_java_version("java command failed"), None);
+    fn parses_legacy_java() {
+        assert_eq!(parse_java_major("java version \"1.8.0_402\""), Some(8));
     }
 }
