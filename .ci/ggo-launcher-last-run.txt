@@ -1,6 +1,6 @@
-run_id=32346543716
+run_id=32346671767
 run_attempt=1
-head_sha=fe14c24faadb88516108bd88f40c9a4f3ed07860
+head_sha=e795c9970f4d6ee929eda503758d796ad7f6f9ce
 build_status=failure
 website_status=success
 windows_artifact=GunGloryOnline-Launcher-Windows
