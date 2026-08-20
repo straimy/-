@@ -21,6 +21,8 @@
     "windows": {"nsis":{"installMode":"currentUser"}}
   },
   "plugins": {
-    "updater": {}
+    "updater": {
+      "pubkey": "DISABLED_UNTIL_SIGNED_RELEASES"
+    }
   }
 }
