@@ -27,6 +27,8 @@ pub enum LaunchError {
     MissingLibrary(String),
     #[error("Minecraft client jar is missing: {0}")]
     MissingClientJar(String),
+    #[error("unresolved launcher placeholder: {0}")]
+    UnresolvedPlaceholder(String),
     #[error("failed to start Java: {0}")]
     Spawn(String),
 }
@@ -167,10 +169,15 @@ fn build_launch(
     let game_dir_owned = install_dir.to_string_lossy().into_owned();
     let assets_root_owned = install_dir.join("assets").to_string_lossy().into_owned();
     let natives_owned = natives_dir.to_string_lossy().into_owned();
+    let library_directory_owned = install_dir.join("libraries").to_string_lossy().into_owned();
+    let classpath_separator_owned = if cfg!(windows) { ";".to_string() } else { ":".to_string() };
+    let empty = "".to_string();
     let vars = vec![
         ("${auth_player_name}", session.minecraft_profile.name.as_str()),
         ("${auth_uuid}", session.minecraft_profile.id.as_str()),
         ("${auth_access_token}", session.minecraft_access_token.as_str()),
+        ("${auth_xuid}", empty.as_str()),
+        ("${clientid}", empty.as_str()),
         ("${user_type}", "msa"),
         ("${version_name}", forge_id.as_str()),
         ("${game_directory}", game_dir_owned.as_str()),
@@ -178,6 +185,8 @@ fn build_launch(
         ("${assets_index_name}", assets.as_str()),
         ("${version_type}", "release"),
         ("${natives_directory}", natives_owned.as_str()),
+        ("${library_directory}", library_directory_owned.as_str()),
+        ("${classpath_separator}", classpath_separator_owned.as_str()),
         ("${launcher_name}", "GunGloryOnline"),
         ("${launcher_version}", env!("CARGO_PKG_VERSION")),
         ("${classpath}", classpath_string.as_str()),
@@ -197,6 +206,7 @@ fn build_launch(
     jvm_args.insert(0, format!("-Xmx{}M", options.ram_mb.clamp(1024, 32768)));
     jvm_args.insert(0, "-Xms512M".into());
     substitute_all(&mut jvm_args, &vars);
+    ensure_no_placeholders(&jvm_args)?;
 
     let mut game_args = Vec::new();
     collect_arguments(&vanilla, "game", &mut game_args);
@@ -206,6 +216,7 @@ fn build_launch(
         if let Some(legacy) = forge.get("minecraftArguments").and_then(Value::as_str) { game_args.extend(split_legacy_args(legacy)); }
     }
     substitute_all(&mut game_args, &vars);
+    ensure_no_placeholders(&game_args)?;
     game_args.extend(["--width".into(), options.width.clamp(640, 7680).to_string(), "--height".into(), options.height.clamp(480, 4320).to_string()]);
     if options.fullscreen { game_args.push("--fullscreen".into()); }
     if options.connect_server {
@@ -278,6 +289,14 @@ fn rule_matches(rule: &Value) -> bool {
 fn substitute_all(args: &mut [String], vars: &[(&str, &str)]) {
     for arg in args { for (key, value) in vars { *arg = arg.replace(key, value); } }
 }
+
+fn ensure_no_placeholders(args: &[String]) -> Result<(), LaunchError> {
+    if let Some(arg) = args.iter().find(|arg| arg.contains("${")) {
+        return Err(LaunchError::UnresolvedPlaceholder(arg.clone()));
+    }
+    Ok(())
+}
+
 fn split_legacy_args(input: &str) -> Vec<String> { input.split_whitespace().map(ToOwned::to_owned).collect() }
 fn redact_token_args(mut args: Vec<String>) -> Vec<String> {
     for index in 0..args.len() { if index > 0 && args[index - 1] == "--accessToken" { args[index] = "<redacted>".to_string(); } }
@@ -295,9 +314,17 @@ mod tests {
 
     #[test]
     fn substitutes_placeholders() {
-        let mut args = vec!["--username".into(), "${auth_player_name}".into()];
-        substitute_all(&mut args, &[("${auth_player_name}", "Player")]);
+        let mut args = vec!["--username".into(), "${auth_player_name}".into(), "${library_directory}".into()];
+        substitute_all(&mut args, &[("${auth_player_name}", "Player"), ("${library_directory}", "/tmp/libs")]);
         assert_eq!(args[1], "Player");
+        assert_eq!(args[2], "/tmp/libs");
+        assert!(ensure_no_placeholders(&args).is_ok());
+    }
+
+    #[test]
+    fn unresolved_placeholders_fail_closed() {
+        let args = vec!["--module-path".to_string(), "${library_directory}/mods".to_string()];
+        assert!(matches!(ensure_no_placeholders(&args), Err(LaunchError::UnresolvedPlaceholder(_))));
     }
 
     #[test]
