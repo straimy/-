@@ -20,6 +20,7 @@ use runtime::{
     minecraft_launch::{self, LaunchCommandPreview, LaunchOptions, LaunchResult},
     minecraft_process,
 };
+use sha2::{Digest, Sha256};
 use std::{path::PathBuf, time::Instant};
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
@@ -277,21 +278,12 @@ async fn launch_training(
         )
     } else {
         identity_bridge::write(&root, None, &guest_name, "default", "guest")?;
-        (guest_name, Uuid::new_v4().simple().to_string())
+        (guest_name.clone(), stable_local_profile_id(&guest_name))
     };
 
     options.connect_server = false;
     options.launch_mode = "training".to_string();
-    let local_session = MicrosoftSession {
-        access_token: String::new(),
-        refresh_token: None,
-        expires_in_seconds: 0,
-        minecraft_access_token: "0".to_string(),
-        minecraft_profile: MinecraftProfile {
-            id: runtime_id,
-            name: runtime_name,
-        },
-    };
+    let local_session = local_session(runtime_name, runtime_id);
 
     minecraft_process::launch_with_natives(
         &root,
@@ -302,9 +294,24 @@ async fn launch_training(
     .map_err(|error| error.to_string())
 }
 
-/// Compatibility command used by the React shell. It deliberately routes through the
-/// server-owned launch paths above so Online still requires a real Microsoft session,
-/// while Training can run as a local GGO/guest profile.
+fn stable_local_profile_id(display_name: &str) -> String {
+    let digest = Sha256::digest(format!("GunGloryOnline:{display_name}").as_bytes());
+    hex::encode(&digest[..16])
+}
+
+fn local_session(name: String, id: String) -> MicrosoftSession {
+    MicrosoftSession {
+        access_token: String::new(),
+        refresh_token: None,
+        expires_in_seconds: 0,
+        minecraft_access_token: "0".to_string(),
+        minecraft_profile: MinecraftProfile { id, name },
+    }
+}
+
+/// Compatibility command used by the React shell. Online can use a real Microsoft
+/// session when present, but GunGloryOnline/guest identities are first-class too because
+/// the GGO server owns identity/auth above the vanilla offline-mode transport.
 #[tauri::command]
 async fn launch_game(
     microsoft_store: State<'_, MicrosoftSessionStore>,
@@ -333,14 +340,49 @@ async fn launch_game(
 
     options.connect_server = true;
     options.launch_mode = "online".to_string();
-    launch_minecraft(
-        microsoft_store,
-        ggo_store,
-        install_dir,
-        custom_java,
-        options,
+
+    if microsoft_store.snapshot().await.is_some() {
+        return launch_minecraft(
+            microsoft_store,
+            ggo_store,
+            install_dir,
+            custom_java,
+            options,
+        )
+        .await;
+    }
+
+    let root = PathBuf::from(&install_dir);
+    let (runtime_name, runtime_id) = if let Some(ggo) = ggo_store.snapshot().await {
+        identity_bridge::write(
+            &root,
+            Some(&ggo.profile.id),
+            &ggo.profile.display_name,
+            &ggo.profile.skin_source,
+            "ggo",
+        )?;
+        (ggo.profile.display_name, ggo.profile.id.replace('-', ""))
+    } else {
+        let name = profile
+            .as_ref()
+            .map(|value| value.name.trim())
+            .filter(|value| !value.is_empty())
+            .unwrap_or("Guest")
+            .chars()
+            .take(16)
+            .collect::<String>();
+        identity_bridge::write(&root, None, &name, "default", "guest")?;
+        let id = stable_local_profile_id(&name);
+        (name, id)
+    };
+    let session = local_session(runtime_name, runtime_id);
+    minecraft_process::launch_with_natives(
+        &root,
+        custom_java.as_deref(),
+        &session,
+        &options,
     )
-    .await
+    .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
