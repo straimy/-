@@ -9,7 +9,6 @@ import secrets
 import sqlite3
 import time
 import urllib.parse
-from http import HTTPStatus
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -178,17 +177,14 @@ class Handler(BaseHTTPRequestHandler):
         access = self.bearer() or self.cookie_token()
         if not access:
             return None
-        row = db.execute(
+        return db.execute(
             "SELECT u.* FROM access_sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?",
             (token_hash(access), now()),
         ).fetchone()
-        return row
 
     def same_origin_ok(self):
         origin = self.headers.get("Origin")
-        if not origin:
-            return True
-        return origin.rstrip("/") == PUBLIC_URL
+        return not origin or origin.rstrip("/") == PUBLIC_URL
 
     def set_session_cookie(self, access):
         secure = PUBLIC_URL.startswith("https://")
@@ -212,18 +208,12 @@ class Handler(BaseHTTPRequestHandler):
         data = self.read_json()
         if data is None:
             return self.json(400, {"error": "invalid_json"})
-        if path == "/api/v1/auth/register":
-            return self.register(data)
-        if path == "/api/v1/auth/login":
-            return self.login(data)
-        if path == "/api/v1/auth/logout":
-            return self.logout(data)
-        if path == "/api/v1/auth/device/start":
-            return self.device_start(data)
-        if path == "/api/v1/auth/device/approve":
-            return self.device_approve(data)
-        if path == "/api/v1/auth/device/token":
-            return self.device_token(data)
+        if path == "/api/v1/auth/register": return self.register(data)
+        if path == "/api/v1/auth/login": return self.login(data)
+        if path == "/api/v1/auth/logout": return self.logout(data)
+        if path == "/api/v1/auth/device/start": return self.device_start(data)
+        if path == "/api/v1/auth/device/approve": return self.device_approve(data)
+        if path == "/api/v1/auth/device/token": return self.device_token(data)
         return self.json(404, {"error": "not_found"})
 
     def do_PUT(self):
@@ -231,17 +221,14 @@ class Handler(BaseHTTPRequestHandler):
         data = self.read_json()
         if data is None:
             return self.json(400, {"error": "invalid_json"})
-        if path == "/api/v1/me/skin/source":
-            return self.update_skin(data)
-        if path == "/api/v1/me/profile":
-            return self.update_profile(data)
+        if path == "/api/v1/me/skin/source": return self.update_skin(data)
+        if path == "/api/v1/me/profile": return self.update_profile(data)
         if path == "/api/v1/me/identities/minecraft":
             return self.json(501, {"error": "minecraft_link_not_enabled", "message": "Minecraft identity verification is not enabled yet."})
         return self.json(404, {"error": "not_found"})
 
     def register(self, data):
-        if not self.same_origin_ok():
-            return self.json(403, {"error": "origin_rejected"})
+        if not self.same_origin_ok(): return self.json(403, {"error": "origin_rejected"})
         username = str(data.get("username", "")).strip()
         password = str(data.get("password", ""))
         region = str(data.get("region", "eu"))
@@ -260,7 +247,7 @@ class Handler(BaseHTTPRequestHandler):
             cleanup(db)
             try:
                 db.execute(
-                    "INSERT INTO users(id,username_norm,display_name,password_salt,password_hash,skin_source,region,language,country,created_at) VALUES(?,?,?,?,?,'default',?,?,?,?,?)",
+                    "INSERT INTO users(id,username_norm,display_name,password_salt,password_hash,skin_source,region,language,country,created_at) VALUES(?,?,?,?,?,'default',?,?,?,?)",
                     (user_id, username.lower(), username, salt, digest, region, language, country, now()),
                 )
             except sqlite3.IntegrityError:
@@ -271,8 +258,7 @@ class Handler(BaseHTTPRequestHandler):
         return self.json(201, {"access_token": access, "refresh_token": refresh, "profile": profile(user)}, {"Set-Cookie": self.set_session_cookie(access)})
 
     def login(self, data):
-        if not self.same_origin_ok():
-            return self.json(403, {"error": "origin_rejected"})
+        if not self.same_origin_ok(): return self.json(403, {"error": "origin_rejected"})
         username = str(data.get("username", "")).strip().lower()
         password = str(data.get("password", ""))
         with connect() as db:
@@ -315,8 +301,7 @@ class Handler(BaseHTTPRequestHandler):
         return self.json(200, {"device_id": device_id, "verification_uri": uri, "expires_in": DEVICE_TTL, "interval": 3})
 
     def device_approve(self, data):
-        if not self.same_origin_ok():
-            return self.json(403, {"error": "origin_rejected"})
+        if not self.same_origin_ok(): return self.json(403, {"error": "origin_rejected"})
         device_id = str(data.get("device_id", ""))
         with connect() as db:
             cleanup(db)
@@ -336,10 +321,8 @@ class Handler(BaseHTTPRequestHandler):
             cleanup(db)
             flow = db.execute("SELECT * FROM device_flows WHERE device_id=? AND expires_at>?", (device_id, now())).fetchone()
             if not flow: return self.json(404, {"error": "device_flow_not_found"})
-            if not hmac.compare_digest(challenge, flow["code_challenge"]):
-                return self.json(401, {"error": "pkce_failed"})
-            if not flow["approved"] or not flow["user_id"]:
-                return self.json(428, {"error": "authorization_pending"})
+            if not hmac.compare_digest(challenge, flow["code_challenge"]): return self.json(401, {"error": "pkce_failed"})
+            if not flow["approved"] or not flow["user_id"]: return self.json(428, {"error": "authorization_pending"})
             access, refresh = issue_session(db, flow["user_id"])
             db.execute("DELETE FROM device_flows WHERE device_id=?", (device_id,))
             db.commit()
@@ -353,7 +336,8 @@ class Handler(BaseHTTPRequestHandler):
             if not user: return self.json(401, {"error": "not_authenticated"})
             db.execute("UPDATE users SET skin_source=? WHERE id=?", (source, user["id"]))
             db.commit()
-        return self.json(200, {"ok": True})
+            updated = db.execute("SELECT * FROM users WHERE id=?", (user["id"],)).fetchone()
+        return self.json(200, profile(updated))
 
     def update_profile(self, data):
         if not self.same_origin_ok(): return self.json(403, {"error": "origin_rejected"})
