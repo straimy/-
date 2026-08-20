@@ -1,7 +1,8 @@
-run_id=32353018796
+run_id=32353425705
 run_attempt=1
-head_sha=b9df18fd4997e4e92e25fbcf659b5a4795d9896c
+head_sha=43fbc1a6367de6ab80be937463f20ec9839c0b31
 build_status=success
+auth_status=success
 website_status=success
 windows_artifact=GunGloryOnline-Launcher-Windows
 linux_artifact=GunGloryOnline-Launcher-Linux
