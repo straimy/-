@@ -47,18 +47,20 @@
               <div class="os-info"><span class="os-icon">⊞</span><div><h3>Windows</h3><p>Windows 10 / 11 · x86-64</p></div></div>
               <div class="download-grid">
                 <a class="download-card featured" href="/downloads/GunGloryOnline-Launcher-Windows.exe"><span>Рекомендуется</span><b>Установщик (.exe)</b><small>Обычная установка в профиль пользователя</small><strong>Скачать →</strong></a>
-                <div class="download-card muted"><span>Portable</span><b>Портативная сборка</b><small>Будет добавлена позже. Сейчас используй установщик.</small><strong>Скоро</strong></div>
+                <a class="download-card" href="/downloads/GunGloryOnline-Launcher-Windows-Portable.zip"><span>Portable</span><b>Портативный (.zip)</b><small>Распакуй куда удобно и запускай без установки</small><strong>Скачать →</strong></a>
               </div>
               <div class="hint">Если Windows покажет SmartScreen для неподписанной beta-сборки: «Подробнее» → «Выполнить в любом случае». Production-релиз будет подписан.</div>
             </article>
             <article class="os-panel linux-panel">
               <div class="os-info"><span class="os-icon">◉</span><div><h3>Linux</h3><p>x86-64 · Ubuntu / Debian / Fedora / Arch и другие</p></div></div>
-              <div class="download-grid">
-                <a class="download-card featured" href="/downloads/GunGloryOnline-Launcher-Linux.AppImage"><span>Универсальный</span><b>AppImage</b><small>Один файл, установка не обязательна</small><strong>Скачать →</strong></a>
-                <div class="download-card code-card"><span>После загрузки</span><b>Сделай исполняемым</b><code>chmod +x GunGloryOnline-Launcher-Linux.AppImage
+              <div class="download-grid linux-grid">
+                <a class="download-card featured" href="/downloads/GunGloryOnline-Launcher-Linux.AppImage"><span>Универсальный</span><b>AppImage</b><small>Ubuntu, Debian, Fedora, Arch и большинство desktop-дистрибутивов</small><strong>Скачать →</strong></a>
+                <a class="download-card" href="/downloads/GunGloryOnline-Launcher-Ubuntu-Debian.deb"><span>Debian family</span><b>Ubuntu / Debian (.deb)</b><small>Установка через apt/dpkg</small><strong>Скачать →</strong></a>
+                <a class="download-card" href="/downloads/GunGloryOnline-Launcher-Fedora-RHEL.rpm"><span>RPM family</span><b>Fedora / RHEL (.rpm)</b><small>Установка через dnf/rpm</small><strong>Скачать →</strong></a>
+                <div class="download-card code-card"><span>AppImage</span><b>Запуск из терминала</b><code>chmod +x GunGloryOnline-Launcher-Linux.AppImage
 ./GunGloryOnline-Launcher-Linux.AppImage</code></div>
               </div>
-              <div class="hint">На некоторых дистрибутивах для AppImage может понадобиться FUSE 2. На Ubuntu: <code>sudo apt install libfuse2</code>.</div>
+              <div class="hint">AppImage на Ubuntu: при необходимости <code>sudo apt install libfuse2</code>. DEB: <code>sudo apt install ./GunGloryOnline-Launcher-Ubuntu-Debian.deb</code>. Fedora: <code>sudo dnf install ./GunGloryOnline-Launcher-Fedora-RHEL.rpm</code>.</div>
             </article>
           </div>
         </div>
@@ -68,27 +70,27 @@
     <section class="shell guide" id="guide">
       <div class="section-head"><div><span class="kicker">QUICK START</span><h2>Четыре шага</h2></div><p>После первого запуска дальше всё обновляется через сам лаунчер.</p></div>
       <div class="steps">
-        <article><b>01</b><h3>Скачай</h3><p>Выбери Windows `.exe` или Linux `.AppImage`.</p></article>
+        <article><b>01</b><h3>Скачай</h3><p>Windows: установщик или portable. Linux: AppImage, DEB или RPM.</p></article>
         <article><b>02</b><h3>Запусти</h3><p>Лаунчер создаст отдельную папку GunGloryOnline и проверит Java 17.</p></article>
         <article><b>03</b><h3>Авторизуйся</h3><p>Для Online в Runtime v1 используется Microsoft / Minecraft аккаунт.</p></article>
-        <article><b>04</b><h3>Играй</h3><p>Нажми «Играть онлайн» — Forge, моды и обязательный RP проверяются автоматически.</p></article>
+        <article><b>04</b><h3>Играй</h3><p>Нажми «Играть онлайн» — Forge, полный набор модов и обязательный RP проверяются автоматически.</p></article>
       </div>
     </section>
 
     <section class="manual" id="manual"><div class="shell manual-grid">
-      <div><span class="kicker">MANUAL CLIENT</span><h2>Уже пользуешься обычным Minecraft?</h2><p>Можно не ставить наш лаунчер. Скачай готовый клиентский пакет и положи его в отдельный профиль Forge. Внутри будут только необходимые клиентские моды, конфиги и ресурс-пак — без сервера и мира.</p>
-        <div class="specs"><div><small>Minecraft</small><b>1.20.1</b></div><div><small>Forge</small><b>47.4.10</b></div><div><small>Java</small><b>17</b></div></div>
+      <div><span class="kicker">MANUAL CLIENT</span><h2>Уже пользуешься обычным Minecraft?</h2><p>Можно не ставить наш лаунчер. Скачай готовый клиентский пакет для отдельного профиля Forge. Внутри полный набор требуемых клиентских модов и ресурс-пак — без сервера и мира.</p>
+        <div class="specs"><div><small>Minecraft</small><b>1.20.1</b></div><div><small>Forge</small><b>47.4.10</b></div><div><small>Java</small><b>17</b></div><div><small>Client mods</small><b>18 JAR</b></div></div>
       </div>
-      <div class="manual-card"><span>Клиентская сборка</span><h3>GunGloryOnline Client Pack</h3><p>Моды + конфиги + обязательный Resource Pack.</p><a class="btn btn-primary" href="/downloads/GunGloryOnline-ClientPack-1.20.1-Forge47.4.10.zip">Скачать ZIP</a><ol><li>Установи Forge 1.20.1 — 47.4.10.</li><li>Создай чистую отдельную папку игры.</li><li>Распакуй ZIP в неё с заменой.</li><li>Запусти профиль и добавь сервер <code>2.26.100.125:24842</code>.</li></ol></div>
+      <div class="manual-card"><span>Клиентская сборка</span><h3>GunGloryOnline Client Pack</h3><p>Все требуемые моды + обязательный Resource Pack v5.</p><a class="btn btn-primary" href="/downloads/GunGloryOnline-ClientPack-1.20.1-Forge47.4.10.zip">Скачать ZIP</a><ol><li>Установи Forge 1.20.1 — 47.4.10 и Java 17.</li><li>Создай чистую отдельную папку игры.</li><li>Скопируй из ZIP папки <code>mods/</code> и <code>resourcepacks/</code>.</li><li>Включи RP v5 и добавь сервер <code>2.26.100.125:24842</code>.</li></ol></div>
     </div></section>
 
-    <section class="shell facts"><article><small>SERVER</small><h3>2.26.100.125:24842</h3><p>Основной GunGloryOnline сервер.</p></article><article><small>MODES</small><h3>Classic · Duels · BR</h3><p>Игровая логика переведена в GGO Core.</p></article><article><small>UPDATES</small><h3>Автоматически</h3><p>Лаунчер сверяет файлы и докачивает только нужное.</p></article></section>
+    <section class="shell facts"><article><small>SERVER</small><h3>2.26.100.125:24842</h3><p>Основной GunGloryOnline сервер.</p></article><article><small>MODES</small><h3>Classic · Duels · BR</h3><p>Игровая логика переведена в GGO Core.</p></article><article><small>UPDATES</small><h3>Автоматически</h3><p>Лаунчер сверяет SHA256 и докачивает только нужные файлы.</p></article></section>
 
     <section class="shell faq" id="faq"><div class="section-head"><div><span class="kicker">FAQ</span><h2>Частые вопросы</h2></div></div>
-      <details><summary>Нужен ли установленный Minecraft?</summary><p>Для основного пути — нет. Лаунчер сам готовит свой Runtime v1. Если хочешь использовать сторонний Minecraft-лаунчер, скачай Client Pack.</p></details>
-      <details><summary>Ресурс-пак надо включать руками?</summary><p>В нашем лаунчере нет: обязательный RP устанавливается и включается автоматически. В ручном Client Pack он уже лежит в нужной структуре.</p></details>
+      <details><summary>Нужен ли установленный Minecraft?</summary><p>Для основного пути — нет. Лаунчер сам готовит Runtime v1. Если хочешь использовать сторонний Minecraft-лаунчер, скачай Client Pack.</p></details>
+      <details><summary>Ресурс-пак надо включать руками?</summary><p>В нашем лаунчере нет: обязательный RP устанавливается и включается автоматически. В ручном Client Pack он уже лежит в <code>resourcepacks/</code>, его нужно включить в настройках Minecraft.</p></details>
       <details><summary>Какая версия?</summary><p>Minecraft 1.20.1, Forge 47.4.10, Java 17.</p></details>
-      <details><summary>Есть Linux?</summary><p>Да. Основной Linux-релиз — AppImage x86-64. Он рассчитан на распространённые современные дистрибутивы.</p></details>
+      <details><summary>Какие Linux поддерживаются?</summary><p>Есть универсальный AppImage x86-64, DEB для Ubuntu/Debian и RPM для Fedora/RHEL-совместимых систем. На Arch и других desktop-дистрибутивах используй AppImage.</p></details>
     </section>
   </main>
   <footer><div class="shell"><div class="brand"><span class="brand-mark">G</span><span><b>GunGlory</b><small>ONLINE</small></span></div><p>Launcher 0.2.1 Beta · Runtime v1</p></div></footer>
