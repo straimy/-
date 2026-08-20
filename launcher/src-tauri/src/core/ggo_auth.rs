@@ -59,7 +59,9 @@ struct PasswordLoginRequest<'a> { username: &'a str, password: &'a str }
 #[derive(Debug, Deserialize)]
 struct SessionResponse { access_token: String, refresh_token: String }
 #[derive(Debug, Deserialize)]
-struct PasswordSessionResponse { access_token: String, refresh_token: String, profile: GgoProfile }
+struct PasswordProfileResponse { id: String, display_name: String, skin_source: String }
+#[derive(Debug, Deserialize)]
+struct PasswordSessionResponse { access_token: String, refresh_token: String, profile: PasswordProfileResponse }
 #[derive(Debug, Deserialize)]
 struct MeResponse { id: String, display_name: String, skin_source: String }
 #[derive(Debug, Serialize)]
@@ -112,8 +114,8 @@ pub async fn login_password(http: &Client, api_url: &str, username: &str, passwo
         return Err(format!("GGO password login failed: HTTP {status} {body}"));
     }
     let session = response.json::<PasswordSessionResponse>().await.map_err(|e| e.to_string())?;
-    let profile = session.profile.clone();
-    store.replace(GgoSession { access_token: session.access_token, refresh_token: session.refresh_token, profile: session.profile }).await;
+    let profile = GgoProfile { id: session.profile.id, display_name: session.profile.display_name, skin_source: session.profile.skin_source };
+    store.replace(GgoSession { access_token: session.access_token, refresh_token: session.refresh_token, profile: profile.clone() }).await;
     Ok(GgoAuthStatus { authenticated: true, profile: Some(profile) })
 }
 
