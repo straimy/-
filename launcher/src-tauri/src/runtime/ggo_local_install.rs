@@ -13,23 +13,16 @@ pub const GGO_VERSION: &str = "v40";
 pub const CORE_ARCHIVE_PATH: &str =
     "client/mods/gungloryonline-core-0.9.7-v40-server-hardening1.jar";
 pub const UI_ARCHIVE_PATH: &str = "client/mods/gungloryonline-ui-0.9.7-v40.jar";
-pub const RESOURCE_PACK_ARCHIVE_PATH: &str =
-    "client/resourcepacks/GunGloryOnline-ResourcePack-1.20.1-v5-swittie-social.zip";
 pub const CORE_FILE_NAME: &str = "gungloryonline-core-0.9.7-v40-server-hardening1.jar";
 pub const UI_FILE_NAME: &str = "gungloryonline-ui-0.9.7-v40.jar";
-pub const RESOURCE_PACK_FILE_NAME: &str =
-    "GunGloryOnline-ResourcePack-1.20.1-v5-swittie-social.zip";
 
 pub const CORE_SHA256: &str =
     "e6521e2bb37e1d46b30a8fbc2e31fad29ff9bca9be0163ffb8018ecb5ae9f624";
 pub const UI_SHA256: &str =
     "41b506852bae157bcd75c9577dba8b498924f902089e5d54254e49df62c7fae0";
-pub const RESOURCE_PACK_SHA256: &str =
-    "33c40c492ce5db2b8312dc09326a64bdec4f11006ace07ab09a41a213a9308b7";
 
 pub const CORE_SIZE: u64 = 590_957;
 pub const UI_SIZE: u64 = 109_961;
-pub const RESOURCE_PACK_SIZE: u64 = 12_668_450;
 
 #[derive(Debug, Error)]
 pub enum LocalInstallError {
@@ -67,7 +60,6 @@ pub fn install_local(
 ) -> Result<LocalInstallReport, LocalInstallError> {
     require_file(package_zip)?;
     fs::create_dir_all(install_dir.join("mods"))?;
-    fs::create_dir_all(install_dir.join("resourcepacks"))?;
 
     let removed_legacy_files = remove_legacy_ggo_jars(&install_dir.join("mods"))?;
     let mut installed_files = Vec::new();
@@ -93,17 +85,7 @@ pub fn install_local(
         &mut installed_files,
         &mut skipped_files,
     )?;
-    install_archive_entry(
-        &mut archive,
-        RESOURCE_PACK_ARCHIVE_PATH,
-        &install_dir.join("resourcepacks").join(RESOURCE_PACK_FILE_NAME),
-        RESOURCE_PACK_SIZE,
-        RESOURCE_PACK_SHA256,
-        &mut installed_files,
-        &mut skipped_files,
-    )?;
 
-    let resource_pack_enabled = enable_resource_pack(install_dir)?;
     write_local_state(install_dir)?;
 
     Ok(LocalInstallReport {
@@ -111,19 +93,15 @@ pub fn install_local(
         installed_files,
         skipped_files,
         removed_legacy_files,
-        resource_pack_enabled,
+        resource_pack_enabled: false,
     })
 }
 
 pub fn is_installed(install_dir: &Path) -> Result<bool, LocalInstallError> {
     let core = install_dir.join("mods").join(CORE_FILE_NAME);
     let ui = install_dir.join("mods").join(UI_FILE_NAME);
-    let rp = install_dir
-        .join("resourcepacks")
-        .join(RESOURCE_PACK_FILE_NAME);
     Ok(valid_existing(&core, CORE_SIZE, CORE_SHA256)?
-        && valid_existing(&ui, UI_SIZE, UI_SHA256)?
-        && valid_existing(&rp, RESOURCE_PACK_SIZE, RESOURCE_PACK_SHA256)?)
+        && valid_existing(&ui, UI_SIZE, UI_SHA256)?)
 }
 
 fn require_file(path: &Path) -> Result<(), LocalInstallError> {
@@ -283,54 +261,15 @@ fn temp_path(target: &Path) -> PathBuf {
     target.with_file_name(format!(".{file_name}.ggo-part-{}", Uuid::new_v4()))
 }
 
-fn enable_resource_pack(install_dir: &Path) -> Result<bool, io::Error> {
-    let options_path = install_dir.join("options.txt");
-    let pack_ref = format!("file/{RESOURCE_PACK_FILE_NAME}");
-    let desired = format!("resourcePacks:[\"{pack_ref}\"]");
-
-    let original = fs::read_to_string(&options_path).unwrap_or_default();
-    let mut lines: Vec<String> = original.lines().map(str::to_string).collect();
-    let mut found = false;
-    for line in &mut lines {
-        if line.starts_with("resourcePacks:") {
-            found = true;
-            if line.contains(&pack_ref) {
-                return Ok(true);
-            }
-            let prefix = "resourcePacks:[";
-            if line.starts_with(prefix) && line.ends_with(']') {
-                let inner = &line[prefix.len()..line.len() - 1];
-                *line = if inner.trim().is_empty() {
-                    desired.clone()
-                } else {
-                    format!("resourcePacks:[{inner},\"{pack_ref}\"]")
-                };
-            } else {
-                *line = desired.clone();
-            }
-            break;
-        }
-    }
-    if !found {
-        lines.push(desired);
-    }
-    let mut next = lines.join("\n");
-    next.push('\n');
-    let temp = install_dir.join(format!(".options.txt.ggo-part-{}", Uuid::new_v4()));
-    fs::write(&temp, next)?;
-    atomic_replace(&temp, &options_path)?;
-    Ok(true)
-}
-
 fn write_local_state(install_dir: &Path) -> Result<(), io::Error> {
     let state = serde_json::json!({
-        "schema": 1,
+        "schema": 2,
         "source": "local-full-install",
         "gameVersion": GGO_VERSION,
+        "resourcePackDelivery": "server-prompt",
         "files": [
             {"path": format!("mods/{CORE_FILE_NAME}"), "sha256": CORE_SHA256, "size": CORE_SIZE},
-            {"path": format!("mods/{UI_FILE_NAME}"), "sha256": UI_SHA256, "size": UI_SIZE},
-            {"path": format!("resourcepacks/{RESOURCE_PACK_FILE_NAME}"), "sha256": RESOURCE_PACK_SHA256, "size": RESOURCE_PACK_SIZE}
+            {"path": format!("mods/{UI_FILE_NAME}"), "sha256": UI_SHA256, "size": UI_SIZE}
         ]
     });
     let bytes = serde_json::to_vec_pretty(&state).map_err(io::Error::other)?;
@@ -343,7 +282,7 @@ fn relative_label(path: &Path) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{CORE_SHA256, GGO_VERSION, RESOURCE_PACK_FILE_NAME, UI_SHA256};
+    use super::{CORE_SHA256, GGO_VERSION, UI_SHA256};
 
     #[test]
     fn pinned_hashes_are_sha256() {
@@ -354,10 +293,5 @@ mod tests {
     #[test]
     fn current_version_is_v40() {
         assert_eq!(GGO_VERSION, "v40");
-    }
-
-    #[test]
-    fn resource_pack_name_is_normalized() {
-        assert!(RESOURCE_PACK_FILE_NAME.ends_with(".zip"));
     }
 }
