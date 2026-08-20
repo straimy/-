@@ -1,5 +1,6 @@
 mod core;
 mod runtime;
+mod client_tools;
 
 use core::{
     bootstrap::BootstrapInfo,
@@ -50,6 +51,26 @@ fn open_game_folder(install_dir: String) -> Result<(), String> {
     let path = PathBuf::from(install_dir);
     std::fs::create_dir_all(&path).map_err(|error| error.to_string())?;
     open::that(path).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn open_client_folder(install_dir: String, kind: String) -> Result<(), String> {
+    client_tools::open_client_folder(&PathBuf::from(install_dir), &kind)
+}
+
+#[tauri::command]
+fn list_client_files(install_dir: String, kind: String) -> Result<Vec<client_tools::ClientFileEntry>, String> {
+    client_tools::list_client_files(&PathBuf::from(install_dir), &kind)
+}
+
+#[tauri::command]
+fn read_latest_log(install_dir: String) -> Result<client_tools::LogSnapshot, String> {
+    client_tools::read_latest_log(&PathBuf::from(install_dir))
+}
+
+#[tauri::command]
+fn read_latest_crash(install_dir: String) -> Result<client_tools::LogSnapshot, String> {
+    client_tools::read_latest_crash(&PathBuf::from(install_dir))
 }
 
 #[tauri::command]
@@ -260,7 +281,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(MicrosoftSessionStore::default())
         .manage(GgoSessionStore::default())
-        .invoke_handler(tauri::generate_handler![bootstrap_info, default_install_dir, pick_install_dir, pick_zip_file, open_game_folder, restart_launcher, local_game_installed, write_identity_bridge, ping_server, fetch_server_catalog, fetch_news_feed, check_launcher_update, install_launcher_update, detect_java, check_runtime, prepare_launch, install_runtime, install_local_ggo, preview_minecraft_launch, launch_minecraft, launch_training, launch_game, microsoft_login, microsoft_auth_status, microsoft_logout, ggo_login, ggo_auth_status, ggo_logout, ggo_set_skin_source, ggo_link_minecraft, check_game, sync_game, repair_game])
+        .invoke_handler(tauri::generate_handler![bootstrap_info, default_install_dir, pick_install_dir, pick_zip_file, open_game_folder, open_client_folder, list_client_files, read_latest_log, read_latest_crash, restart_launcher, local_game_installed, write_identity_bridge, ping_server, fetch_server_catalog, fetch_news_feed, check_launcher_update, install_launcher_update, detect_java, check_runtime, prepare_launch, install_runtime, install_local_ggo, preview_minecraft_launch, launch_minecraft, launch_training, launch_game, microsoft_login, microsoft_auth_status, microsoft_logout, ggo_login, ggo_auth_status, ggo_logout, ggo_set_skin_source, ggo_link_minecraft, check_game, sync_game, repair_game])
         .run(tauri::generate_context!())
         .expect("error while running GunGloryOnline launcher");
 }
