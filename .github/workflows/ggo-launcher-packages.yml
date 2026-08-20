@@ -19,7 +19,7 @@ jobs:
       matrix:
         include:
           - os: ubuntu-22.04
-            bundle: appimage
+            bundle: appimage,deb,rpm
             artifact: GunGloryOnline-Launcher-Linux
           - os: windows-2022
             bundle: nsis
@@ -41,7 +41,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libfuse2
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libfuse2 rpm
         working-directory: .
       - name: Install frontend dependencies
         run: npm install
@@ -51,23 +51,32 @@ jobs:
         run: npm run build
       - name: Build Tauri package
         run: npm run tauri build -- --bundles ${{ matrix.bundle }}
-      - name: Normalize Linux package name
+      - name: Normalize Linux packages
         if: runner.os == 'Linux'
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p dist-package
-          src=$(find src-tauri/target/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage' | head -n1)
-          test -n "$src"
-          cp "$src" dist-package/GunGloryOnline-Launcher-Linux.AppImage
-      - name: Normalize Windows package name
+          appimage=$(find src-tauri/target/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage' | head -n1)
+          deb=$(find src-tauri/target/release/bundle/deb -maxdepth 1 -type f -name '*.deb' | head -n1)
+          rpm_pkg=$(find src-tauri/target/release/bundle/rpm -maxdepth 1 -type f -name '*.rpm' | head -n1)
+          test -n "$appimage" && test -n "$deb" && test -n "$rpm_pkg"
+          cp "$appimage" dist-package/GunGloryOnline-Launcher-Linux.AppImage
+          cp "$deb" dist-package/GunGloryOnline-Launcher-Ubuntu-Debian.deb
+          cp "$rpm_pkg" dist-package/GunGloryOnline-Launcher-Fedora-RHEL.rpm
+      - name: Normalize Windows packages
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist-package | Out-Null
-          $src = Get-ChildItem src-tauri/target/release/bundle/nsis/*.exe | Select-Object -First 1
-          if (-not $src) { throw 'NSIS package not found' }
-          Copy-Item $src.FullName dist-package/GunGloryOnline-Launcher-Windows.exe
+          $installer = Get-ChildItem src-tauri/target/release/bundle/nsis/*.exe | Select-Object -First 1
+          if (-not $installer) { throw 'NSIS package not found' }
+          Copy-Item $installer.FullName dist-package/GunGloryOnline-Launcher-Windows.exe
+          $portable = Get-ChildItem src-tauri/target/release/*.exe | Where-Object { $_.Name -notmatch 'build|setup|installer' } | Sort-Object Length -Descending | Select-Object -First 1
+          if (-not $portable) { throw 'Portable launcher executable not found' }
+          Copy-Item $portable.FullName dist-package/GunGloryOnline-Launcher-Portable.exe
+          Compress-Archive -Path dist-package/GunGloryOnline-Launcher-Portable.exe -DestinationPath dist-package/GunGloryOnline-Launcher-Windows-Portable.zip -Force
+          Remove-Item dist-package/GunGloryOnline-Launcher-Portable.exe
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
@@ -79,7 +88,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-      - name: Validate static site
+      - name: Validate static site and production manifest
         run: |
           set -euo pipefail
           test -f site/index.html
@@ -88,10 +97,16 @@ jobs:
           test -f site/DEPLOY-VDS.md
           python3 -m json.tool site/content/api/servers.json >/dev/null
           python3 -m json.tool site/content/api/news.json >/dev/null
+          python3 -m json.tool site/content/manifests/beta.json >/dev/null
           grep -q '2.26.100.125:24842' site/content/api/servers.json
           grep -q 'GunGloryOnline-Launcher-Windows.exe' site/index.html
+          grep -q 'GunGloryOnline-Launcher-Windows-Portable.zip' site/index.html
           grep -q 'GunGloryOnline-Launcher-Linux.AppImage' site/index.html
+          grep -q 'GunGloryOnline-Launcher-Ubuntu-Debian.deb' site/index.html
+          grep -q 'GunGloryOnline-Launcher-Fedora-RHEL.rpm' site/index.html
           grep -q 'GunGloryOnline-ClientPack-1.20.1-Forge47.4.10.zip' site/index.html
+          grep -q 'gungloryonline-core-0.9.7-v40-server-hardening1.jar' site/content/manifests/beta.json
+          grep -q 'GunGloryOnline-ResourcePack-1.20.1-v5-swittie-social.zip' site/content/manifests/beta.json
       - uses: actions/upload-artifact@v4
         with:
           name: GunGloryOnline-Website
