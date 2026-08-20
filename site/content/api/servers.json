@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "servers": [
+    {
+      "id": "main",
+      "name": "GunGloryOnline",
+      "address": "2.26.100.125:24842",
+      "enabled": true,
+      "order": 1
+    }
+  ]
+}
