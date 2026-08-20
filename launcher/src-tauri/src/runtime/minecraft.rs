@@ -13,6 +13,7 @@ pub const FORGE_VERSION: &str = "47.4.10";
 pub const REQUIRED_JAVA_MAJOR: u8 = 17;
 pub const DEFAULT_SERVER: &str = "2.26.100.125";
 pub const DEFAULT_SERVER_PORT: u16 = 24842;
+pub const MCP_VERSION: &str = "20230612.114412";
 
 #[derive(Debug, Error)]
 pub enum MinecraftRuntimeError {
@@ -112,6 +113,26 @@ pub fn detect_java(custom_java: Option<&str>) -> Vec<JavaRuntimeInfo> {
         .collect()
 }
 
+pub fn forge_required_artifacts(install_dir: &Path) -> Vec<PathBuf> {
+    vec![
+        install_dir
+            .join("libraries")
+            .join("net/minecraft/client")
+            .join(format!("{MINECRAFT_VERSION}-{MCP_VERSION}"))
+            .join(format!("client-{MINECRAFT_VERSION}-{MCP_VERSION}-srg.jar")),
+        install_dir
+            .join("libraries")
+            .join("net/minecraft/client")
+            .join(format!("{MINECRAFT_VERSION}-{MCP_VERSION}"))
+            .join(format!("client-{MINECRAFT_VERSION}-{MCP_VERSION}-extra.jar")),
+        install_dir
+            .join("libraries")
+            .join("net/minecraftforge/forge")
+            .join(format!("{MINECRAFT_VERSION}-{FORGE_VERSION}"))
+            .join(format!("forge-{MINECRAFT_VERSION}-{FORGE_VERSION}-client.jar")),
+    ]
+}
+
 pub fn check_runtime(install_dir: &Path, custom_java: Option<&str>) -> RuntimeCheck {
     let java = detect_java(custom_java)
         .into_iter()
@@ -135,6 +156,12 @@ pub fn check_runtime(install_dir: &Path, custom_java: Option<&str>) -> RuntimeCh
         .join(format!("{version_profile}.json"));
     if !forge_json.is_file() {
         missing.push(format!("Forge {FORGE_VERSION}"));
+    }
+
+    for artifact in forge_required_artifacts(install_dir) {
+        if !artifact.is_file() {
+            missing.push(format!("Forge processor output: {}", artifact.display()));
+        }
     }
 
     RuntimeCheck {
@@ -220,7 +247,8 @@ fn find_on_path(binary: &str) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_java_major;
+    use super::{forge_required_artifacts, parse_java_major};
+    use std::path::Path;
 
     #[test]
     fn parses_java_17() {
@@ -230,5 +258,14 @@ mod tests {
     #[test]
     fn parses_legacy_java() {
         assert_eq!(parse_java_major("java version \"1.8.0_402\""), Some(8));
+    }
+
+    #[test]
+    fn tracks_forge_processor_outputs() {
+        let files = forge_required_artifacts(Path::new("/tmp/ggo"));
+        assert_eq!(files.len(), 3);
+        assert!(files[0].to_string_lossy().ends_with("client-1.20.1-20230612.114412-srg.jar"));
+        assert!(files[1].to_string_lossy().ends_with("client-1.20.1-20230612.114412-extra.jar"));
+        assert!(files[2].to_string_lossy().ends_with("forge-1.20.1-47.4.10-client.jar"));
     }
 }
