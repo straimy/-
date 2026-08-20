@@ -423,16 +423,55 @@ async fn install_forge(
         .await?;
     }
 
-    emit(app, "forge", "Installing Forge 47.4.10", 0, 0);
+    run_forge_installer(app, install_dir, java_path, &installer, false).await?;
+    if forge_outputs_ready(install_dir) {
+        return Ok(());
+    }
+
+    emit(app, "forge-repair", "Repairing incomplete Forge processor outputs", 0, 0);
+    clean_incomplete_forge(install_dir).await?;
+    run_forge_installer(app, install_dir, java_path, &installer, true).await?;
+
+    let missing = minecraft::forge_required_artifacts(install_dir)
+        .into_iter()
+        .filter(|path| !path.is_file())
+        .map(|path| path.display().to_string())
+        .collect::<Vec<_>>();
+    if !missing.is_empty() {
+        return Err(RuntimeInstallError::Incomplete(format!(
+            "Forge processor outputs missing after clean reinstall: {}",
+            missing.join(", ")
+        )));
+    }
+    Ok(())
+}
+
+async fn run_forge_installer(
+    app: &AppHandle,
+    install_dir: &Path,
+    java_path: &str,
+    installer: &Path,
+    repair: bool,
+) -> Result<(), RuntimeInstallError> {
+    emit(
+        app,
+        if repair { "forge-repair" } else { "forge" },
+        if repair { "Reinstalling Forge 47.4.10" } else { "Installing Forge 47.4.10" },
+        0,
+        0,
+    );
     let java = java_path.to_string();
-    let installer_path = installer.clone();
+    let installer_path = installer.to_path_buf();
     let target = install_dir.to_path_buf();
+    let working_dir = install_dir.to_path_buf();
     let status = tokio::task::spawn_blocking(move || {
         Command::new(java)
             .arg("-jar")
             .arg(installer_path)
             .arg("--installClient")
-            .arg(target)
+            .arg(&target)
+            .current_dir(working_dir)
+            .env_remove("JDK_JAVA_OPTIONS")
             .status()
     })
     .await
@@ -441,6 +480,28 @@ async fn install_forge(
         return Err(RuntimeInstallError::ForgeInstaller(
             status.code().unwrap_or(-1),
         ));
+    }
+    Ok(())
+}
+
+fn forge_outputs_ready(install_dir: &Path) -> bool {
+    minecraft::forge_required_artifacts(install_dir)
+        .iter()
+        .all(|path| path.is_file())
+}
+
+async fn clean_incomplete_forge(install_dir: &Path) -> Result<(), RuntimeInstallError> {
+    let version_profile = install_dir
+        .join("versions")
+        .join(format!("1.20.1-forge-{FORGE_VERSION}"));
+    if fs::metadata(&version_profile).await.is_ok() {
+        fs::remove_dir_all(&version_profile).await?;
+    }
+
+    for artifact in minecraft::forge_required_artifacts(install_dir) {
+        if fs::metadata(&artifact).await.is_ok() {
+            fs::remove_file(&artifact).await?;
+        }
     }
     Ok(())
 }
@@ -532,7 +593,8 @@ fn emit(app: &AppHandle, stage: &str, current_file: &str, downloaded: u64, total
 
 #[cfg(test)]
 mod tests {
-    use super::{current_os_name, sha1_hex};
+    use super::{current_os_name, forge_outputs_ready, sha1_hex};
+    use std::path::Path;
 
     #[test]
     fn hashes_sha1() {
@@ -545,5 +607,10 @@ mod tests {
     #[test]
     fn maps_supported_os() {
         assert!(matches!(current_os_name(), "windows" | "linux" | "osx"));
+    }
+
+    #[test]
+    fn incomplete_directory_is_not_forge_ready() {
+        assert!(!forge_outputs_ready(Path::new("/definitely/not/a/ggo/runtime")));
     }
 }
