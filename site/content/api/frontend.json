@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "clientLabel": "GGO Client v40",
+  "defaultAction": "enter-ggo",
+  "profile": {
+    "showDisplayName": true,
+    "showRank": true,
+    "showLevel": true,
+    "showRegion": true,
+    "showCurrencies": true,
+    "showSeasonProgress": true,
+    "showLoadout": true
+  },
+  "actions": [
+    {
+      "id": "enter-ggo",
+      "label": "ENTER GGO",
+      "kind": "official-world",
+      "featured": true,
+      "discovery": "best-region"
+    },
+    {
+      "id": "training",
+      "label": "TRAINING",
+      "kind": "local-training",
+      "featured": false
+    },
+    {
+      "id": "battle-royale",
+      "label": "BATTLE ROYALE",
+      "kind": "matchmaking",
+      "catalogMode": "battle-royale",
+      "featured": true
+    },
+    {
+      "id": "events",
+      "label": "EVENTS",
+      "kind": "event-catalog",
+      "featured": false
+    }
+  ],
+  "navigation": [
+    "home",
+    "loadout",
+    "inventory",
+    "social",
+    "events",
+    "settings"
+  ],
+  "advanced": {
+    "showCommunityWorlds": false,
+    "showVanillaServerBrowser": false,
+    "showMinecraftTechnicalVersions": false
+  }
+}
