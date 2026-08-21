@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import "./account.css";
 
-export type AccountMode = "ggo" | "microsoft" | "guest";
 export type SkinSource = "ggo" | "microsoft" | "default";
 
 export type MicrosoftAccount = {
@@ -40,55 +39,46 @@ type Props = {
 
 const text = {
   en: {
-    eyebrow:"IDENTITY",title:"Accounts",subtitle:"One GunGloryOnline identity, multiple ways to sign in.",
-    ggo:"GGO Account",ggoBody:"Recommended. Your GGO profile owns progression, cosmetics and social data.",
-    microsoft:"Microsoft",microsoftBody:"Optional official Minecraft identity that can be linked to GGO.",
-    guest:"Quick Play",guestBody:"Nickname-only local profile. Cloud features are limited.",
-    loginWeb:"SIGN IN THROUGH WEBSITE",loginPassword:"SIGN IN WITH PASSWORD",loginMicrosoft:"SIGN IN WITH MICROSOFT",useGuest:"USE GUEST PROFILE",logout:"Sign out",
-    current:"Current profile",nickname:"Display name",username:"GGO username",password:"Password",skins:"Skin source",ggoSkin:"GGO skin",msSkin:"Official skin",defaultSkin:"GGO default",
-    linked:"Linked",notLinked:"Not linked",linkMinecraft:"LINK MINECRAFT TO GGO",help:"Create the account on ggo.kvicloud.ru. Use username + password here, or open the website and approve this launcher like a device login."
+    eyebrow:"GGO IDENTITY",title:"Your GGO Account",subtitle:"One identity for progression, inventory, rank, cosmetics and every official GGO world.",
+    online:"OFFICIAL ONLINE",onlineBody:"A GGO Account is required for official online play. Sign in safely through the GGO website.",
+    training:"TRAINING PROFILE",trainingBody:"Local-only profile for Training. No rank, cloud inventory or online progression.",
+    loginWeb:"SIGN IN THROUGH GGO WEBSITE",logout:"Sign out",current:"Current identity",nickname:"Training display name",skins:"Appearance source",ggoSkin:"GGO appearance",msSkin:"Linked legacy skin",defaultSkin:"GGO default",linked:"CONNECTED",notLinked:"SIGN IN REQUIRED",
+    websiteHint:"Registration, password entry and account recovery happen on the GGO website. The launcher receives a device session after you approve it.",
+    onlineLocked:"Official GGO Online is locked until a GGO Account is connected.",trainingUse:"USE LOCAL TRAINING PROFILE",local:"LOCAL ONLY",security:"Official servers require a GGO session ticket and client handshake. A normal Minecraft/third-party client cannot join official GGO worlds just by knowing the address."
   },
   ru: {
-    eyebrow:"АККАУНТ",title:"Аккаунты",subtitle:"Один аккаунт GunGloryOnline и несколько способов входа.",
-    ggo:"GGO аккаунт",ggoBody:"Основной вариант. GGO-профиль хранит прогресс, косметику и социальные функции.",
-    microsoft:"Microsoft",microsoftBody:"Дополнительный официальный Minecraft-аккаунт, который можно привязать к GGO.",
-    guest:"Быстрый вход",guestBody:"Локальный профиль только по нику. Облачные функции ограничены.",
-    loginWeb:"ВОЙТИ ЧЕРЕЗ САЙТ",loginPassword:"ВОЙТИ ПО НИКУ И ПАРОЛЮ",loginMicrosoft:"ВОЙТИ ЧЕРЕЗ MICROSOFT",useGuest:"ИГРАТЬ КАК ГОСТЬ",logout:"Выйти",
-    current:"Текущий профиль",nickname:"Отображаемый ник",username:"Ник GGO",password:"Пароль",skins:"Источник скина",ggoSkin:"Скин GGO",msSkin:"Официальный скин",defaultSkin:"Стандартный GGO",
-    linked:"Привязан",notLinked:"Не привязан",linkMinecraft:"ПРИВЯЗАТЬ MINECRAFT К GGO",help:"Зарегистрируйся на ggo.kvicloud.ru. Можно войти здесь по нику и паролю или открыть сайт и подтвердить лаунчер как устройство."
+    eyebrow:"GGO IDENTITY",title:"Твой GGO аккаунт",subtitle:"Один аккаунт для прогресса, инвентаря, ранга, косметики и всех официальных миров GGO.",
+    online:"ОФИЦИАЛЬНЫЙ ОНЛАЙН",onlineBody:"Для официальной онлайн-игры нужен GGO аккаунт. Вход выполняется безопасно через сайт GGO.",
+    training:"ПРОФИЛЬ ТРЕНИРОВКИ",trainingBody:"Только локальный профиль для Training. Без ранга, облачного инвентаря и онлайн-прогресса.",
+    loginWeb:"ВОЙТИ ЧЕРЕЗ САЙТ GGO",logout:"Выйти",current:"Текущая личность",nickname:"Ник для тренировки",skins:"Внешний вид",ggoSkin:"GGO внешний вид",msSkin:"Привязанный старый скин",defaultSkin:"Стандартный GGO",linked:"ПОДКЛЮЧЕН",notLinked:"НУЖЕН ВХОД",
+    websiteHint:"Регистрация, пароль и восстановление аккаунта происходят на сайте GGO. Лаунчер получает сессию только после твоего подтверждения устройства.",
+    onlineLocked:"Официальный GGO Online заблокирован, пока не подключён GGO аккаунт.",trainingUse:"ИСПОЛЬЗОВАТЬ ЛОКАЛЬНЫЙ ПРОФИЛЬ",local:"ТОЛЬКО ЛОКАЛЬНО",security:"Официальные серверы требуют GGO session ticket и клиентский handshake. Обычного Minecraft/стороннего лаунчера и знания адреса сервера недостаточно."
   },
   uk: {
-    eyebrow:"АКАУНТ",title:"Акаунти",subtitle:"Один акаунт GunGloryOnline і декілька способів входу.",
-    ggo:"GGO акаунт",ggoBody:"Основний варіант. GGO-профіль зберігає прогрес, косметику та соціальні функції.",
-    microsoft:"Microsoft",microsoftBody:"Додатковий офіційний Minecraft-акаунт, який можна прив'язати до GGO.",
-    guest:"Швидкий вхід",guestBody:"Локальний профіль лише за ніком. Хмарні функції обмежені.",
-    loginWeb:"УВІЙТИ ЧЕРЕЗ САЙТ",loginPassword:"УВІЙТИ ЗА НІКОМ І ПАРОЛЕМ",loginMicrosoft:"УВІЙТИ ЧЕРЕЗ MICROSOFT",useGuest:"ГРАТИ ЯК ГІСТЬ",logout:"Вийти",
-    current:"Поточний профіль",nickname:"Ім'я гравця",username:"Нік GGO",password:"Пароль",skins:"Джерело скіна",ggoSkin:"Скін GGO",msSkin:"Офіційний скін",defaultSkin:"Стандартний GGO",
-    linked:"Прив'язано",notLinked:"Не прив'язано",linkMinecraft:"ПРИВ'ЯЗАТИ MINECRAFT ДО GGO",help:"Зареєструйся на ggo.kvicloud.ru. Можна увійти тут за ніком і паролем або відкрити сайт і підтвердити лаунчер як пристрій."
+    eyebrow:"GGO IDENTITY",title:"Твій GGO акаунт",subtitle:"Один акаунт для прогресу, інвентарю, рангу, косметики та всіх офіційних світів GGO.",
+    online:"ОФІЦІЙНИЙ ОНЛАЙН",onlineBody:"Для офіційної онлайн-гри потрібен GGO акаунт. Вхід виконується через сайт GGO.",
+    training:"ПРОФІЛЬ ТРЕНУВАННЯ",trainingBody:"Лише локальний профіль для Training. Без рангу, хмарного інвентарю та онлайн-прогресу.",
+    loginWeb:"УВІЙТИ ЧЕРЕЗ САЙТ GGO",logout:"Вийти",current:"Поточна особа",nickname:"Ім'я для тренування",skins:"Зовнішній вигляд",ggoSkin:"GGO вигляд",msSkin:"Прив'язаний старий скін",defaultSkin:"Стандартний GGO",linked:"ПІДКЛЮЧЕНО",notLinked:"ПОТРІБЕН ВХІД",
+    websiteHint:"Реєстрація, пароль і відновлення акаунта відбуваються на сайті GGO. Лаунчер отримує сесію лише після підтвердження пристрою.",
+    onlineLocked:"Офіційний GGO Online заблоковано, доки не підключено GGO акаунт.",trainingUse:"ВИКОРИСТАТИ ЛОКАЛЬНИЙ ПРОФІЛЬ",local:"ЛИШЕ ЛОКАЛЬНО",security:"Офіційні сервери вимагають GGO session ticket і клієнтський handshake. Звичайного Minecraft/стороннього лаунчера та адреси сервера недостатньо."
   }
 } as const;
 
 export default function AccountHub(props: Props) {
   const t=text[props.lang];
   const microsoftConnected=props.microsoft.authenticated&&Boolean(props.microsoft.minecraftProfile);
-  const microsoftName=props.microsoft.minecraftProfile?.name??null;
-  const [mode,setMode]=useState<AccountMode>(props.ggoAccount.connected?"ggo":microsoftConnected?"microsoft":"guest");
-  const [ggoUsername,setGgoUsername]=useState("");
-  const [ggoPassword,setGgoPassword]=useState("");
-  const profileLabel=useMemo(()=>{
-    if(props.ggoAccount.connected)return props.ggoAccount.displayName||props.nickname||"GGO Player";
-    if(microsoftConnected)return microsoftName||props.nickname||"Microsoft Player";
-    return props.nickname||"Guest";
-  },[props.ggoAccount,microsoftConnected,microsoftName,props.nickname]);
+  const [localTraining,setLocalTraining]=useState(!props.ggoAccount.connected);
+  const profileLabel=useMemo(()=>props.ggoAccount.connected?(props.ggoAccount.displayName||"GGO Player"):(props.nickname||"Training Player"),[props.ggoAccount,props.nickname]);
 
   function applyGgoStatus(value:GgoAuthStatus){
     if(!value.authenticated||!value.profile){
       props.setGgoAccount(current=>({...current,connected:false,playerId:null,displayName:null,skinSource:current.skinSource==="ggo"?"default":current.skinSource}));
+      setLocalTraining(true);
       return;
     }
     props.setGgoAccount({connected:true,playerId:value.profile.id,displayName:value.profile.displayName,skinSource:value.profile.skinSource});
     props.setNickname(value.profile.displayName);
-    setGgoPassword("");
+    setLocalTraining(false);
   }
 
   async function ggoBrowserLogin(){
@@ -97,17 +87,6 @@ export default function AccountHub(props: Props) {
       const status=await invoke<GgoAuthStatus>("ggo_login",{apiUrl:props.apiUrl,username:null,password:null});
       applyGgoStatus(status);
       props.setStatus(status.authenticated?"GGO account connected ✓":"GGO login was not completed");
-    }catch(error){props.setStatus(String(error));}
-    finally{props.setBusy(false);}
-  }
-
-  async function ggoPasswordLogin(){
-    if(!ggoUsername.trim()||!ggoPassword){props.setStatus("Enter GGO username and password");return;}
-    props.setBusy(true);
-    try{
-      const status=await invoke<GgoAuthStatus>("ggo_login",{apiUrl:props.apiUrl,username:ggoUsername.trim(),password:ggoPassword});
-      applyGgoStatus(status);
-      props.setStatus("GGO account connected ✓");
     }catch(error){props.setStatus(String(error));}
     finally{props.setBusy(false);}
   }
@@ -124,33 +103,29 @@ export default function AccountHub(props: Props) {
     if(source==="microsoft"&&!microsoftConnected)return;
     if(props.ggoAccount.connected){
       props.setBusy(true);
-      try{const status=await invoke<GgoAuthStatus>("ggo_set_skin_source",{apiUrl:props.apiUrl,source});applyGgoStatus(status);props.setStatus("Skin source updated ✓");}
+      try{const status=await invoke<GgoAuthStatus>("ggo_set_skin_source",{apiUrl:props.apiUrl,source});applyGgoStatus(status);props.setStatus("Appearance updated ✓");}
       catch(error){props.setStatus(String(error));}
       finally{props.setBusy(false);}
     }else props.setGgoAccount(current=>({...current,skinSource:source}));
   }
 
-  function useGuest(){
-    props.setGgoAccount(current=>({...current,connected:false,playerId:null,displayName:null,skinSource:"default"}));
-    setMode("guest");props.setStatus(`Guest · ${props.nickname.trim()||"Guest"}`);
+  function useTrainingProfile(){
+    setLocalTraining(true);
+    props.setStatus(`Training profile · ${props.nickname.trim()||"Training Player"}`);
   }
 
   return <section className="page accountsPage">
-    <div className="accountHero"><div><span>{t.eyebrow}</span><h2>{t.title}</h2><p>{t.subtitle}</p></div><div className="accountCurrent"><small>{t.current}</small><strong>{profileLabel}</strong><span>{props.ggoAccount.connected?"GGO":microsoftConnected?"MICROSOFT":"GUEST"}</span></div></div>
+    <div className="accountHero"><div><span>{t.eyebrow}</span><h2>{t.title}</h2><p>{t.subtitle}</p></div><div className="accountCurrent"><small>{t.current}</small><strong>{profileLabel}</strong><span>{props.ggoAccount.connected?"GGO ONLINE":t.local}</span></div></div>
     <div className="accountLayout">
       <div className="accountProviders">
-        <button className={mode==="ggo"?"providerCard selected":"providerCard"} onClick={()=>setMode("ggo")}><div className="providerIcon ggoMark">G</div><div><strong>{t.ggo}</strong><p>{t.ggoBody}</p></div><span className={props.ggoAccount.connected?"providerState on":"providerState"}>{props.ggoAccount.connected?t.linked:t.notLinked}</span></button>
-        <button className={mode==="microsoft"?"providerCard selected":"providerCard"} onClick={()=>setMode("microsoft")}><div className="providerIcon msMark"><i/><i/><i/><i/></div><div><strong>{t.microsoft}</strong><p>{t.microsoftBody}</p></div><span className={microsoftConnected?"providerState on":"providerState"}>{microsoftConnected?t.linked:t.notLinked}</span></button>
-        <button className={mode==="guest"?"providerCard selected":"providerCard"} onClick={()=>setMode("guest")}><div className="providerIcon guestMark">↯</div><div><strong>{t.guest}</strong><p>{t.guestBody}</p></div><span className="providerState">LOCAL</span></button>
+        <div className="providerCard selected"><div className="providerIcon ggoMark">G</div><div><strong>{t.online}</strong><p>{t.onlineBody}</p></div><span className={props.ggoAccount.connected?"providerState on":"providerState"}>{props.ggoAccount.connected?t.linked:t.notLinked}</span></div>
+        <button className={localTraining&&!props.ggoAccount.connected?"providerCard selected":"providerCard"} onClick={useTrainingProfile}><div className="providerIcon guestMark">↯</div><div><strong>{t.training}</strong><p>{t.trainingBody}</p></div><span className="providerState">{t.local}</span></button>
+        <div className="providerCard"><div className="providerIcon guestMark">✓</div><div><strong>GGO SESSION SECURITY</strong><p>{t.security}</p></div><span className="providerState on">ONLINE</span></div>
       </div>
       <aside className="accountPanel">
-        <small>{t.nickname}</small><input className="accountName" value={props.nickname} maxLength={16} onChange={e=>props.setNickname(e.target.value)} placeholder="Player name" />
-        {mode==="ggo"&&<div className="accountActionBlock">
-          {props.ggoAccount.connected?<><div className="linkedIdentity"><b>GGO</b><div><strong>{props.ggoAccount.displayName}</strong><span>{props.ggoAccount.playerId}</span></div></div>{microsoftConnected&&<button className="accountPrimary" disabled={props.busy} onClick={()=>void props.onLinkMinecraft()}>{t.linkMinecraft}</button>}<button className="accountSecondary" disabled={props.busy} onClick={()=>void ggoLogout()}>{t.logout}</button></>:<><label className="accountCredential"><small>{t.username}</small><input className="accountName" value={ggoUsername} maxLength={16} autoComplete="username" onChange={e=>setGgoUsername(e.target.value)} placeholder="PlayerName" /></label><label className="accountCredential"><small>{t.password}</small><input className="accountName" type="password" value={ggoPassword} autoComplete="current-password" onChange={e=>setGgoPassword(e.target.value)} placeholder="••••••••" /></label><button className="accountPrimary" disabled={props.busy} onClick={()=>void ggoPasswordLogin()}>{t.loginPassword}</button><div className="accountDivider"><span>OR</span></div><button className="accountSecondary" disabled={props.busy} onClick={()=>void ggoBrowserLogin()}>{t.loginWeb}</button><p>{t.help}</p></>}
-        </div>}
-        {mode==="microsoft"&&<div className="accountActionBlock">{microsoftConnected?<><div className="linkedIdentity"><b>MS</b><div><strong>{microsoftName}</strong><span>Official Minecraft identity</span></div></div><button className="accountSecondary" disabled={props.busy} onClick={()=>void props.onMicrosoftLogout()}>{t.logout}</button></>:<button className="accountPrimary light" disabled={props.busy} onClick={()=>void props.onMicrosoftLogin()}>{t.loginMicrosoft}</button>}</div>}
-        {mode==="guest"&&<div className="accountActionBlock"><button className="accountPrimary ghost" disabled={props.busy} onClick={useGuest}>{t.useGuest}</button></div>}
-        <div className="skinBlock"><small>{t.skins}</small><div className="skinChoices"><button className={props.ggoAccount.skinSource==="ggo"?"active":""} disabled={!props.ggoAccount.connected||props.busy} onClick={()=>void setSkinSource("ggo")}><b>G</b><span>{t.ggoSkin}</span></button><button className={props.ggoAccount.skinSource==="microsoft"?"active":""} disabled={!microsoftConnected||props.busy} onClick={()=>void setSkinSource("microsoft")}><b>MS</b><span>{t.msSkin}</span></button><button className={props.ggoAccount.skinSource==="default"?"active":""} disabled={props.busy} onClick={()=>void setSkinSource("default")}><b>◎</b><span>{t.defaultSkin}</span></button></div></div>
+        {props.ggoAccount.connected?<div className="accountActionBlock"><div className="linkedIdentity"><b>GGO</b><div><strong>{props.ggoAccount.displayName}</strong><span>{props.ggoAccount.playerId}</span></div></div><button className="accountSecondary" disabled={props.busy} onClick={()=>void ggoLogout()}>{t.logout}</button></div>:<div className="accountActionBlock"><button className="accountPrimary" disabled={props.busy} onClick={()=>void ggoBrowserLogin()}>{t.loginWeb}</button><p>{t.websiteHint}</p><p>{t.onlineLocked}</p></div>}
+        {!props.ggoAccount.connected&&<div className="accountActionBlock"><small>{t.nickname}</small><input className="accountName" value={props.nickname} maxLength={16} onChange={e=>props.setNickname(e.target.value)} placeholder="Training Player"/><button className="accountSecondary" disabled={props.busy} onClick={useTrainingProfile}>{t.trainingUse}</button></div>}
+        <div className="skinBlock"><small>{t.skins}</small><div className="skinChoices"><button className={props.ggoAccount.skinSource==="ggo"?"active":""} disabled={!props.ggoAccount.connected||props.busy} onClick={()=>void setSkinSource("ggo")}><b>G</b><span>{t.ggoSkin}</span></button><button className={props.ggoAccount.skinSource==="microsoft"?"active":""} disabled={!microsoftConnected||props.busy} onClick={()=>void setSkinSource("microsoft")}><b>↗</b><span>{t.msSkin}</span></button><button className={props.ggoAccount.skinSource==="default"?"active":""} disabled={props.busy} onClick={()=>void setSkinSource("default")}><b>◎</b><span>{t.defaultSkin}</span></button></div></div>
       </aside>
     </div>
   </section>;
