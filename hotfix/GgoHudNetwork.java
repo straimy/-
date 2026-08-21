@@ -16,7 +16,7 @@ import java.util.function.Supplier;
 
 @Mod.EventBusSubscriber(modid="gunnerarena",bus=Mod.EventBusSubscriber.Bus.MOD)
 public final class GgoHudNetwork {
-    private static final String VERSION="1";
+    private static final String VERSION="2";
     private static int id;
     private static Consumer<Snapshot> clientConsumer=s->{};
     public static final SimpleChannel CHANNEL=NetworkRegistry.ChannelBuilder
@@ -33,8 +33,16 @@ public final class GgoHudNetwork {
     public static void request(){CHANNEL.sendToServer(new Request());}
     public static void send(ServerPlayer p,Snapshot s){if(p!=null&&s!=null)CHANNEL.sendTo(s,p.connection.connection,NetworkDirection.PLAY_TO_CLIENT);}
     private static void request0(Request m,Supplier<NetworkEvent.Context> c){ServerPlayer p=c.get().getSender();if(p!=null)send(p,GgoHudStateService.snapshot(p));c.get().setPacketHandled(true);}
-    private static void encode(Snapshot s,FriendlyByteBuf b){b.writeUtf(s.activity(),32);b.writeUtf(s.title(),64);b.writeUtf(s.description(),120);b.writeUtf(s.progress(),32);b.writeBoolean(s.available());}
-    private static Snapshot decode(FriendlyByteBuf b){return new Snapshot(b.readUtf(32),b.readUtf(64),b.readUtf(120),b.readUtf(32),b.readBoolean());}
+    private static void encode(Snapshot s,FriendlyByteBuf b){
+        b.writeUtf(s.activity(),32);b.writeUtf(s.title(),64);b.writeUtf(s.description(),120);b.writeUtf(s.progress(),64);b.writeBoolean(s.available());
+        b.writeVarInt(Math.max(0,s.alive()));b.writeVarInt(Math.max(0,s.total()));b.writeVarInt(Math.max(0,s.placement()));
+        b.writeVarInt(Math.max(0,s.zonePhase()));b.writeVarInt(Math.max(0,s.secondsRemaining()));b.writeBoolean(s.playerAlive());
+    }
+    private static Snapshot decode(FriendlyByteBuf b){
+        return new Snapshot(b.readUtf(32),b.readUtf(64),b.readUtf(120),b.readUtf(64),b.readBoolean(),
+                b.readVarInt(),b.readVarInt(),b.readVarInt(),b.readVarInt(),b.readVarInt(),b.readBoolean());
+    }
     public record Request(){}
-    public record Snapshot(String activity,String title,String description,String progress,boolean available){}
+    public record Snapshot(String activity,String title,String description,String progress,boolean available,
+                           int alive,int total,int placement,int zonePhase,int secondsRemaining,boolean playerAlive){}
 }
