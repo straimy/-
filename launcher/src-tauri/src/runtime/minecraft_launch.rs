@@ -4,7 +4,8 @@ use serde_json::Value;
 use std::{
     collections::HashSet,
     env,
-    fs::{self, File},
+    fs::{self, File, OpenOptions},
+    io::Write,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
 };
@@ -128,16 +129,29 @@ pub fn launch(
 }
 
 fn spawn(built: &BuiltLaunch) -> Result<Child, LaunchError> {
+    let log_dir = built.game_directory.join("logs");
+    fs::create_dir_all(&log_dir)?;
+    let log_path = log_dir.join("ggo-launcher-minecraft.log");
+    let mut stdout_log = OpenOptions::new().create(true).write(true).truncate(true).open(&log_path)?;
+    writeln!(stdout_log, "=== GunGloryOnline client launch ===")?;
+    writeln!(stdout_log, "Java: {}", built.java_path)?;
+    writeln!(stdout_log, "Main class: {}", built.main_class)?;
+    writeln!(stdout_log, "Classpath entries: {}", built.classpath_entries)?;
+    writeln!(stdout_log, "Working directory: {}", built.game_directory.display())?;
+    writeln!(stdout_log, "====================================")?;
+    stdout_log.flush()?;
+    let stderr_log = stdout_log.try_clone()?;
+
     Command::new(&built.java_path)
         .args(&built.jvm_args)
         .arg(&built.main_class)
         .args(&built.game_args)
         .current_dir(&built.game_directory)
         .stdin(Stdio::null())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
+        .stdout(Stdio::from(stdout_log))
+        .stderr(Stdio::from(stderr_log))
         .spawn()
-        .map_err(|error| LaunchError::Spawn(error.to_string()))
+        .map_err(|error| LaunchError::Spawn(format!("{} (log: {})", error, log_path.display())))
 }
 
 fn build_launch(
