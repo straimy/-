@@ -13,6 +13,14 @@ pub struct ClientFileEntry {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ClientFolderEntry {
+    pub name: String,
+    pub path: String,
+    pub modified_unix_ms: u128,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LogSnapshot {
     pub path: String,
     pub content: String,
@@ -70,6 +78,24 @@ pub fn list_client_files(install_dir: &Path, kind: &str) -> Result<Vec<ClientFil
         });
     }
     entries.sort_by(|a,b| a.name.to_ascii_lowercase().cmp(&b.name.to_ascii_lowercase()));
+    Ok(entries)
+}
+
+pub fn list_client_folders(install_dir: &Path, kind: &str) -> Result<Vec<ClientFolderEntry>, String> {
+    let path = safe_child(install_dir, kind)?;
+    fs::create_dir_all(&path).map_err(|e| e.to_string())?;
+    let mut entries = Vec::new();
+    for item in fs::read_dir(path).map_err(|e| e.to_string())? {
+        let item = item.map_err(|e| e.to_string())?;
+        if !item.file_type().map_err(|e| e.to_string())?.is_dir() { continue; }
+        let meta = item.metadata().map_err(|e| e.to_string())?;
+        entries.push(ClientFolderEntry {
+            name: item.file_name().to_string_lossy().into_owned(),
+            path: item.path().to_string_lossy().into_owned(),
+            modified_unix_ms: meta.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_millis()).unwrap_or(0),
+        });
+    }
+    entries.sort_by(|a,b| b.modified_unix_ms.cmp(&a.modified_unix_ms).then_with(|| a.name.to_ascii_lowercase().cmp(&b.name.to_ascii_lowercase())));
     Ok(entries)
 }
 
@@ -139,6 +165,10 @@ fn read_tail(path: &Path, limit: usize) -> Result<LogSnapshot, String> {
 
 pub fn read_latest_log(install_dir: &Path) -> Result<LogSnapshot, String> {
     read_tail(&install_dir.join("logs").join("latest.log"), 512 * 1024)
+}
+
+pub fn read_launch_log(install_dir: &Path) -> Result<LogSnapshot, String> {
+    read_tail(&install_dir.join("logs").join("ggo-launcher-minecraft.log"), 1024 * 1024)
 }
 
 pub fn read_latest_crash(install_dir: &Path) -> Result<LogSnapshot, String> {
