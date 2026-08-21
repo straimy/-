@@ -1,14 +1,12 @@
 use fastnbt::Value;
 use std::{collections::HashMap, fs, path::Path};
 
-use super::minecraft::{DEFAULT_SERVER, DEFAULT_SERVER_PORT};
-
 const SERVER_NAME: &str = "GunGloryOnline";
+const SERVER_ADDRESS: &str = "play.kvicloud.ru:24842";
 
 pub fn ensure_official_server(install_dir: &Path) -> Result<bool, String> {
     fs::create_dir_all(install_dir).map_err(|e| e.to_string())?;
     let path = install_dir.join("servers.dat");
-    let address = format!("{}:{}", DEFAULT_SERVER, DEFAULT_SERVER_PORT);
 
     let mut root = if path.is_file() {
         let bytes = fs::read(&path).map_err(|e| e.to_string())?;
@@ -19,7 +17,7 @@ pub fn ensure_official_server(install_dir: &Path) -> Result<bool, String> {
 
     let Value::Compound(root_map) = &mut root else {
         root = empty_root();
-        return write_with_server(path.as_path(), root, &address);
+        return write_with_server(path.as_path(), root);
     };
 
     let servers = root_map
@@ -29,11 +27,11 @@ pub fn ensure_official_server(install_dir: &Path) -> Result<bool, String> {
     let Value::List(entries) = servers else {
         *servers = Value::List(Vec::new());
         let Value::List(entries) = servers else { unreachable!() };
-        insert_or_update(entries, &address);
+        insert_or_update(entries);
         return write_root(&path, &root).map(|_| true);
     };
 
-    let changed = insert_or_update(entries, &address);
+    let changed = insert_or_update(entries);
     if changed {
         write_root(&path, &root)?;
     }
@@ -46,13 +44,13 @@ fn empty_root() -> Value {
     Value::Compound(root)
 }
 
-fn insert_or_update(entries: &mut Vec<Value>, address: &str) -> bool {
+fn insert_or_update(entries: &mut Vec<Value>) -> bool {
     let mut found_index = None;
     let mut changed = false;
 
     for (index, entry) in entries.iter_mut().enumerate() {
         let Value::Compound(server) = entry else { continue };
-        let ip_matches = matches!(server.get("ip"), Some(Value::String(ip)) if ip.eq_ignore_ascii_case(address));
+        let ip_matches = matches!(server.get("ip"), Some(Value::String(ip)) if ip.eq_ignore_ascii_case(SERVER_ADDRESS));
         if !ip_matches { continue; }
 
         found_index = Some(index);
@@ -74,17 +72,17 @@ fn insert_or_update(entries: &mut Vec<Value>, address: &str) -> bool {
 
     let mut server = HashMap::new();
     server.insert("name".to_string(), Value::String(SERVER_NAME.to_string()));
-    server.insert("ip".to_string(), Value::String(address.to_string()));
+    server.insert("ip".to_string(), Value::String(SERVER_ADDRESS.to_string()));
     server.insert("acceptTextures".to_string(), Value::Byte(1));
     entries.insert(0, Value::Compound(server));
     true
 }
 
-fn write_with_server(path: &Path, mut root: Value, address: &str) -> Result<bool, String> {
+fn write_with_server(path: &Path, mut root: Value) -> Result<bool, String> {
     if let Value::Compound(map) = &mut root {
         map.insert("servers".to_string(), Value::List(Vec::new()));
         if let Some(Value::List(entries)) = map.get_mut("servers") {
-            insert_or_update(entries, address);
+            insert_or_update(entries);
         }
     }
     write_root(path, &root)?;
@@ -105,7 +103,7 @@ mod tests {
     #[test]
     fn inserts_official_server_first() {
         let mut entries = Vec::new();
-        assert!(insert_or_update(&mut entries, "play.kvicloud.ru:24842"));
+        assert!(insert_or_update(&mut entries));
         let Value::Compound(server) = &entries[0] else { panic!("expected compound") };
         assert_eq!(server.get("name"), Some(&Value::String("GunGloryOnline".into())));
         assert_eq!(server.get("ip"), Some(&Value::String("play.kvicloud.ru:24842".into())));
