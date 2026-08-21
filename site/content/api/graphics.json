@@ -1,90 +1,108 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "engine": {
     "id": "ggo-graphics",
     "displayName": "GGO Graphics",
-    "shaderBackend": "oculus",
-    "renderer": "embeddium",
-    "experimental": true
+    "backend": {
+      "shaderLoader": "oculus",
+      "renderer": "embeddium"
+    },
+    "experimental": true,
+    "hideBackendFromNormalUi": true
   },
+  "defaultProfile": "balanced",
   "profiles": [
     {
-      "id": "off",
-      "name": "Performance",
-      "shader": null,
-      "quality": "off",
-      "description": "Maximum FPS. GGO post-processing and shader effects disabled."
+      "id": "low",
+      "name": "Low-end PC",
+      "badge": "MAX FPS",
+      "backendPack": null,
+      "backendQuality": "off",
+      "description": "For integrated graphics and older GPUs. Maximum frame rate and minimum visual overhead.",
+      "recommendedFor": {"gpuTier":"low","ramGbMin":4}
     },
     {
       "id": "competitive",
       "name": "Competitive",
-      "shader": "miniature",
-      "quality": "low",
-      "description": "High visibility and high FPS for PvP and Battle Royale."
+      "badge": "PVP",
+      "backendPack": "miniature",
+      "backendQuality": "low",
+      "description": "High visibility, restrained effects and high FPS for PvP, extraction zones and Battle Royale.",
+      "recommendedFor": {"gpuTier":"low-mid","ramGbMin":8}
     },
     {
       "id": "balanced",
       "name": "Balanced",
-      "shader": "miniature",
-      "quality": "normal",
-      "description": "Recommended GGO profile: clear image, shadows and reflections with moderate GPU load."
+      "badge": "RECOMMENDED",
+      "backendPack": "miniature",
+      "backendQuality": "normal",
+      "description": "Recommended GGO look with improved lighting, shadows, water and reflections at moderate GPU cost.",
+      "recommendedFor": {"gpuTier":"mid","ramGbMin":8}
     },
     {
       "id": "high",
       "name": "High",
-      "shader": "miniature",
-      "quality": "high",
-      "description": "Higher shadow distance and reflections for powerful GPUs."
+      "badge": "QUALITY",
+      "backendPack": "miniature",
+      "backendQuality": "high",
+      "description": "Higher shadow distance, reflections and environmental effects for modern gaming GPUs.",
+      "recommendedFor": {"gpuTier":"high","ramGbMin":12}
     },
     {
       "id": "cinematic",
       "name": "Cinematic",
-      "shader": "photon",
-      "quality": "high",
-      "description": "Atmospheric lighting, volumetrics and post-processing for exploration and screenshots."
+      "badge": "ULTRA VISUALS",
+      "backendPack": "photon",
+      "backendQuality": "high",
+      "description": "Atmospheric lighting, volumetrics, enhanced water and post-processing for exploration and screenshots.",
+      "recommendedFor": {"gpuTier":"very-high","ramGbMin":16}
     },
     {
       "id": "custom",
       "name": "Custom",
-      "shader": null,
-      "quality": "custom",
-      "description": "Advanced users can choose a compatible shader pack and tune individual options."
+      "badge": "ADVANCED",
+      "backendPack": null,
+      "backendQuality": "custom",
+      "description": "Manual control over individual GGO graphics options. Backend details are shown only in Advanced."
     }
   ],
   "controls": [
-    {"id":"renderDistance","type":"slider","min":4,"max":32,"default":12},
-    {"id":"shadowQuality","type":"select","values":["off","low","medium","high","ultra"],"default":"medium"},
-    {"id":"reflections","type":"select","values":["off","low","high"],"default":"low"},
-    {"id":"volumetricLighting","type":"select","values":["off","low","high"],"default":"low"},
-    {"id":"waterQuality","type":"select","values":["low","medium","high"],"default":"medium"},
-    {"id":"antiAliasing","type":"select","values":["off","fxaa","taa"],"default":"fxaa"},
-    {"id":"particles","type":"select","values":["minimal","normal","maximum"],"default":"normal"},
-    {"id":"postProcessing","type":"toggle","default":true}
+    {"id":"renderDistance","label":"World Detail Distance","type":"slider","min":4,"max":32,"default":12},
+    {"id":"shadowQuality","label":"Shadow Quality","type":"select","values":["off","low","medium","high","ultra"],"default":"medium"},
+    {"id":"reflections","label":"Reflections","type":"select","values":["off","low","high"],"default":"low"},
+    {"id":"volumetricLighting","label":"Volumetric Lighting","type":"select","values":["off","low","high"],"default":"low"},
+    {"id":"waterQuality","label":"Water Quality","type":"select","values":["low","medium","high"],"default":"medium"},
+    {"id":"antiAliasing","label":"Edge Smoothing","type":"select","values":["off","fxaa","taa"],"default":"fxaa"},
+    {"id":"particles","label":"Effects Density","type":"select","values":["minimal","normal","maximum"],"default":"normal"},
+    {"id":"postProcessing","label":"Post Processing","type":"toggle","default":true}
   ],
   "packs": [
     {
       "id": "miniature",
-      "displayName": "GGO Competitive Graphics",
+      "internalRole": "competitive-balanced-high",
       "upstreamName": "Miniature Shader",
       "distribution": "pending-license-review",
-      "bundled": false,
-      "profiles": ["low","normal","high"]
+      "bundled": false
     },
     {
       "id": "photon",
-      "displayName": "GGO Cinematic Graphics",
+      "internalRole": "cinematic",
       "upstreamName": "Photon Shaders",
       "distribution": "modpack-allowed-with-license",
-      "bundled": false,
-      "profiles": ["high"]
+      "bundled": false
     },
     {
       "id": "complementary",
-      "displayName": "Complementary Unbound",
+      "internalRole": "optional-external",
       "upstreamName": "Complementary Unbound",
       "distribution": "external-provider-only",
-      "bundled": false,
-      "profiles": ["verylow","low","medium","high","veryhigh","ultra"]
+      "bundled": false
     }
-  ]
+  ],
+  "originalPipelinePolicy": {
+    "playerFacingName": "GGO Graphics",
+    "doNotCopyOrDisguiseThirdPartyCode": true,
+    "allowedApproach": "Reimplement desired visual effects independently or use components whose licenses explicitly permit integration and distribution.",
+    "targetEffects": ["soft-shadows","water-reflections","volumetric-light","bloom","color-grading","fog","taa-fxaa","ambient-lighting"]
+  }
 }
