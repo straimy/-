@@ -1,0 +1,76 @@
+name: GGO UI Shell Stage 1 Static
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - client/runtime-migration-v1
+    paths:
+      - 'hotfix/apply_ggo_ui_shell_stage1.py'
+      - 'docs/GGO-CONTROLS.md'
+      - 'docs/GGO-MAP-SYSTEM.md'
+      - '.github/workflows/ggo-ui-shell-stage1-static.yml'
+
+permissions:
+  contents: read
+
+env:
+  SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+
+jobs:
+  validate-shell-patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate Python patcher
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile hotfix/apply_ggo_ui_shell_stage1.py
+
+      - name: Unpack actual Runtime v1 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "$SOURCE_ZIP"
+          rm -rf ga-build
+          mkdir ga-build
+          unzip -q "$SOURCE_ZIP" -d ga-build
+          test -d ga-build/client-ui/src/main/java
+
+      - name: Apply GGO UI Shell Stage 1
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 hotfix/apply_ggo_ui_shell_stage1.py
+
+      - name: Verify generated client shell
+        shell: bash
+        run: |
+          set -euo pipefail
+          SCREEN='ga-build/client-ui/src/main/java/arena/client/shell/GgoShellScreen.java'
+          HOOKS='ga-build/client-ui/src/main/java/arena/client/shell/GgoShellHooks.java'
+          test -s "$SCREEN"
+          test -s "$HOOKS"
+          grep -Fq 'Page { INVENTORY, ACTIVITIES, MAP, PAUSE }' "$SCREEN"
+          grep -Fq 'InventoryScreen' "$HOOKS"
+          grep -Fq 'PauseScreen' "$HOOKS"
+          grep -Fq 'GLFW_KEY_M' "$HOOKS"
+          grep -Fq 'GLFW_KEY_N' "$HOOKS"
+          grep -Fq 'VanillaGuiOverlay.PLAYER_LIST' "$HOOKS"
+          grep -Fq 'GGO // SQUAD' "$HOOKS"
+          ! grep -R -F 'Minecraft player list' ga-build/client-ui/src/main/java/arena/client/shell
+
+      - name: Stage 1 summary
+        shell: bash
+        run: |
+          cat <<'EOF'
+          GGO UI Shell Stage 1 patch structure: PASS
+          E / InventoryScreen -> GGO Inventory shell
+          M -> GGO Activities shell
+          N -> GGO Navigation shell
+          ESC / PauseScreen -> GGO Pause shell
+          TAB -> vanilla player list suppressed / GGO squad placeholder
+          EOF
