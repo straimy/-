@@ -1,0 +1,105 @@
+name: GGO UI Shell Stage 18 Compile
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'hotfix/apply_ggo_ui_shell_stage1.py'
+      - 'hotfix/apply_ggo_ui_shell_stage2.py'
+      - 'hotfix/apply_ggo_ui_shell_stage3.py'
+      - 'hotfix/apply_ggo_hud_stage4.py'
+      - 'hotfix/apply_ggo_frontend_stage5.py'
+      - 'hotfix/apply_ggo_settings_crosshair_stage6.py'
+      - 'hotfix/apply_ggo_identity_minimap_stage7.py'
+      - 'hotfix/apply_ggo_weapon_navigation_stage8.py'
+      - 'hotfix/apply_ggo_ping_stage9.py'
+      - 'hotfix/apply_ggo_navigation_zoom_stage10.py'
+      - 'hotfix/apply_ggo_squad_ping_stage11.py'
+      - 'hotfix/apply_ggo_ping_wheel_stage12.py'
+      - 'hotfix/apply_ggo_tab_squad_stage13.py'
+      - 'hotfix/apply_ggo_objective_squad_stage15.py'
+      - 'hotfix/apply_ggo_runtime_network_stage17.py'
+      - 'hotfix/apply_ggo_jeg_telemetry_stage18.py'
+      - '.github/workflows/ggo-ui-shell-stage18-compile.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Unpack Runtime v1 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "$SOURCE_ZIP"
+          rm -rf ga-build
+          mkdir ga-build
+          unzip -q "$SOURCE_ZIP" -d ga-build
+
+      - name: Apply GGO client patches through Stage 18
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 hotfix/apply_ggo_ui_shell_stage1.py
+          python3 hotfix/apply_ggo_ui_shell_stage2.py
+          python3 hotfix/apply_ggo_ui_shell_stage3.py
+          python3 hotfix/apply_ggo_hud_stage4.py
+          python3 hotfix/apply_ggo_frontend_stage5.py
+          python3 hotfix/apply_ggo_settings_crosshair_stage6.py
+          python3 hotfix/apply_ggo_identity_minimap_stage7.py
+          python3 hotfix/apply_ggo_weapon_navigation_stage8.py
+          python3 hotfix/apply_ggo_ping_stage9.py
+          python3 hotfix/apply_ggo_navigation_zoom_stage10.py
+          python3 hotfix/apply_ggo_squad_ping_stage11.py
+          python3 hotfix/apply_ggo_ping_wheel_stage12.py
+          python3 hotfix/apply_ggo_tab_squad_stage13.py
+          python3 hotfix/apply_ggo_objective_squad_stage15.py
+          python3 hotfix/apply_ggo_runtime_network_stage17.py
+          python3 hotfix/apply_ggo_jeg_telemetry_stage18.py
+
+          root=ga-build/client-ui/src/main/java/arena/client/shell
+          test -f "$root/GgoRuntimeV1NetworkAdapter.java"
+          test -f "$root/GgoJegWeaponTelemetryProvider.java"
+          test -f "$root/GgoWeaponTelemetry.java"
+
+      - name: Bootstrap ForgeGradle wrapper
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/forge-mdk /tmp/forge-mdk.zip
+          curl -fL --retry 3 -o /tmp/forge-mdk.zip \
+            https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-mdk.zip
+          mkdir -p /tmp/forge-mdk
+          unzip -q /tmp/forge-mdk.zip 'gradlew' 'gradlew.bat' 'gradle/*' -d /tmp/forge-mdk
+          cp /tmp/forge-mdk/gradlew ga-build/client-ui/gradlew
+          cp /tmp/forge-mdk/gradlew.bat ga-build/client-ui/gradlew.bat
+          rm -rf ga-build/client-ui/gradle
+          cp -a /tmp/forge-mdk/gradle ga-build/client-ui/gradle
+          chmod +x ga-build/client-ui/gradlew
+
+      - name: Compile patched client UI
+        working-directory: ga-build/client-ui
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon compileJava --stacktrace
+
+      - name: Verify Stage 18 classes
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=ga-build/client-ui/build/classes/java/main/arena/client/shell
+          test -f "$root/GgoRuntimeV1NetworkAdapter.class"
+          test -f "$root/GgoJegWeaponTelemetryProvider.class"
+          test -f "$root/GgoWeaponTelemetry.class"
