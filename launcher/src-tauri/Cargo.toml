@@ -30,3 +30,4 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "str
 tokio = { version = "1", features = ["fs", "io-util", "rt-multi-thread", "macros", "net", "time", "sync"] }
 futures-util = "0.3"
 zip = "2"
+fastnbt = "2"
