@@ -33,6 +33,19 @@ public final class GgoHudStateService {
         if(BattleRoyaleService.queued(player.getUUID()))return new GgoHudNetwork.Snapshot(
                 "BATTLE ROYALE","MATCHMAKING","Waiting for players","IN QUEUE",true,
                 0,0,0,0,0,true);
+
+        GgoObjectiveService.Objective objective=GgoObjectiveService.current(player);
+        if(objective!=null){
+            String activity=objective.activity().isBlank()?"OPEN WORLD":objective.activity();
+            String progress=objective.progressText();
+            return new GgoHudNetwork.Snapshot(
+                    activity,
+                    objective.completed()?"OBJECTIVE COMPLETE":objective.title(),
+                    objective.description(),
+                    progress,
+                    true,0,0,0,0,0,true
+            );
+        }
         return empty("OPEN WORLD");
     }
 
