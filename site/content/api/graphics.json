@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "engine": {
+    "id": "ggo-graphics",
+    "displayName": "GGO Graphics",
+    "shaderBackend": "oculus",
+    "renderer": "embeddium",
+    "experimental": true
+  },
+  "profiles": [
+    {
+      "id": "off",
+      "name": "Performance",
+      "shader": null,
+      "quality": "off",
+      "description": "Maximum FPS. GGO post-processing and shader effects disabled."
+    },
+    {
+      "id": "competitive",
+      "name": "Competitive",
+      "shader": "miniature",
+      "quality": "low",
+      "description": "High visibility and high FPS for PvP and Battle Royale."
+    },
+    {
+      "id": "balanced",
+      "name": "Balanced",
+      "shader": "miniature",
+      "quality": "normal",
+      "description": "Recommended GGO profile: clear image, shadows and reflections with moderate GPU load."
+    },
+    {
+      "id": "high",
+      "name": "High",
+      "shader": "miniature",
+      "quality": "high",
+      "description": "Higher shadow distance and reflections for powerful GPUs."
+    },
+    {
+      "id": "cinematic",
+      "name": "Cinematic",
+      "shader": "photon",
+      "quality": "high",
+      "description": "Atmospheric lighting, volumetrics and post-processing for exploration and screenshots."
+    },
+    {
+      "id": "custom",
+      "name": "Custom",
+      "shader": null,
+      "quality": "custom",
+      "description": "Advanced users can choose a compatible shader pack and tune individual options."
+    }
+  ],
+  "controls": [
+    {"id":"renderDistance","type":"slider","min":4,"max":32,"default":12},
+    {"id":"shadowQuality","type":"select","values":["off","low","medium","high","ultra"],"default":"medium"},
+    {"id":"reflections","type":"select","values":["off","low","high"],"default":"low"},
+    {"id":"volumetricLighting","type":"select","values":["off","low","high"],"default":"low"},
+    {"id":"waterQuality","type":"select","values":["low","medium","high"],"default":"medium"},
+    {"id":"antiAliasing","type":"select","values":["off","fxaa","taa"],"default":"fxaa"},
+    {"id":"particles","type":"select","values":["minimal","normal","maximum"],"default":"normal"},
+    {"id":"postProcessing","type":"toggle","default":true}
+  ],
+  "packs": [
+    {
+      "id": "miniature",
+      "displayName": "GGO Competitive Graphics",
+      "upstreamName": "Miniature Shader",
+      "distribution": "pending-license-review",
+      "bundled": false,
+      "profiles": ["low","normal","high"]
+    },
+    {
+      "id": "photon",
+      "displayName": "GGO Cinematic Graphics",
+      "upstreamName": "Photon Shaders",
+      "distribution": "modpack-allowed-with-license",
+      "bundled": false,
+      "profiles": ["high"]
+    },
+    {
+      "id": "complementary",
+      "displayName": "Complementary Unbound",
+      "upstreamName": "Complementary Unbound",
+      "distribution": "external-provider-only",
+      "bundled": false,
+      "profiles": ["verylow","low","medium","high","veryhigh","ultra"]
+    }
+  ]
+}
