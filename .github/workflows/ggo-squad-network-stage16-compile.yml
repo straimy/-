@@ -1,0 +1,75 @@
+name: GGO Squad Network Stage 16 Compile
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'hotfix/GgoSquadService.java'
+      - 'hotfix/GgoSquadNetwork.java'
+      - 'hotfix/apply_ggo_squad_network_stage16.py'
+      - '.github/workflows/ggo-squad-network-stage16-compile.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Unpack Runtime v1 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "$SOURCE_ZIP"
+          rm -rf ga-build
+          mkdir ga-build
+          unzip -q "$SOURCE_ZIP" -d ga-build
+
+      - name: Apply GGO squad network Stage 16
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 hotfix/apply_ggo_squad_network_stage16.py
+          test -f ga-build/src/main/java/arena/forge/GgoSquadNetwork.java
+          test -f ga-build/src/main/java/arena/forge/GgoSquadService.java
+
+      - name: Bootstrap ForgeGradle wrapper
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -x ga-build/gradlew ] || [ ! -f ga-build/gradle/wrapper/gradle-wrapper.jar ]; then
+            rm -rf /tmp/forge-mdk /tmp/forge-mdk.zip
+            curl -fL --retry 3 -o /tmp/forge-mdk.zip \
+              https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-mdk.zip
+            mkdir -p /tmp/forge-mdk
+            unzip -q /tmp/forge-mdk.zip 'gradlew' 'gradlew.bat' 'gradle/*' -d /tmp/forge-mdk
+            cp /tmp/forge-mdk/gradlew ga-build/gradlew
+            cp /tmp/forge-mdk/gradlew.bat ga-build/gradlew.bat
+            rm -rf ga-build/gradle
+            cp -a /tmp/forge-mdk/gradle ga-build/gradle
+            chmod +x ga-build/gradlew
+          fi
+
+      - name: Compile Forge Core
+        working-directory: ga-build
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon compileJava --stacktrace
+
+      - name: Verify Stage 16 classes
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=ga-build/build/classes/java/main/arena/forge
+          test -f "$root/GgoSquadNetwork.class"
+          test -f "$root/GgoSquadService.class"
