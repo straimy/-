@@ -1,0 +1,82 @@
+name: GGO UI Shell Stage 3 Compile
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - client/runtime-migration-v1
+    paths:
+      - 'hotfix/apply_ggo_ui_shell_stage1.py'
+      - 'hotfix/apply_ggo_ui_shell_stage2.py'
+      - 'hotfix/apply_ggo_ui_shell_stage3.py'
+      - '.github/workflows/ggo-ui-shell-stage3-compile.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Unpack real Runtime v1 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf ga-build
+          mkdir ga-build
+          unzip -q gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip -d ga-build
+
+      - name: Apply client compatibility fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('ga-build/client-ui/src/main/java/arena/client/ui/ArenaButton.java')
+          if p.exists():
+              s=p.read_text()
+              if 'NarrationElementOutput' not in s:
+                  s=s.replace('import net.minecraft.client.gui.components.AbstractButton;\n','import net.minecraft.client.gui.components.AbstractButton;\nimport net.minecraft.client.gui.narration.NarrationElementOutput;\n')
+                  s=s.replace('    @Override public void onPress() { onPress.onPress(this); }\n','    @Override public void onPress() { onPress.onPress(this); }\n\n    @Override\n    protected void updateWidgetNarration(NarrationElementOutput output) {\n        this.defaultButtonNarrationText(output);\n    }\n')
+                  p.write_text(s)
+          PY
+
+      - name: Apply GGO UI Shell stages
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 hotfix/apply_ggo_ui_shell_stage1.py
+          if [ -f hotfix/apply_ggo_ui_shell_stage2.py ]; then python3 hotfix/apply_ggo_ui_shell_stage2.py; fi
+          python3 hotfix/apply_ggo_ui_shell_stage3.py
+          test -f ga-build/client-ui/src/main/java/arena/client/shell/GgoShellScreen.java
+          test -f ga-build/client-ui/src/main/java/arena/client/shell/GgoShellHooks.java
+          grep -q 'SOCIAL' ga-build/client-ui/src/main/java/arena/client/shell/GgoShellScreen.java
+          grep -q 'renderInventory' ga-build/client-ui/src/main/java/arena/client/shell/GgoShellScreen.java
+          grep -q 'renderNavigation' ga-build/client-ui/src/main/java/arena/client/shell/GgoShellScreen.java
+
+      - name: Bootstrap ForgeGradle wrapper
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/ggo-mdk /tmp/ggo-mdk.zip
+          curl -fL --retry 3 -o /tmp/ggo-mdk.zip https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-mdk.zip
+          mkdir -p /tmp/ggo-mdk
+          unzip -q /tmp/ggo-mdk.zip 'gradlew' 'gradlew.bat' 'gradle/*' -d /tmp/ggo-mdk
+          cp /tmp/ggo-mdk/gradlew ga-build/client-ui/gradlew
+          cp /tmp/ggo-mdk/gradlew.bat ga-build/client-ui/gradlew.bat
+          cp -a /tmp/ggo-mdk/gradle ga-build/client-ui/gradle
+          chmod +x ga-build/client-ui/gradlew
+
+      - name: Compile client UI
+        working-directory: ga-build/client-ui
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon compileJava --stacktrace
