@@ -1,6 +1,9 @@
 package arena.forge;
 
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraftforge.event.entity.player.PlayerEvent;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.common.Mod;
 
 import java.util.Map;
 import java.util.UUID;
@@ -11,6 +14,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * Gameplay systems (contracts, Training, events, story) publish into this service;
  * the HUD only reads the sanitized snapshot and never owns objective progress.
  */
+@Mod.EventBusSubscriber(modid="gunnerarena",bus=Mod.EventBusSubscriber.Bus.FORGE)
 public final class GgoObjectiveService {
     public record Objective(
             String id,
@@ -74,6 +78,11 @@ public final class GgoObjectiveService {
 
     public static void clear(UUID playerId) {
         if (playerId != null) ACTIVE.remove(playerId);
+    }
+
+    @SubscribeEvent
+    public static void logout(PlayerEvent.PlayerLoggedOutEvent event) {
+        clear(event.getEntity().getUUID());
     }
 
     private static String safe(String value, int max) {
