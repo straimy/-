@@ -124,8 +124,12 @@ jobs:
           test -f site/DEPLOY-VDS.md
           python3 -m json.tool site/content/api/servers.json >/dev/null
           python3 -m json.tool site/content/api/news.json >/dev/null
+          python3 -m json.tool site/content/api/game-modes.json >/dev/null
+          python3 -m json.tool site/content/api/graphics.json >/dev/null
           python3 -m json.tool site/content/manifests/beta.json >/dev/null
-          grep -q '2.26.100.125:24842' site/content/api/servers.json
+          grep -q 'play.kvicloud.ru:24842' site/content/api/servers.json
+          grep -q '"defaultProfile": "balanced"' site/content/api/graphics.json
+          grep -q 'battle-royale' site/content/api/game-modes.json
           grep -q 'GunGloryOnline-Launcher-Windows.exe' site/index.html
           grep -q 'GunGloryOnline-Launcher-Windows-Portable.zip' site/index.html
           grep -q 'GunGloryOnline-Launcher-Linux.AppImage' site/index.html
