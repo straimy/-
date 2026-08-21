@@ -30,6 +30,15 @@ pub struct MinecraftLinkResult {
     pub minecraft_name: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameTicket {
+    pub ticket: String,
+    pub expires_in: u64,
+    pub player_id: String,
+    pub display_name: String,
+}
+
 #[derive(Debug, Clone)]
 pub struct GgoSession {
     pub access_token: String,
@@ -56,6 +65,8 @@ struct DeviceStartResponse { device_id: String, verification_uri: String, expire
 struct DeviceTokenRequest<'a> { device_id: &'a str, code_verifier: &'a str }
 #[derive(Debug, Serialize)]
 struct PasswordLoginRequest<'a> { username: &'a str, password: &'a str }
+#[derive(Debug, Serialize)]
+struct GameTicketRequest<'a> { audience: &'a str }
 #[derive(Debug, Deserialize)]
 struct SessionResponse { access_token: String, refresh_token: String }
 #[derive(Debug, Deserialize)]
@@ -117,6 +128,24 @@ pub async fn login_password(http: &Client, api_url: &str, username: &str, passwo
     let profile = GgoProfile { id: session.profile.id, display_name: session.profile.display_name, skin_source: session.profile.skin_source };
     store.replace(GgoSession { access_token: session.access_token, refresh_token: session.refresh_token, profile: profile.clone() }).await;
     Ok(GgoAuthStatus { authenticated: true, profile: Some(profile) })
+}
+
+pub async fn issue_game_ticket(http: &Client, api_url: &str, audience: &str, store: &GgoSessionStore) -> Result<GameTicket, String> {
+    let session = store.snapshot().await.ok_or_else(|| "GGO account is not authenticated".to_string())?;
+    let audience = audience.trim();
+    if audience.is_empty() { return Err("GGO game ticket audience is required".to_string()); }
+    let response = http
+        .post(endpoint(api_url, "/auth/game-ticket"))
+        .bearer_auth(&session.access_token)
+        .json(&GameTicketRequest { audience })
+        .send().await
+        .map_err(|e| e.to_string())?;
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!("GGO game ticket request failed: HTTP {status} {body}"));
+    }
+    response.json::<GameTicket>().await.map_err(|e| e.to_string())
 }
 
 pub async fn status(store: &GgoSessionStore) -> GgoAuthStatus {
