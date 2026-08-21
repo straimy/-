@@ -13,6 +13,7 @@ from pathlib import Path
 
 PORT = 18787
 BASE = f"127.0.0.1:{PORT}"
+SERVER_KEY = "ci-ggo-server-key"
 
 
 def b64url(data: bytes) -> str:
@@ -28,6 +29,7 @@ class AuthSmoke(unittest.TestCase):
             "GGO_AUTH_PORT": str(PORT),
             "GGO_PUBLIC_URL": f"http://{BASE}",
             "GGO_AUTH_DB": str(Path(cls.temp.name) / "auth.db"),
+            "GGO_SERVER_KEY": SERVER_KEY,
         })
         cls.proc = subprocess.Popen([sys.executable, str(Path(__file__).with_name("server.py"))], env=env)
         for _ in range(50):
@@ -61,7 +63,7 @@ class AuthSmoke(unittest.TestCase):
         conn.close()
         return response.status, parsed, out_headers
 
-    def test_registration_login_and_device_flow(self):
+    def test_registration_login_device_and_game_ticket_flow(self):
         status, reg, headers = self.req("POST", "/api/v1/auth/register", {
             "username": "Smoke_User",
             "password": "correct-horse-123",
@@ -83,6 +85,45 @@ class AuthSmoke(unittest.TestCase):
         status, me, _ = self.req("GET", "/api/v1/me", headers={"Authorization": f"Bearer {login['access_token']}"})
         self.assertEqual(status, 200)
         self.assertEqual(me["country"], "SE")
+
+        status, ticket, _ = self.req(
+            "POST",
+            "/api/v1/auth/game-ticket",
+            {"audience": "official-online"},
+            headers={"Authorization": f"Bearer {login['access_token']}"},
+        )
+        self.assertEqual(status, 201)
+        self.assertTrue(ticket["ticket"])
+        self.assertEqual(ticket["player_id"], me["id"])
+        self.assertLessEqual(ticket["expires_in"], 90)
+
+        status, denied, _ = self.req(
+            "POST",
+            "/api/v1/auth/game-ticket/consume",
+            {"ticket": ticket["ticket"], "audience": "official-online"},
+            headers={"X-GGO-Server-Key": "wrong-key"},
+        )
+        self.assertEqual(status, 401)
+        self.assertEqual(denied["error"], "server_auth_required")
+
+        status, consumed, _ = self.req(
+            "POST",
+            "/api/v1/auth/game-ticket/consume",
+            {"ticket": ticket["ticket"], "audience": "official-online"},
+            headers={"X-GGO-Server-Key": SERVER_KEY},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(consumed["valid"])
+        self.assertEqual(consumed["player"]["id"], me["id"])
+
+        status, replay, _ = self.req(
+            "POST",
+            "/api/v1/auth/game-ticket/consume",
+            {"ticket": ticket["ticket"], "audience": "official-online"},
+            headers={"X-GGO-Server-Key": SERVER_KEY},
+        )
+        self.assertEqual(status, 401)
+        self.assertEqual(replay["error"], "invalid_expired_or_consumed_ticket")
 
         verifier = "v" * 64
         challenge = b64url(hashlib.sha256(verifier.encode()).digest())
