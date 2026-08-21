@@ -17,13 +17,16 @@ HOST = os.environ.get("GGO_AUTH_HOST", "127.0.0.1")
 PORT = int(os.environ.get("GGO_AUTH_PORT", "8787"))
 PUBLIC_URL = os.environ.get("GGO_PUBLIC_URL", "https://ggo.kvicloud.ru").rstrip("/")
 DB_PATH = Path(os.environ.get("GGO_AUTH_DB", "/var/lib/ggo-auth/auth.db"))
+SERVER_KEY = os.environ.get("GGO_SERVER_KEY", "")
 ACCESS_TTL = 12 * 60 * 60
 REFRESH_TTL = 30 * 24 * 60 * 60
 DEVICE_TTL = 10 * 60
+GAME_TICKET_TTL = 75
 USERNAME_RE = re.compile(r"^[A-Za-z0-9_]{3,16}$")
 ALLOWED_SKINS = {"ggo", "microsoft", "default"}
 ALLOWED_LANGS = {"ru", "en", "uk"}
 ALLOWED_REGIONS = {"eu", "eeu", "na", "sa", "apac", "other"}
+ALLOWED_GAME_AUDIENCES = {"official-online", "play.kvicloud.ru"}
 
 
 def now() -> int:
@@ -92,9 +95,19 @@ def init_db():
               expires_at INTEGER NOT NULL,
               created_at INTEGER NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS game_tickets (
+              token_hash TEXT PRIMARY KEY,
+              user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+              audience TEXT NOT NULL,
+              expires_at INTEGER NOT NULL,
+              created_at INTEGER NOT NULL,
+              consumed_at INTEGER
+            );
             CREATE INDEX IF NOT EXISTS idx_access_user ON access_sessions(user_id);
             CREATE INDEX IF NOT EXISTS idx_refresh_user ON refresh_tokens(user_id);
             CREATE INDEX IF NOT EXISTS idx_device_expiry ON device_flows(expires_at);
+            CREATE INDEX IF NOT EXISTS idx_game_ticket_expiry ON game_tickets(expires_at);
+            CREATE INDEX IF NOT EXISTS idx_game_ticket_user ON game_tickets(user_id);
             """
         )
 
@@ -131,10 +144,11 @@ def cleanup(db):
     db.execute("DELETE FROM access_sessions WHERE expires_at <= ?", (ts,))
     db.execute("DELETE FROM refresh_tokens WHERE expires_at <= ?", (ts,))
     db.execute("DELETE FROM device_flows WHERE expires_at <= ?", (ts,))
+    db.execute("DELETE FROM game_tickets WHERE expires_at <= ? OR (consumed_at IS NOT NULL AND consumed_at <= ?)", (ts, ts - 300))
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "GGOAuth/1.0"
+    server_version = "GGOAuth/1.1"
 
     def log_message(self, fmt, *args):
         print(f"[ggo-auth] {self.address_string()} {fmt % args}", flush=True)
@@ -186,6 +200,10 @@ class Handler(BaseHTTPRequestHandler):
         origin = self.headers.get("Origin")
         return not origin or origin.rstrip("/") == PUBLIC_URL
 
+    def server_key_ok(self):
+        candidate = self.headers.get("X-GGO-Server-Key", "")
+        return bool(SERVER_KEY) and bool(candidate) and hmac.compare_digest(candidate, SERVER_KEY)
+
     def set_session_cookie(self, access):
         secure = PUBLIC_URL.startswith("https://")
         return f"ggo_session={access}; Path=/; HttpOnly; SameSite=Lax; Max-Age={ACCESS_TTL}" + ("; Secure" if secure else "")
@@ -193,7 +211,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urllib.parse.urlparse(self.path).path
         if path == "/api/v1/health":
-            return self.json(200, {"ok": True, "service": "ggo-auth", "version": 1})
+            return self.json(200, {"ok": True, "service": "ggo-auth", "version": 2, "game_tickets": True})
         if path in ("/api/v1/me", "/api/v1/auth/session"):
             with connect() as db:
                 cleanup(db)
@@ -214,6 +232,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/v1/auth/device/start": return self.device_start(data)
         if path == "/api/v1/auth/device/approve": return self.device_approve(data)
         if path == "/api/v1/auth/device/token": return self.device_token(data)
+        if path == "/api/v1/auth/game-ticket": return self.game_ticket(data)
+        if path == "/api/v1/auth/game-ticket/consume": return self.consume_game_ticket(data)
         return self.json(404, {"error": "not_found"})
 
     def do_PUT(self):
@@ -327,6 +347,61 @@ class Handler(BaseHTTPRequestHandler):
             db.execute("DELETE FROM device_flows WHERE device_id=?", (device_id,))
             db.commit()
         return self.json(200, {"access_token": access, "refresh_token": refresh})
+
+    def game_ticket(self, data):
+        audience = str(data.get("audience", "official-online")).strip().lower()
+        if audience not in ALLOWED_GAME_AUDIENCES:
+            return self.json(400, {"error": "invalid_audience"})
+        with connect() as db:
+            cleanup(db)
+            user = self.auth_user(db)
+            if not user:
+                return self.json(401, {"error": "not_authenticated"})
+            raw_ticket = token()
+            ts = now()
+            db.execute(
+                "INSERT INTO game_tickets(token_hash,user_id,audience,expires_at,created_at,consumed_at) VALUES(?,?,?,?,?,NULL)",
+                (token_hash(raw_ticket), user["id"], audience, ts + GAME_TICKET_TTL, ts),
+            )
+            db.commit()
+        return self.json(201, {
+            "ticket": raw_ticket,
+            "expires_in": GAME_TICKET_TTL,
+            "player_id": user["id"],
+            "display_name": user["display_name"],
+        })
+
+    def consume_game_ticket(self, data):
+        if not self.server_key_ok():
+            return self.json(401, {"error": "server_auth_required"})
+        raw_ticket = str(data.get("ticket", "")).strip()
+        audience = str(data.get("audience", "official-online")).strip().lower()
+        if not raw_ticket or audience not in ALLOWED_GAME_AUDIENCES:
+            return self.json(400, {"error": "invalid_ticket_request"})
+        ts = now()
+        with connect() as db:
+            cleanup(db)
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute(
+                "SELECT t.*,u.* FROM game_tickets t JOIN users u ON u.id=t.user_id WHERE t.token_hash=? AND t.audience=? AND t.expires_at>? AND t.consumed_at IS NULL",
+                (token_hash(raw_ticket), audience, ts),
+            ).fetchone()
+            if not row:
+                db.rollback()
+                return self.json(401, {"error": "invalid_expired_or_consumed_ticket"})
+            changed = db.execute(
+                "UPDATE game_tickets SET consumed_at=? WHERE token_hash=? AND consumed_at IS NULL",
+                (ts, token_hash(raw_ticket)),
+            ).rowcount
+            if changed != 1:
+                db.rollback()
+                return self.json(409, {"error": "ticket_already_consumed"})
+            db.commit()
+        return self.json(200, {
+            "valid": True,
+            "audience": audience,
+            "player": profile(row),
+        })
 
     def update_skin(self, data):
         source = str(data.get("source", ""))
