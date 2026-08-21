@@ -1,8 +1,13 @@
-use super::ggo_local_install::{CORE_FILE_NAME, UI_FILE_NAME};
+use super::{
+    ggo_local_install::{CORE_FILE_NAME, UI_FILE_NAME},
+    official_server,
+};
 use std::{fs, io, path::Path};
 
 pub fn finalize_remote_install(install_dir: &Path) -> Result<(), io::Error> {
     remove_legacy_managed_jars(&install_dir.join("mods"))?;
+    official_server::ensure_official_server(install_dir)
+        .map_err(|error| io::Error::new(io::ErrorKind::Other, error))?;
     Ok(())
 }
 
@@ -44,6 +49,7 @@ mod tests {
         finalize_remote_install(&root).unwrap();
         let options = std::fs::read_to_string(root.join("options.txt")).unwrap();
         assert_eq!(options, "resourcePacks:[]\n");
+        assert!(root.join("servers.dat").is_file());
         let _ = std::fs::remove_dir_all(root);
     }
 }
