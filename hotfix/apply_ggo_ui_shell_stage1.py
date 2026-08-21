@@ -77,7 +77,6 @@ public final class GgoShellScreen extends Screen {
 
 hooks = r'''package arena.client.shell;
 
-import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.PauseScreen;
@@ -128,7 +127,7 @@ public final class GgoShellHooks {
         if (mc.player == null || !mc.options.keyPlayerList.isDown()) return;
 
         GuiGraphics g = event.getGuiGraphics();
-        int width = event.getWindow().getGuiScaledWidth();
+        int width = mc.getWindow().getGuiScaledWidth();
         int boxW = Math.min(360, width - 32);
         int x = (width - boxW) / 2;
         int y = 14;
