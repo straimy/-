@@ -11,7 +11,7 @@ use thiserror::Error;
 pub const MINECRAFT_VERSION: &str = "1.20.1";
 pub const FORGE_VERSION: &str = "47.4.10";
 pub const REQUIRED_JAVA_MAJOR: u8 = 17;
-pub const DEFAULT_SERVER: &str = "2.26.100.125";
+pub const DEFAULT_SERVER: &str = "play.kvicloud.ru";
 pub const DEFAULT_SERVER_PORT: u16 = 24842;
 pub const MCP_VERSION: &str = "20230612.114412";
 
