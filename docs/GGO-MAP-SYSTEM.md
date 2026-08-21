@@ -4,13 +4,15 @@
 Replace vanilla-style navigation/player-list UX with a first-party tactical map system that works across the persistent world, Battle Royale, Training and events.
 
 ## Key bindings
-- `M` — open/close the full GGO map.
-- `TAB` (hold) — tactical overlay: squad/match status plus compact map context.
+- `M` — open/close the GGO Menu / Activities screen. This remains the primary game-mode/events/contracts menu.
+- `N` — open/close the full GGO Navigation Map.
+- `TAB` (hold) — fast squad/match status overlay. It must stay lightweight and must not cover the player with a second full map.
 - Minimap — optional HUD element, disabled by default and enabled in Settings > Interface > Map.
-- `ESC` — closes map/overlay first, then opens the GGO Pause Hub.
+- `MMB` — context ping / waypoint.
+- `ESC` — closes the current GGO screen first, then opens the GGO Pause Hub.
 
-## Full map (`M`)
-The full map is a dedicated GGO screen, not a vanilla Minecraft map UI.
+## Full map (`N`)
+The full map is a dedicated GGO Navigation screen, not a vanilla Minecraft map UI.
 
 Common features:
 - player position and facing;
@@ -78,17 +80,20 @@ Default minimap content should remain minimal:
 Avoid displaying every POI/icon simultaneously.
 
 ## TAB tactical overlay
-`TAB` no longer opens Minecraft's all-player list.
+`TAB` no longer opens Minecraft's all-player list and it is not a second map screen.
 
-While held, TAB displays a lightweight overlay with:
+While held, TAB displays a compact edge-aligned overlay with:
 - squad members;
 - health/downed/alive state;
 - ping/connection quality;
 - voice status;
 - squad leader;
 - current activity/match;
-- compact tactical map showing the player's current area;
+- current sector/region text;
+- waypoint bearing/distance when one exists;
 - current objective and important match counters.
+
+The center of the screen should remain readable during combat.
 
 ### Battle Royale additions
 - kills/assists;
@@ -104,6 +109,20 @@ While held, TAB displays a lightweight overlay with:
 - party/squad information.
 
 The complete server player list is not part of normal player UX. It belongs in Admin/Debug tools.
+
+## GGO Menu (`M`)
+`M` remains the high-level Activities entry point rather than navigation.
+
+Suggested sections:
+- Enter/Open World status;
+- Training;
+- Battle Royale / Quick Match;
+- Events;
+- Contracts;
+- Party activity;
+- current queue/matchmaking state.
+
+Do not duplicate Inventory, Social or Settings inside every menu. Those remain globally accessible from their own screens / Pause Hub.
 
 ## Information security / game rules
 - Never expose hidden enemies merely because the map renderer can access their entities.
@@ -127,7 +146,7 @@ Use runtime-neutral concepts such as:
 Forge/Minecraft coordinates are adapted into this model by Runtime v1 code.
 
 ## Implementation order
-1. Stage 1: keybind shell for `M` and hold-`TAB`, placeholder GGO screens.
+1. Stage 1: keybind shell for `M`, `N` and hold-`TAB`, placeholder GGO screens.
 2. Stage 2: player position, facing, squad and objective marker model.
 3. Stage 3: BR zone/ring and match-state integration.
 4. Stage 4: optional minimap with settings.
