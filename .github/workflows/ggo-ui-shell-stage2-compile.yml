@@ -1,0 +1,101 @@
+name: GGO UI Shell Stage 2 Compile
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'hotfix/apply_ggo_ui_shell_stage1.py'
+      - 'hotfix/apply_ggo_ui_shell_stage2.py'
+      - '.github/workflows/ggo-ui-shell-stage2-compile.yml'
+
+permissions:
+  contents: read
+
+env:
+  SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+
+jobs:
+  compile-client-shell:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Unpack real client source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "$SOURCE_ZIP"
+          rm -rf ga-build
+          mkdir ga-build
+          unzip -q "$SOURCE_ZIP" -d ga-build
+          test -d ga-build/client-ui/src/main/java
+
+      - name: Apply known Forge 47.4.10 client compatibility fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('ga-build/client-ui/src/main/java/arena/client/ui/ArenaButton.java')
+          s=p.read_text()
+          if 'NarrationElementOutput' not in s:
+              s=s.replace('import net.minecraft.client.gui.components.AbstractButton;\n', 'import net.minecraft.client.gui.components.AbstractButton;\nimport net.minecraft.client.gui.narration.NarrationElementOutput;\n')
+              s=s.replace('    @Override public void onPress() { onPress.onPress(this); }\n', '    @Override public void onPress() { onPress.onPress(this); }\n\n    @Override\n    protected void updateWidgetNarration(NarrationElementOutput output) {\n        this.defaultButtonNarrationText(output);\n    }\n')
+              p.write_text(s)
+          p=Path('ga-build/client-ui/src/main/java/arena/client/ui/AbstractArenaScreen.java')
+          s=p.read_text()
+          if 'addArenaButton' not in s:
+              s=s.replace('    protected final void installNavigation() { ArenaNavigation.install(this, route); }\n', '    protected final void installNavigation() { ArenaNavigation.install(this, route); }\n\n    final ArenaButton addArenaButton(ArenaButton button) { return addRenderableWidget(button); }\n')
+              p.write_text(s)
+          p=Path('ga-build/client-ui/src/main/java/arena/client/ui/ArenaNavigation.java')
+          s=p.read_text().replace('screen.addRenderableWidget(button);','screen.addArenaButton(button);')
+          p.write_text(s)
+          PY
+
+      - name: Apply GGO UI Shell Stage 1 and Stage 2
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 hotfix/apply_ggo_ui_shell_stage1.py
+          python3 hotfix/apply_ggo_ui_shell_stage2.py
+          test -f ga-build/client-ui/src/main/java/arena/client/shell/GgoShellScreen.java
+          test -f ga-build/client-ui/src/main/java/arena/client/shell/GgoShellHooks.java
+          grep -q 'BACKPACK' ga-build/client-ui/src/main/java/arena/client/shell/GgoShellScreen.java
+          grep -q 'PING' ga-build/client-ui/src/main/java/arena/client/shell/GgoShellHooks.java
+
+      - name: Bootstrap ForgeGradle wrapper
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/forge-mdk /tmp/forge-mdk.zip
+          curl -fL --retry 3 --retry-delay 2 \
+            -o /tmp/forge-mdk.zip \
+            https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-mdk.zip
+          mkdir -p /tmp/forge-mdk
+          unzip -q /tmp/forge-mdk.zip 'gradlew' 'gradlew.bat' 'gradle/*' -d /tmp/forge-mdk
+          cp /tmp/forge-mdk/gradlew ga-build/client-ui/gradlew
+          cp /tmp/forge-mdk/gradlew.bat ga-build/client-ui/gradlew.bat
+          rm -rf ga-build/client-ui/gradle
+          cp -a /tmp/forge-mdk/gradle ga-build/client-ui/gradle
+          chmod +x ga-build/client-ui/gradlew
+
+      - name: Compile GGO client shell
+        working-directory: ga-build/client-ui
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon clean compileJava --stacktrace
+
+      - name: Verify compiled shell classes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f ga-build/client-ui/build/classes/java/main/arena/client/shell/GgoShellScreen.class
+          test -f ga-build/client-ui/build/classes/java/main/arena/client/shell/GgoShellHooks.class
+          echo 'GGO UI Shell Stage 2 compile PASS'
