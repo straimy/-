@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "soundtrack": {
+    "mode": "global_pool",
+    "defaultMusicVolume": 0.65,
+    "minSilenceSeconds": 120,
+    "maxSilenceSeconds": 480,
+    "tracks": [
+      {
+        "id": "ggo_ambient_01",
+        "title": "GGO Ambient 01",
+        "status": "prototype",
+        "durationSeconds": 97.712,
+        "format": "ogg-vorbis",
+        "sampleRateHz": 48000,
+        "channels": 2,
+        "targetUse": ["frontend", "hub", "open_world", "training"],
+        "sha256": "74d3da996d6ea66a23c6c8cbce8427eab317ec6c0147e2ef9e56828df11686f0",
+        "notes": "First original GGO ambient prototype. Keep quiet; do not normalize aggressively. Final CDN path will be assigned before production packaging."
+      }
+    ]
+  }
+}
