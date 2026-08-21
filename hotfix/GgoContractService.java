@@ -15,6 +15,7 @@ public final class GgoContractService {
 
     private static final Map<UUID, LinkedHashMap<String, Contract>> BY_PLAYER=new ConcurrentHashMap<>();
     private static final Map<UUID,String> TRACKED=new ConcurrentHashMap<>();
+    private static final Map<UUID, java.util.Set<String>> REWARDED=new ConcurrentHashMap<>();
     private GgoContractService(){}
 
     public static List<Contract> list(ServerPlayer p){
@@ -38,15 +39,24 @@ public final class GgoContractService {
     }
     public static void addProgress(ServerPlayer p,String id,int delta){
         if(p==null||id==null||delta==0)return; ensureDefaults(p);
+        final boolean[] completedNow={false};
         BY_PLAYER.get(p.getUUID()).computeIfPresent(id,(k,c)->{
             int cur=Math.max(0,Math.min(c.target(),c.current()+delta));
-            return new Contract(c.id(),c.title(),c.description(),c.activity(),cur,c.target(),c.rewardCredits(),cur>=c.target());
+            boolean done=cur>=c.target();
+            completedNow[0]=done&&!c.completed();
+            return new Contract(c.id(),c.title(),c.description(),c.activity(),cur,c.target(),c.rewardCredits(),done);
         });
         Contract c=BY_PLAYER.get(p.getUUID()).get(id);
         if(c!=null&&id.equals(TRACKED.get(p.getUUID())))publishObjective(p,c);
+        if(c!=null&&completedNow[0])rewardOnce(p,c);
     }
-    public static void clear(UUID id){if(id!=null){BY_PLAYER.remove(id);TRACKED.remove(id);}}
+    public static void clear(UUID id){if(id!=null){BY_PLAYER.remove(id);TRACKED.remove(id);REWARDED.remove(id);}}
 
+    private static void rewardOnce(ServerPlayer p,Contract c){
+        java.util.Set<String> rewarded=REWARDED.computeIfAbsent(p.getUUID(),id->ConcurrentHashMap.newKeySet());
+        if(!rewarded.add(c.id()))return;
+        if(!GgoContractRewardBridge.award(p,c.rewardCredits()))rewarded.remove(c.id());
+    }
     private static void publishObjective(ServerPlayer p,Contract c){
         GgoObjectiveService.set(p,"contract:"+c.id(),c.activity(),c.title(),c.description(),c.current(),c.target());
         if(c.completed())GgoObjectiveService.complete(p);
