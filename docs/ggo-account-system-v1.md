@@ -4,39 +4,70 @@ Goal: make the GGO identity independent from Minecraft so the same account survi
 
 ## Identity model
 
-`ggo_player_id` is the canonical player identity. Minecraft/Microsoft is an optional linked identity, not the primary database key.
+`ggo_player_id` is the canonical player identity. Minecraft/Microsoft is never the primary database key.
 
-Login methods shown by the launcher:
+## Player-facing login policy
 
-1. **GGO Account** — recommended. Registration and confirmation happen on `https://ggo.kvicloud.ru`; the launcher uses a browser/device authorization flow and never asks for the GGO password directly.
-2. **Microsoft** — official Microsoft/Minecraft OAuth. A Microsoft identity can be linked to an existing GGO account.
-3. **Guest / Quick Play** — nickname-only local/temporary GGO identity. It must never impersonate a Microsoft/Mojang account. Guest progression may be restricted and can later be upgraded into a GGO account.
+Official GGO Online uses exactly one primary authentication method:
+
+1. **GGO Account** — required for official online play. Registration, password entry, recovery and account approval happen on the GGO website. The launcher uses browser/device authorization and does not need the user's password.
+
+Microsoft is not shown as an alternative login provider for official GGO Online. It may exist only as an optional linked identity for migration, ownership checks or an official skin source.
+
+Guest/Quick Play is not an online authentication method. A local guest profile may be used only by Training/offline features and never receives authoritative online progression.
 
 ## Browser/device login
 
-Proposed flow:
-
 1. Launcher calls `POST /api/v1/auth/device/start` with a random PKCE verifier/challenge and launcher installation id.
-2. Backend returns `device_id`, a short user code, `verification_uri`, expiration and polling interval.
-3. Launcher opens `https://ggo.kvicloud.ru/activate?...` in the system browser.
-4. User signs in/registers on the website and approves the launcher.
+2. Backend returns `device_id`, `verification_uri`, expiration and polling interval.
+3. Launcher opens the GGO website in the system browser.
+4. User signs in/registers/recover their account on the website and approves this launcher device.
 5. Launcher polls `POST /api/v1/auth/device/token` until approved.
 6. Backend returns a short-lived access token and rotating refresh token.
-7. Long-lived secrets must later be stored in the OS keychain, never localStorage and never logs.
+7. Long-lived secrets must be stored in the OS keychain, never localStorage and never logs.
 
-No GGO password is typed into the launcher.
+No GGO password is typed into the production launcher UI.
+
+## Game Ticket flow
+
+Official online access uses a second short-lived credential separate from the launcher session.
+
+1. Authenticated launcher requests `POST /api/v1/auth/game-ticket`.
+2. Auth service creates a cryptographically random, short-lived and preferably one-time ticket bound to the canonical `ggo_player_id` and intended GGO environment/shard.
+3. Launcher passes the ticket to the GGO client through the protected launch/session bridge. The ticket must never be written to normal logs.
+4. GGO Core performs a custom client handshake when connecting to an official server.
+5. Dedicated server validates/consumes the ticket against GGO Auth.
+6. Validation returns canonical GGO player id, display name and allowed session metadata.
+7. Only after validation does the server admit the player to the official world.
+
+Tickets should have a very short TTL, be single-use where practical and be audience-bound to official GGO services.
+
+## Blocking vanilla/third-party clients
+
+Knowing `play.kvicloud.ru:24842` must not be sufficient to enter official GGO Online.
+
+Official servers require both:
+
+- the expected GGO Core network protocol/handshake version;
+- a valid GGO Game Ticket.
+
+A vanilla Minecraft client, Prism instance without the required GGO client module, modified client that skips the handshake, expired ticket, reused ticket or invalid account is disconnected before gameplay access.
+
+This is an application access control layer, not DRM. Client binaries can still be inspected; security relies on server-side ticket validation and authoritative server state, not on hiding secrets inside the launcher.
 
 ## Suggested backend endpoints
 
-- `POST /api/v1/auth/register`
-- `POST /api/v1/auth/login`
+- `POST /api/v1/auth/register` (website)
+- `POST /api/v1/auth/login` (website)
 - `POST /api/v1/auth/device/start`
 - `POST /api/v1/auth/device/token`
 - `POST /api/v1/auth/refresh`
 - `POST /api/v1/auth/logout`
+- `POST /api/v1/auth/game-ticket`
+- `POST /api/v1/auth/game-ticket/consume` (internal/server authenticated)
 - `GET /api/v1/me`
 - `GET /api/v1/me/identities`
-- `POST /api/v1/me/identities/microsoft/link`
+- `POST /api/v1/me/identities/microsoft/link` (optional/advanced)
 - `DELETE /api/v1/me/identities/microsoft`
 - `GET /api/v1/me/skin`
 - `PUT /api/v1/me/skin/source`
@@ -48,23 +79,22 @@ No GGO password is typed into the launcher.
 Each GGO profile stores a skin preference:
 
 - `ggo` — use the skin uploaded to GGO.
-- `microsoft` — use the linked official Minecraft skin when available.
+- `microsoft` — optionally use a linked official skin when available.
 - `default` — GGO default character skin.
 
-GGO skins are stored on the VDS/object storage and served by immutable content hashes. The client UI/runtime mod resolves player skins using signed GGO profile metadata, so GGO skins work even when the player is not using a Mojang skin.
+Microsoft linkage must never grant official GGO Online access by itself.
 
-The launcher Account Hub controls the preference; the actual in-game rendering belongs to the GGO client mod.
+## Training/offline profile
 
-## Guest mode
+Training may run without an authenticated GGO session after required assets are installed.
 
-Guest mode is a first-party GGO guest session, not an authentication bypass. It gets its own generated `ggo_player_id`/guest id and display name. Servers decide what guest users may access. Suggested restrictions until upgrade:
+A local profile:
 
-- no cloud purchases;
-- no account recovery;
-- optional progression cap;
-- no custom skin upload;
-- visible `Guest` account badge.
+- has no cloud identity authority;
+- cannot join official GGO Online;
+- cannot earn or mutate authoritative progression, currency, ranking, inventory ownership or competitive statistics;
+- may store only local Training preferences/statistics.
 
 ## Migration path away from Minecraft
 
-Because progression, social data, cosmetics and skins are keyed by `ggo_player_id`, future clients can authenticate against the same backend without Minecraft UUIDs. Microsoft becomes an optional linked provider rather than a core dependency.
+Progression, social data, cosmetics, ranks, inventory and profiles are keyed by `ggo_player_id`. Minecraft UUIDs remain transport/runtime details only while the current client is based on Minecraft.
