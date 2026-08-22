@@ -14,10 +14,11 @@ shutil.copy2(SRC, DST)
 
 text = DST.read_text(encoding="utf-8")
 for required in [
-    "RETURN TO LAUNCHER",
-    "Official online sessions are created by GGO Launcher.",
-    "PLAY ONLINE",
-    "ONE ACCOUNT  •  ONE SECURE ENTRY  •  GGO LAUNCHER",
+    "RETURN TO GGO LAUNCHER",
+    "Online play starts from GGO Launcher with a fresh secure session.",
+    "GGO CLIENT  •  BETA",
+    "ONE ACCOUNT  •  SECURE ENTRY  •  GGO LAUNCHER",
+    "new GgoSettingsScreen(this)",
 ]:
     if required not in text:
         raise SystemExit(f"stage58 frontend missing: {required}")
@@ -26,13 +27,15 @@ for forbidden in [
     "ServerAddress.parseString",
     "play.kvicloud.ru:24842",
     "ENTER GGO",
+    "OptionsScreen",
     "sendCommand(\"login",
     "sendCommand(\"register",
 ]:
     if forbidden in text:
-        raise SystemExit(f"stage58 direct online entry leak: {forbidden}")
+        raise SystemExit(f"stage58 direct online/runtime entry leak: {forbidden}")
 
 print("Applied GGO Stage 58 launcher-authoritative online entry")
 print(" - in-client direct official reconnect removed")
 print(" - fresh online sessions originate only from GGO Launcher")
-print(" - connected sessions can continue without leaving the client")
+print(" - fallback title surface is fully GGO-owned")
+print(" - settings stay inside first-party GGO UI")
