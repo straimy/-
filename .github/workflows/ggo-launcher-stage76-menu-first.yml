@@ -42,8 +42,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
-          cache-dependency-path: launcher/package-lock.json
 
       - name: Apply menu-first launcher hardening
         id: patch
@@ -60,6 +58,7 @@ jobs:
           grep -q 'async fn launch_game(' "$R"
           grep -q 'options.connect_server = false;' "$R"
           grep -q 'GGO_GAME_TICKET' "$R"
+          grep -q 'GGO_GAME_TICKET_EXPIRES_AT' "$R"
           grep -q 'issue_game_ticket' "$R"
           ! grep -q 'async fn preview_minecraft_launch(' "$R"
           ! grep -q 'async fn launch_minecraft(' "$R"
@@ -76,13 +75,13 @@ jobs:
         id: web
         working-directory: launcher
         run: |
-          npm ci
+          npm install --no-audit --no-fund
           npm run build
 
       - name: Check Rust launcher core
         id: rust
         working-directory: launcher/src-tauri
-        run: cargo check --locked
+        run: cargo check
 
       - name: Publish Stage 76 launcher receipt
         if: always()
@@ -110,6 +109,7 @@ jobs:
           rust_check=$RUST_OUTCOME
           public_game_launch_commands=1
           launch_autoconnect=false
+          ticket_absolute_expiry=true
           one_primary_home_action=true
           external_training_action=false
           home_repair_action=false
