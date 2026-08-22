@@ -7,6 +7,7 @@ on:
       - server/runtime-hardening-v1
     paths:
       - 'hotfix/GgoContractService.java'
+      - 'hotfix/GgoContractNetwork.java'
       - 'hotfix/apply_ggo_contract_push_stage28.py'
       - 'hotfix/GgoContractMapNetwork.java'
       - 'hotfix/apply_ggo_contract_map_stage27.py'
@@ -45,6 +46,8 @@ jobs:
           python3 hotfix/apply_ggo_compile_baseline_stage27.py
           root=ga-build/src/main/java/arena/forge
           grep -q 'pushState(p,true)' "$root/GgoContractService.java"
+          grep -q 'GgoContractNetwork.sync(p)' "$root/GgoContractService.java"
+          grep -q 'public static void sync(ServerPlayer p)' "$root/GgoContractNetwork.java"
           grep -q 'GgoContractMapNetwork.sync(p)' "$root/GgoContractService.java"
           grep -q 'ggo_supply_point' "$root/GgoLootSpawnService.java"
 
@@ -74,6 +77,7 @@ jobs:
           set -euo pipefail
           root=ga-build/build/classes/java/main/arena/forge
           test -f "$root/GgoContractService.class"
+          test -f "$root/GgoContractNetwork.class"
           test -f "$root/GgoContractMapNetwork.class"
           test -f "$root/GgoLootSpawnService\$SupplyMarker.class"
           test -f "$root/GgoSupplyExtractionService\$ExtractionMarker.class"
