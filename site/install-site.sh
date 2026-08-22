@@ -44,7 +44,7 @@ fi
 
 install -d -m 0755 "$WEB_ROOT"
 # Keep downloads/content already present on VDS while replacing portal code and configs.
-for item in index.html styles.css portal.css account regions legal support content; do
+for item in index.html styles.css portal.css install-launcher.sh account regions legal support content; do
   if [ -e "$SITE_SRC/$item" ]; then
     rm -rf "$WEB_ROOT/$item"
     cp -a "$SITE_SRC/$item" "$WEB_ROOT/$item"
