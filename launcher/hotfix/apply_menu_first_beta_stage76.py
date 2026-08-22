@@ -16,6 +16,10 @@ rust = rust.replace(
     "    minecraft_launch::{self, LaunchCommandPreview, LaunchOptions, LaunchResult},\n",
     "    minecraft_launch::{LaunchOptions, LaunchResult},\n",
 )
+rust = rust.replace(
+    "use std::{path::PathBuf, time::Instant};",
+    "use std::{path::PathBuf, time::{Instant, SystemTime, UNIX_EPOCH}};",
+)
 
 start = rust.find("#[tauri::command]\nasync fn preview_minecraft_launch(")
 end = rust.find("#[tauri::command]\nasync fn launch_training(")
@@ -33,6 +37,19 @@ rust = rust.replace(
     "    options.connect_server = false;\n    options.launch_mode = \"online\".to_string();",
     1,
 )
+old_env = '    let child_environment = vec![("GGO_GAME_TICKET".to_string(), ticket.ticket)];'
+new_env = '''    let expires_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| format!("system clock is invalid: {error}"))?
+        .as_secs()
+        .saturating_add(ticket.expires_in as u64);
+    let child_environment = vec![
+        ("GGO_GAME_TICKET".to_string(), ticket.ticket),
+        ("GGO_GAME_TICKET_EXPIRES_AT".to_string(), expires_at.to_string()),
+    ];'''
+if old_env not in rust:
+    raise SystemExit("ticket environment block not found")
+rust = rust.replace(old_env, new_env, 1)
 for entry in [
     "            preview_minecraft_launch,\n",
     "            launch_minecraft,\n",
@@ -90,6 +107,7 @@ for token in [
     'async fn launch_game(',
     'options.connect_server = false;',
     '("GGO_GAME_TICKET".to_string(), ticket.ticket)',
+    'GGO_GAME_TICKET_EXPIRES_AT',
     'async function launch(){',
     '?t.install:updateAvailable?t.updateGame:t.play',
 ]:
@@ -99,5 +117,6 @@ for token in [
 print("Applied GGO launcher Stage 76 menu-first beta hardening")
 print(" - one public game launch command")
 print(" - official launch boots to GGO client menu before network connect")
+print(" - absolute ticket expiry is passed to the child without exposing the ticket to UI")
 print(" - launcher home has one INSTALL / UPDATE / PLAY primary action")
 print(" - Training and Repair removed from primary home surface")
