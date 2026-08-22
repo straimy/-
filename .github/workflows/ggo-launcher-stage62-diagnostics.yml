@@ -6,6 +6,7 @@ on:
       - launcher/bootstrap-v0.1
     paths:
       - '.github/workflows/ggo-launcher-stage62-diagnostics.yml'
+      - 'launcher/src-tauri/src/runtime/minecraft_process.rs'
   workflow_dispatch:
 
 permissions:
