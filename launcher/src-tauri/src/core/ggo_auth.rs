@@ -61,11 +61,17 @@ fn session_path() -> Option<PathBuf> {
     #[cfg(not(target_os = "windows"))]
     {
         if let Some(root) = std::env::var_os("XDG_CONFIG_HOME") {
-            return Some(PathBuf::from(root).join("gungloryonline").join("ggo-session.json"));
+            return Some(
+                PathBuf::from(root)
+                    .join("gungloryonline")
+                    .join("ggo-session.json"),
+            );
         }
-        std::env::var_os("HOME")
-            .map(PathBuf::from)
-            .map(|home| home.join(".config").join("gungloryonline").join("ggo-session.json"))
+        std::env::var_os("HOME").map(PathBuf::from).map(|home| {
+            home.join(".config")
+                .join("gungloryonline")
+                .join("ggo-session.json")
+        })
     }
 }
 
