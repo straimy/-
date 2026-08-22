@@ -12,6 +12,7 @@ on:
 permissions:
   contents: write
 
+# Dedicated Windows gate: both installer formats must be created on a real Windows runner.
 jobs:
   windows:
     runs-on: windows-2022
