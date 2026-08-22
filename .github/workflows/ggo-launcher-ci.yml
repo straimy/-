@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - launcher/bootstrap-v0.1
     paths:
       - 'launcher/**'
       - 'infra/vds/**'
