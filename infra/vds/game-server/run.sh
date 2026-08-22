@@ -16,6 +16,11 @@ if [[ "$core_count" != "1" ]]; then
   exit 2
 fi
 
+if [[ -z "${GGO_SERVER_KEY:-}" ]]; then
+  echo "GGO_SERVER_KEY is required for the official server. Refusing to start an unauthenticated offline-mode listener." >&2
+  exit 3
+fi
+
 if [[ ! -f libraries/net/minecraftforge/forge/${FORGE_VERSION}/unix_args.txt ]]; then
   echo "Installing Forge ${FORGE_VERSION} runtime..."
   installer="forge-${FORGE_VERSION}-installer.jar"
@@ -39,10 +44,15 @@ set_property() {
 }
 
 set_property server-port "$PORT"
-set_property online-mode true
+# Official GGO players are authenticated by the short-lived one-shot GGO ticket before
+# gameplay is unlocked. The launcher deliberately does not require a Microsoft session,
+# so vanilla Mojang online-mode would reject the local launcher profile before the GGO
+# handshake can run. Keep vanilla auth/profile enforcement off only on this GGO-keyed
+# production listener; the Core auth fence remains mandatory above.
+set_property online-mode false
+set_property enforce-secure-profile false
 set_property enable-rcon false
 set_property enable-query false
-set_property enforce-secure-profile true
 set_property allow-flight false
 set_property view-distance 10
 set_property simulation-distance 8
@@ -52,7 +62,7 @@ set_property sync-chunk-writes true
 # If an imported legacy map still needs them, migrate that logic before enabling this profile.
 set_property enable-command-block false
 
-echo "Starting GunGloryOnline server on :${PORT} (${XMS}..${XMX})"
+echo "Starting GunGloryOnline server on :${PORT} (${XMS}..${XMX}) with GGO ticket auth"
 exec java "-Xms${XMS}" "-Xmx${XMX}" \
   -XX:+UseG1GC \
   -XX:+ParallelRefProcEnabled \
