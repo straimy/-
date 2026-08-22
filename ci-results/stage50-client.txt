@@ -1,10 +1,10 @@
 workflow=GGO Inventory Stage 50 Client Compile
-run_id=32549059841
+run_id=32549329535
 run_attempt=1
-run_url=https://github.com/straimy/-/actions/runs/32549059841
-source_sha=770defaba18343eb8bf5f599b4055d6d1690201e
+run_url=https://github.com/straimy/-/actions/runs/32549329535
+source_sha=3879434967dde59129eca03c1131ae20e12753e8
 apply=success
 bootstrap=success
-compile=success
-verify=success
-result=success
+compile=failure
+verify=skipped
+result=failure
