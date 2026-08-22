@@ -15,9 +15,11 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            bundle: nsis
+            bundle: nsis,msi
             artifact: GunGloryOnline-Windows-Signed
-            bundle_path: launcher/src-tauri/target/release/bundle/nsis/*
+            bundle_path: |
+              launcher/src-tauri/target/release/bundle/nsis/*
+              launcher/src-tauri/target/release/bundle/msi/*
           - os: ubuntu-22.04
             bundle: appimage
             artifact: GunGloryOnline-Linux-Signed
