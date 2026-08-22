@@ -50,7 +50,7 @@ jobs:
           echo "client_sha=$(git -C client-src rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "server_sha=$(git -C server-src rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Build latest server Core through Stage 51
+      - name: Build latest server Core through Stage 54
         id: server
         working-directory: server-src
         run: |
@@ -78,6 +78,7 @@ jobs:
           python3 hotfix/apply_ggo_death_recap_stage48.py
           python3 hotfix/apply_ggo_recovery_bag_stage49.py
           python3 hotfix/apply_ggo_map_integrity_stage51.py
+          python3 hotfix/apply_ggo_map_palette_stage54.py
           rm -rf /tmp/forge-mdk /tmp/forge-mdk.zip
           curl -fL --retry 3 -o /tmp/forge-mdk.zip https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-mdk.zip
           mkdir -p /tmp/forge-mdk
@@ -89,11 +90,11 @@ jobs:
           (cd ga-build && ./gradlew --no-daemon build --stacktrace)
           CORE="$(find ga-build/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
           test -n "$CORE"
-          for c in GgoMedicineService GgoDeathRecapNetwork GgoDeathRecapHooks GgoRecoveryBagService GgoMapIntegrityGuard GgoVisibleItemPolicy GgoVanillaLootFence GgoWorldRuntimeFence GgoPlayerPresencePolicy InventoryUtilityCommands ArenaBeltGuard; do
+          for c in GgoMedicineService GgoDeathRecapNetwork GgoDeathRecapHooks GgoRecoveryBagService GgoMapIntegrityGuard GgoMapPaletteAuditService GgoVisibleItemPolicy GgoVanillaLootFence GgoWorldRuntimeFence GgoPlayerPresencePolicy InventoryUtilityCommands ArenaBeltGuard; do
             jar tf "$CORE" | grep -q "^arena/forge/$c.class$"
           done
           mkdir -p ../stage53/server/mods
-          cp "$CORE" ../stage53/server/mods/gungloryonline-core-runtime-v1-stage51.jar
+          cp "$CORE" ../stage53/server/mods/gungloryonline-core-runtime-v1-stage54.jar
 
       - name: Build latest client UI through Stage 50
         id: client
@@ -155,12 +156,12 @@ jobs:
         id: package
         run: |
           set -euo pipefail
-          cp stage53/server/mods/gungloryonline-core-runtime-v1-stage51.jar stage53/client/mods/gungloryonline-core-runtime-v1-stage51.jar
+          cp stage53/server/mods/gungloryonline-core-runtime-v1-stage54.jar stage53/client/mods/gungloryonline-core-runtime-v1-stage54.jar
           cat > stage53/BUILD-INFO.txt <<EOF
           GGO_RUNTIME_STAGE=53
           SERVER_BRANCH=server/runtime-hardening-v1
           SERVER_SHA=${{ steps.refs.outputs.server_sha }}
-          SERVER_CORE=stage51
+          SERVER_CORE=stage54
           CLIENT_BRANCH=client/runtime-migration-v1
           CLIENT_SHA=${{ steps.refs.outputs.client_sha }}
           CLIENT_UI=stage50
@@ -174,10 +175,11 @@ jobs:
           DEATH_RECAP=GGO_AUTHORITATIVE
           RECOVERY_BAG=OWNER_BOUND_FIELD_LOOT
           MAP_DESTRUCTION=DISABLED
+          MAP_PALETTE_AUDIT=ADMIN_INCREMENTAL
           EOF
           sha256sum stage53/server/mods/* stage53/client/mods/* stage53/GunGloryOnline-ResourcePack-current.zip > stage53/SHA256SUMS.txt
 
-      - name: Dedicated server smoke with Stage 51 Core
+      - name: Dedicated server smoke with Stage 54 Core
         id: smoke
         run: |
           set -euo pipefail
@@ -187,7 +189,7 @@ jobs:
           java -jar forge-installer.jar --installServer ds >/tmp/forge-install.log 2>&1
           echo 'eula=true' > ds/eula.txt
           mkdir -p ds/mods
-          cp stage53/server/mods/gungloryonline-core-runtime-v1-stage51.jar ds/mods/
+          cp stage53/server/mods/gungloryonline-core-runtime-v1-stage54.jar ds/mods/
           cd ds
           timeout 110s java -Xms512M -Xmx1G @libraries/net/minecraftforge/forge/1.20.1-47.4.10/unix_args.txt nogui > ../dedicated-server-console.log 2>&1 || true
           cd ..
