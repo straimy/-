@@ -87,8 +87,9 @@ mod tests {
     #[test]
     fn launcher_no_longer_mutates_process_environment_for_forge() {
         let source = include_str!("minecraft_process.rs");
-        assert!(!source.contains("env::set_var"));
-        assert!(!source.contains("env::remove_var"));
-        assert!(source.contains("launch_with_natives_environment"));
+        let runtime_source = source.split("#[cfg(test)]").next().unwrap_or(source);
+        assert!(!runtime_source.contains("env::set_var"));
+        assert!(!runtime_source.contains("env::remove_var"));
+        assert!(runtime_source.contains("launch_with_natives_environment"));
     }
 }
