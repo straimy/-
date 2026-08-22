@@ -46,6 +46,8 @@ jobs:
         working-directory: .
       - name: Install frontend dependencies
         run: npm install
+      - name: Apply release UI state machine
+        run: node scripts/prepare-release-ui.mjs
       - name: Generate platform icons
         run: npm run tauri icon src-tauri/icons/icon.png
       - name: Frontend type/build gate
@@ -132,6 +134,7 @@ jobs:
           bash -n site/install-site.sh
           bash -n site/verify-production.sh
           grep -q 'auth.db' site/install-site.sh
+          grep -q 'runtime-files' site/install-site.sh
           grep -q 'Disabling duplicate nginx vhost' site/install-site.sh
           grep -q '/api/v1/auth/register' site/install-site.sh
           grep -q '/api/v1/auth/login' site/install-site.sh
@@ -145,6 +148,12 @@ jobs:
           grep -q "approve.*===.*'1'" site/account/device.html
           grep -q 'auth/device/approve' site/account/device.html
           ! grep -q 'прямого входа в GGO Launcher' site/account/index.html
+      - name: Validate release UI transform
+        run: |
+          set -euo pipefail
+          node launcher/scripts/prepare-release-ui.mjs
+          grep -q 'gameInstalled&&!updateAvailable?launch(false):installGame()' launcher/src/App.tsx
+          ! grep -q 'className="repair-link"' launcher/src/App.tsx
       - name: Validate portal and production manifest
         run: |
           set -euo pipefail
