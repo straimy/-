@@ -2,6 +2,7 @@ package arena.client.shell;
 
 import net.minecraft.client.Minecraft;
 import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.client.event.InputEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -10,7 +11,7 @@ import net.minecraftforge.fml.common.Mod;
  * Client-side input policy for the three-slot GGO combat belt.
  *
  * Vanilla Q/offhand/pick-block and hotbar 4..9 shortcuts are consumed before normal gameplay can
- * use them. Dropping and field-item management live in the first-party E screen instead.
+ * use them. Mouse wheel is redefined to cycle only Primary/Secondary/Sidearm.
  */
 @Mod.EventBusSubscriber(value=Dist.CLIENT,bus=Mod.EventBusSubscriber.Bus.FORGE)
 public final class GgoCombatInputFence {
@@ -33,7 +34,16 @@ public final class GgoCombatInputFence {
         else mc.player.getInventory().selected=Math.max(0,Math.min(2,lastValidSlot));
     }
 
-    private static void drain(net.minecraft.client.KeyMapping key){
-        while(key.consumeClick()){}
+    @SubscribeEvent public static void onScroll(InputEvent.MouseScrollingEvent event){
+        Minecraft mc=Minecraft.getInstance();
+        if(mc.player==null||mc.screen!=null||event.getScrollDelta()==0)return;
+        int current=mc.player.getInventory().selected;
+        if(current<0||current>2)current=Math.max(0,Math.min(2,lastValidSlot));
+        int direction=event.getScrollDelta()>0?-1:1;
+        int next=Math.floorMod(current+direction,3);
+        mc.player.getInventory().selected=next;lastValidSlot=next;
+        event.setCanceled(true);
     }
+
+    private static void drain(net.minecraft.client.KeyMapping key){while(key.consumeClick()){} }
 }
