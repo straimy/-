@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import base64
+import concurrent.futures
 import hashlib
 import http.client
 import json
@@ -124,6 +125,34 @@ class AuthSmoke(unittest.TestCase):
         )
         self.assertEqual(status, 401)
         self.assertEqual(replay["error"], "invalid_expired_or_consumed_ticket")
+
+        # Race two server consumers against the same fresh ticket. The
+        # transaction must serialize them so exactly one request can win.
+        status, race_ticket, _ = self.req(
+            "POST",
+            "/api/v1/auth/game-ticket",
+            {"audience": "official-online"},
+            headers={"Authorization": f"Bearer {login['access_token']}"},
+        )
+        self.assertEqual(status, 201)
+
+        def consume_race_ticket():
+            return self.req(
+                "POST",
+                "/api/v1/auth/game-ticket/consume",
+                {"ticket": race_ticket["ticket"], "audience": "official-online"},
+                headers={"X-GGO-Server-Key": SERVER_KEY},
+            )
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            race_results = list(pool.map(lambda _: consume_race_ticket(), range(2)))
+        race_statuses = sorted(result[0] for result in race_results)
+        self.assertEqual(race_statuses, [200, 401])
+        winner = next(payload for code, payload, _ in race_results if code == 200)
+        loser = next(payload for code, payload, _ in race_results if code == 401)
+        self.assertTrue(winner["valid"])
+        self.assertEqual(winner["player"]["id"], me["id"])
+        self.assertEqual(loser["error"], "invalid_expired_or_consumed_ticket")
 
         verifier = "v" * 64
         challenge = b64url(hashlib.sha256(verifier.encode()).digest())
