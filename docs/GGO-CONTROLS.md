@@ -15,16 +15,17 @@ GunGloryOnline keeps familiar shooter controls where muscle memory helps, while 
 - `1` — primary weapon
 - `2` — secondary weapon
 - `3` — sidearm
-- `4` — first quick consumable slot
-- `5` — second quick consumable slot
-- Mouse wheel — weapon cycling; independently disableable
+- Mouse wheel — cycle only primary / secondary / sidearm; vanilla hotbar slots 4–9 are not part of normal GGO play
+- `H` (hold, remappable) — GGO Medical Wheel; release to use the selected field medicine
 - `LMB` — fire / primary action
 - `RMB` — aim / secondary action
 - `MMB` — contextual ping / marker
 - `LEFT ALT` (hold) — freelook when the current weapon/mode allows it
 
+The medical wheel appears under the GunGloryOnline key category and is a normal Forge key mapping, not a hard-coded GLFW check.
+
 ## First-party GGO UI
-- `E` — GGO Inventory / Equipment
+- `E` — GGO Equipment / Backpack
 - `M` — GGO Menu / Activities
 - `N` — Navigation / Full Map
 - `TAB` (hold) — Squad / Match Tactical Overlay
@@ -62,23 +63,19 @@ The screen center remains mostly unobstructed. A full all-player list is reserve
 - N opens the large map.
 - M remains Activities.
 - MMB places a contextual ping in the world or on the map.
-- Holding MMB later may open a radial ping wheel: enemy, move, danger, loot, defend, regroup.
+- Holding MMB opens the radial tactical ping wheel: enemy, move, danger, loot, defend, regroup.
 - Ping information is server-authoritative in competitive modes.
 
 ## Inventory philosophy
-E opens a first-party GGO inventory rather than the vanilla inventory.
+E opens a first-party GGO equipment/backpack screen rather than the vanilla inventory.
 
-The normal player should see:
-- equipped weapons;
-- armor;
-- backpack/capacity;
-- gadgets;
-- ammo;
-- consumables;
-- quick slots;
-- item/weapon stats.
+Normal GGO compartments:
+- three protected combat weapon slots: Primary / Secondary / Sidearm;
+- protected worn armor;
+- protected ammo pouch;
+- field backpack slots for supplies, medicine and extracted/looted items.
 
-Crafting and vanilla recipe-book UI are not part of the normal GGO path.
+Field items are the risk layer: on KIA they are packed into one owner-bound Recovery Bag instead of creating a loose Minecraft death pile. Combat weapons, ammo pouch and worn armor are retained. Crafting and the vanilla recipe-book/armor-grid UI are not part of the normal GGO path.
 
 ## Pause Hub
 ESC opens:
@@ -100,6 +97,7 @@ Settings > Controls must support:
 - mouse sensitivity and ADS multiplier;
 - invert Y;
 - disable mouse-wheel weapon cycling;
+- medical-wheel binding;
 - ping-wheel hold time;
 - key-conflict warnings;
 - reset per category, not only reset-all.
@@ -113,6 +111,6 @@ Examples:
 - teleport/world selector;
 - match controls;
 - map marker editor;
-- spawn/loot/zone editor.
+- spawn/loot/zone editor;
 
 These should live behind an Admin Panel/keybind and not consume normal-player shortcuts by default.
