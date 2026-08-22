@@ -34,7 +34,7 @@ public final class GgoCombatHud {
     @SubscribeEvent public static void clientTick(TickEvent.ClientTickEvent event){
         if(event.phase!=TickEvent.Phase.END)return;
         Minecraft mc=Minecraft.getInstance();
-        if(mc.player==null||mc.level==null){medicineHeld=false;selectedMedicineSlot=-1;return;}
+        if(mc.player==null||mc.level==null){medicineHeld=false;selectedMedicineSlot=-1;GgoKillFeedState.clear();return;}
         boolean down=GLFW.glfwGetKey(mc.getWindow().getWindow(),GLFW.GLFW_KEY_H)==GLFW.GLFW_PRESS;
         if(down){
             medicineHeld=true;
@@ -59,6 +59,7 @@ public final class GgoCombatHud {
         renderVitals(g,mc,h);
         renderWeaponPanel(g,mc,w,h);
         renderWorldStatus(g,mc,w);
+        renderKillFeed(g,mc);
         if(medicineHeld)renderMedicineWheel(g,mc,w,h);
         else renderMedicineHint(g,mc,w,h);
     }
@@ -110,6 +111,20 @@ public final class GgoCombatHud {
         var waypoint=GgoNavigationState.waypoint();
         if(waypoint!=null)status+=" // "+waypoint.label()+" "+(int)Math.round(GgoNavigationState.distanceTo(mc.player.getX(),mc.player.getY(),mc.player.getZ()))+"m";
         g.drawString(mc.font,status,width-mc.font.width(status)-18,14,0xFF808B9A,false);
+    }
+
+    private static void renderKillFeed(GuiGraphics g,Minecraft mc){
+        List<GgoKillFeedState.Entry> entries=GgoKillFeedState.visible();
+        int x=18,y=30,w=270,rowH=28;
+        for(int i=0;i<entries.size();i++){
+            var e=entries.get(i);int ry=y+i*(rowH+3);
+            g.fill(x,ry,x+w,ry+rowH,0xB80A0E14);
+            g.fill(x,ry,x+3,ry+rowH,0xFFC73A47);
+            String killer=clip(e.killer(),16),victim=clip(e.victim(),16),weapon=clip(e.weapon(),22);
+            g.drawString(mc.font,killer+"  >  "+victim,x+10,ry+6,0xFFF0F2F5,false);
+            String meta=weapon+(e.distance()>=0?String.format(Locale.ROOT,"  //  %.0fm",e.distance()):"");
+            g.drawString(mc.font,meta,x+10,ry+17,0xFF788596,false);
+        }
     }
 
     private static void renderMedicineHint(GuiGraphics g,Minecraft mc,int width,int height){
@@ -167,6 +182,7 @@ public final class GgoCombatHud {
         return p.contains("bandage")||p.contains("medkit")||p.contains("first_aid")||p.contains("firstaid")||p.contains("syringe")||p.contains("stim")||p.contains("injector");
     }
 
+    private static String clip(String value,int max){if(value==null)return "";return value.length()<=max?value:value.substring(0,Math.max(1,max-3))+"...";}
     private static void panel(GuiGraphics g,int x,int y,int w,int h,int fill){g.fill(x,y,x+w,y+h,fill);g.fill(x,y,x+3,y+h,0xFFB92F3C);g.fill(x+3,y,x+w,y+1,0xFF2A333E);}
     private static String sectorFor(int x,int z){int sx=Math.floorDiv(x,256),sz=Math.floorDiv(z,256);char col=(char)('A'+Math.floorMod(sx,26));return col+"-"+Math.abs(sz);}
 }
