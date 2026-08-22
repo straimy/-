@@ -1,0 +1,14 @@
+workflow=GGO Runtime Stage 60 Entry Security Integration
+run_id=32554101826
+run_attempt=1
+run_url=https://github.com/straimy/-/actions/runs/32554101826
+server_sha=646965279b1b3f3f01d078fc58fcff7597778a82
+client_sha=47402871d626486390f5cb981981a62bd1a64f15
+launcher_sha=4962eef1ea05535b4595964c7222a127a33ef670
+server_build=success
+client_build=success
+launcher_validation=failure
+official_assets=skipped
+package=skipped
+dedicated_smoke=skipped
+result=failure
