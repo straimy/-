@@ -5,6 +5,7 @@ pub mod minecraft_install;
 pub mod minecraft_launch;
 pub mod minecraft_natives;
 pub mod minecraft_process;
+pub mod official_resource_pack;
 pub mod official_server;
 use std::path::Path;
 
