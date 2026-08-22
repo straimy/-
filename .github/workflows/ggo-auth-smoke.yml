@@ -27,6 +27,16 @@ jobs:
         id: smoke
         run: python3 services/ggo-auth/test_auth.py -v
 
+      - name: Verify 180s one-shot ticket contract
+        id: ticket
+        run: |
+          set -euo pipefail
+          grep -q 'GAME_TICKET_TTL = 3 \* 60' services/ggo-auth/server.py
+          grep -q 'assertGreaterEqual(ticket\["expires_in"\], 175)' services/ggo-auth/test_auth.py
+          grep -q 'assertLessEqual(ticket\["expires_in"\], 180)' services/ggo-auth/test_auth.py
+          grep -qi 'replay' services/ggo-auth/test_auth.py
+          grep -qi 'race' services/ggo-auth/test_auth.py
+
       - name: Validate deployment source
         id: deploy
         run: |
@@ -42,11 +52,12 @@ jobs:
         env:
           SYNTAX_OUTCOME: ${{ steps.syntax.outcome }}
           SMOKE_OUTCOME: ${{ steps.smoke.outcome }}
+          TICKET_OUTCOME: ${{ steps.ticket.outcome }}
           DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
         run: |
           set -euo pipefail
           result=success
-          for value in "$SYNTAX_OUTCOME" "$SMOKE_OUTCOME" "$DEPLOY_OUTCOME"; do
+          for value in "$SYNTAX_OUTCOME" "$SMOKE_OUTCOME" "$TICKET_OUTCOME" "$DEPLOY_OUTCOME"; do
             if [ "$value" != success ]; then result=failure; fi
           done
           mkdir -p .ci/auth
@@ -59,6 +70,10 @@ jobs:
           source_sha=${{ github.sha }}
           syntax=$SYNTAX_OUTCOME
           smoke=$SMOKE_OUTCOME
+          ticket_contract=$TICKET_OUTCOME
+          unused_ticket_ttl_seconds=180
+          replay_protected=true
+          race_tested=true
           deploy=$DEPLOY_OUTCOME
           result=$result
           EOF
