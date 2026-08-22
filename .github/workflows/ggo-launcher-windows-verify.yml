@@ -13,7 +13,7 @@ permissions:
   contents: write
 
 # Dedicated Windows gate: installer formats, portable package and runtime tests
-# must all pass on a real Windows runner.
+# must all pass on a real Windows runner. Keep this independent from the package matrix receipt.
 jobs:
   windows:
     runs-on: windows-2022
