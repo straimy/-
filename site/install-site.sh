@@ -41,18 +41,15 @@ fi
 if [ -f "$GGO_SITE_AVAILABLE" ]; then
   cp -a "$GGO_SITE_AVAILABLE" "$BACKUP_DIR/ggo.conf.previous"
 fi
-# Preserve generated launcher update metadata across portal refreshes.
 if [ -d "$WEB_ROOT/content/launcher" ]; then
   cp -a "$WEB_ROOT/content/launcher" "$BACKUP_DIR/launcher-channel"
 fi
-# Runtime payloads are published separately from the website source package.
-# Never delete them during a portal/launcher-channel update.
 if [ -d "$WEB_ROOT/content/files" ]; then
   cp -a "$WEB_ROOT/content/files" "$BACKUP_DIR/runtime-files"
 fi
 
 install -d -m 0755 "$WEB_ROOT"
-for item in index.html styles.css portal.css install-launcher.sh publish-launcher-update.sh account regions legal support content; do
+for item in index.html styles.css portal.css install-launcher.sh publish-launcher-update.sh account regions legal support admin content; do
   if [ -e "$SITE_SRC/$item" ]; then
     rm -rf "$WEB_ROOT/$item"
     cp -a "$SITE_SRC/$item" "$WEB_ROOT/$item"
@@ -75,12 +72,8 @@ fi
 chown -R www-data:www-data "$WEB_ROOT"
 find "$WEB_ROOT" -type d -exec chmod 0755 {} +
 find "$WEB_ROOT" -type f -exec chmod 0644 {} +
-if [ -f "$WEB_ROOT/install-launcher.sh" ]; then
-  chmod 0755 "$WEB_ROOT/install-launcher.sh"
-fi
-if [ -f "$WEB_ROOT/publish-launcher-update.sh" ]; then
-  chmod 0755 "$WEB_ROOT/publish-launcher-update.sh"
-fi
+if [ -f "$WEB_ROOT/install-launcher.sh" ]; then chmod 0755 "$WEB_ROOT/install-launcher.sh"; fi
+if [ -f "$WEB_ROOT/publish-launcher-update.sh" ]; then chmod 0755 "$WEB_ROOT/publish-launcher-update.sh"; fi
 
 chmod +x "$AUTH_SRC/install.sh"
 "$AUTH_SRC/install.sh"
@@ -89,9 +82,6 @@ install -m 0644 "$SITE_SRC/nginx/ggo.conf" "$GGO_SITE_AVAILABLE"
 ln -sfn "$GGO_SITE_AVAILABLE" "$GGO_SITE_ENABLED"
 rm -f /etc/nginx/sites-enabled/default
 
-# Certbot previously left another enabled vhost named `gungloryonline`, which made
-# nginx ignore the new GGO server block. Keep old files for recovery, but disable
-# every enabled config that still claims ggo.kvicloud.ru except the canonical one.
 shopt -s nullglob
 for enabled in /etc/nginx/sites-enabled/*; do
   [ -e "$enabled" ] || continue
@@ -118,6 +108,7 @@ python3 - <<'PY'
 import json
 p=json.load(open('/tmp/ggo-auth-health.json',encoding='utf-8'))
 assert p.get('ok') is True and p.get('service') == 'ggo-auth', p
+assert p.get('support_tickets') is True and p.get('staff_roles') is True, p
 print('direct auth health: PASS', p)
 PY
 
@@ -128,6 +119,7 @@ python3 - <<'PY'
 import json
 p=json.load(open('/tmp/ggo-nginx-health.json',encoding='utf-8'))
 assert p.get('ok') is True and p.get('service') == 'ggo-auth', p
+assert p.get('support_tickets') is True and p.get('staff_roles') is True, p
 print('nginx HTTPS auth health: PASS', p)
 PY
 
@@ -136,8 +128,18 @@ register_code="$(curl "${curl_local[@]}" -o /tmp/ggo-register-probe.json -w '%{h
 login_code="$(curl "${curl_local[@]}" -o /tmp/ggo-login-probe.json -w '%{http_code}' -H 'Content-Type: application/json' --data '{}' "https://${GGO_HOST}/api/v1/auth/login")"
 [ "$login_code" = 401 ] || { cat /tmp/ggo-login-probe.json >&2; echo "login route returned $login_code (expected 401, never 405)" >&2; exit 8; }
 
+support_code="$(curl "${curl_local[@]}" -o /tmp/ggo-support-page.html -w '%{http_code}' "https://${GGO_HOST}/support/")"
+[ "$support_code" = 200 ] && grep -q 'НАПИСАТЬ В ПОДДЕРЖКУ' /tmp/ggo-support-page.html || { echo "support page probe failed" >&2; exit 9; }
+admin_code="$(curl "${curl_local[@]}" -o /tmp/ggo-admin-page.html -w '%{http_code}' "https://${GGO_HOST}/admin/")"
+[ "$admin_code" = 200 ] && grep -q 'STAFF CONSOLE' /tmp/ggo-admin-page.html || { echo "admin page probe failed" >&2; exit 10; }
+unauth_tickets_code="$(curl "${curl_local[@]}" -o /tmp/ggo-ticket-probe.json -w '%{http_code}' "https://${GGO_HOST}/api/v1/support/tickets")"
+[ "$unauth_tickets_code" = 401 ] || { cat /tmp/ggo-ticket-probe.json >&2; echo "support API returned $unauth_tickets_code (expected 401)" >&2; exit 11; }
+
 echo "register POST route: PASS ($register_code)"
 echo "login POST route: PASS ($login_code)"
+echo "support page: PASS ($support_code)"
+echo "staff console: PASS ($admin_code)"
+echo "support API auth wall: PASS ($unauth_tickets_code)"
 echo "GunGloryOnline portal + auth installed"
 echo "Backup: $BACKUP_DIR"
 echo "Web root: $WEB_ROOT"
