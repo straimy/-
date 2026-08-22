@@ -4,6 +4,9 @@ use super::{
 };
 use std::{fs, io, path::Path};
 
+const REMOTE_CORE_FILE_NAME: &str = "gungloryonline-core-runtime-v1-stage68.jar";
+const REMOTE_UI_FILE_NAME: &str = "gungloryonline-ui-runtime-v1-stage69.jar";
+
 pub fn finalize_remote_install(install_dir: &Path) -> Result<(), io::Error> {
     remove_legacy_managed_jars(&install_dir.join("mods"))?;
     official_resource_pack::ensure_official_resource_pack(install_dir)?;
@@ -31,7 +34,11 @@ fn remove_legacy_managed_jars(mods_dir: &Path) -> Result<(), io::Error> {
                 || lower.starts_with("gungloryonline-ui-")
                 || lower.starts_with("gunnerarena-core-")
                 || lower.starts_with("gunnerarena-ui-"));
-        if managed && name != CORE_FILE_NAME && name != UI_FILE_NAME {
+        let current = matches!(
+            name,
+            CORE_FILE_NAME | UI_FILE_NAME | REMOTE_CORE_FILE_NAME | REMOTE_UI_FILE_NAME
+        );
+        if managed && !current {
             fs::remove_file(path)?;
         }
     }
@@ -40,7 +47,7 @@ fn remove_legacy_managed_jars(mods_dir: &Path) -> Result<(), io::Error> {
 
 #[cfg(test)]
 mod tests {
-    use super::finalize_remote_install;
+    use super::{finalize_remote_install, REMOTE_CORE_FILE_NAME, REMOTE_UI_FILE_NAME};
     use crate::runtime::official_resource_pack::OFFICIAL_PACK_FILE;
 
     #[test]
@@ -62,6 +69,24 @@ mod tests {
         assert!(options
             .contains("resourcePacks:[\"file/User.zip\",\"file/GunGloryOnline-Official.zip\"]"));
         assert!(root.join("servers.dat").is_file());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn finalizer_keeps_current_remote_runtime_and_removes_legacy_ggo_jars() {
+        let root =
+            std::env::temp_dir().join(format!("ggo-remote-runtime-{}", uuid::Uuid::new_v4()));
+        let mods = root.join("mods");
+        std::fs::create_dir_all(&mods).unwrap();
+        std::fs::write(mods.join(REMOTE_CORE_FILE_NAME), b"core").unwrap();
+        std::fs::write(mods.join(REMOTE_UI_FILE_NAME), b"ui").unwrap();
+        std::fs::write(mods.join("gungloryonline-core-old.jar"), b"old").unwrap();
+
+        super::remove_legacy_managed_jars(&mods).unwrap();
+
+        assert!(mods.join(REMOTE_CORE_FILE_NAME).is_file());
+        assert!(mods.join(REMOTE_UI_FILE_NAME).is_file());
+        assert!(!mods.join("gungloryonline-core-old.jar").exists());
         let _ = std::fs::remove_dir_all(root);
     }
 }
