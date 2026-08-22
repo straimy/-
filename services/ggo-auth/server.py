@@ -381,6 +381,10 @@ class Handler(BaseHTTPRequestHandler):
         ts = now()
         with connect() as db:
             cleanup(db)
+            # cleanup() performs DELETE statements and therefore may open an
+            # implicit transaction. Finish that maintenance transaction before
+            # taking the write lock used for one-shot ticket consumption.
+            db.commit()
             db.execute("BEGIN IMMEDIATE")
             row = db.execute(
                 "SELECT t.*,u.* FROM game_tickets t JOIN users u ON u.id=t.user_id WHERE t.token_hash=? AND t.audience=? AND t.expires_at>? AND t.consumed_at IS NULL",
