@@ -1,9 +1,13 @@
 name: GGO Stage 73 Auth Hotfix Bundle
 
 on:
-  workflow_run:
-    workflows: ["GunGloryOnline Launcher Packages"]
-    types: [completed]
+  push:
+    branches: ["launcher/bootstrap-v0.1"]
+    paths:
+      - ".github/workflows/ggo-stage73-auth-hotfix-bundle.yml"
+      - "site/**"
+      - "infra/vds/game-server/run.sh"
+      - "launcher/HOTFIX-BUILD-2026-08-22.txt"
   workflow_dispatch:
 
 permissions:
@@ -12,38 +16,27 @@ permissions:
 
 jobs:
   assemble:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'launcher/bootstrap-v0.1')
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
-      - name: Resolve launcher package run
+      - name: Resolve latest successful launcher package run
         id: source
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          EVENT_NAME: ${{ github.event_name }}
-          EVENT_RUN_ID: ${{ github.event.workflow_run.id }}
-          EVENT_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
-          if [ "$EVENT_NAME" = workflow_run ]; then
-            run_id="$EVENT_RUN_ID"
-            head_sha="$EVENT_HEAD_SHA"
-          else
-            row="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ggo-launcher-packages.yml --branch launcher/bootstrap-v0.1 --status success --limit 1 --json databaseId,headSha --jq '.[0] | [.databaseId,.headSha] | @tsv')"
-            test -n "$row"
-            IFS=$'\t' read -r run_id head_sha <<<"$row"
-          fi
+          row="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ggo-launcher-packages.yml --branch launcher/bootstrap-v0.1 --status success --limit 1 --json databaseId,headSha --jq '.[0] | [.databaseId,.headSha] | @tsv')"
+          test -n "$row"
+          IFS=$'\t' read -r run_id head_sha <<<"$row"
           test -n "$run_id" && test -n "$head_sha"
           echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
           echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
           echo "Using launcher package run $run_id @ $head_sha"
 
-      - name: Checkout exact successful hotfix source
+      - name: Checkout current Stage 73 hotfix source
         uses: actions/checkout@v4
         with:
-          ref: ${{ steps.source.outputs.head_sha }}
+          ref: launcher/bootstrap-v0.1
           fetch-depth: 0
 
       - name: Download fresh Windows launcher packages
@@ -85,7 +78,6 @@ jobs:
           mkdir -p stage70 corrected/{launcher/windows,launcher/linux,web,game-server/mods,game-server/infra,receipts}
           unzip -q "$BASELINE_ZIP" -d stage70
 
-          # Fresh launcher binaries built from the same successful source SHA as this bundle.
           cp fresh/windows/GunGloryOnline-Launcher-Windows.exe corrected/launcher/windows/
           cp fresh/windows/GunGloryOnline-Launcher-Windows.msi corrected/launcher/windows/
           cp fresh/windows/GunGloryOnline-Launcher-Windows-Portable.zip corrected/launcher/windows/
@@ -93,12 +85,10 @@ jobs:
           cp fresh/linux/GunGloryOnline-Launcher-Ubuntu-Debian.deb corrected/launcher/linux/
           cp fresh/linux/GunGloryOnline-Launcher-Fedora-RHEL.rpm corrected/launcher/linux/
 
-          # Current production website/auth/nginx and one-command recovery scripts.
           cp -a site corrected/web/site
           mkdir -p corrected/web/services corrected/web/site/content/files/v40
           cp -a services/ggo-auth corrected/web/services/ggo-auth
 
-          # Runtime remains the immutable Stage68/69 + official RP baseline.
           cp stage70/final/runtime/server/mods/gungloryonline-core-runtime-v1-stage68.jar corrected/game-server/mods/
           cp stage70/final/runtime/client/mods/gungloryonline-core-runtime-v1-stage68.jar corrected/web/site/content/files/v40/
           cp stage70/final/runtime/client/mods/gungloryonline-ui-runtime-v1-stage69.jar corrected/web/site/content/files/v40/
@@ -108,7 +98,7 @@ jobs:
           chmod +x corrected/web/site/install-site.sh corrected/web/site/verify-production.sh corrected/web/site/recover-production.sh corrected/web/services/ggo-auth/install.sh corrected/game-server/infra/run.sh
 
           python3 - <<'PY'
-          import hashlib, json
+          import hashlib, json, zipfile
           from pathlib import Path
           root=Path('corrected/web/site')
           manifest=json.loads((root/'content/manifests/beta.json').read_text(encoding='utf-8'))
@@ -126,10 +116,21 @@ jobs:
               assert hashlib.sha256(raw).hexdigest()==row['sha256'], path
               assert row['required'] is True and row['side']=='client', row
           assert 'resourcepacks/GunGloryOnline-ResourcePack-1.20.1-v5-swittie-social.zip' not in rows
-          print('manifest runtime contract: PASS')
+
+          core=Path('corrected/game-server/mods/gungloryonline-core-runtime-v1-stage68.jar')
+          ui=root/'content/files/v40/gungloryonline-ui-runtime-v1-stage69.jar'
+          with zipfile.ZipFile(core) as z:
+              names=set(z.namelist())
+              assert 'arena/forge/GgoLaunchTicketNetwork.class' in names
+              assert 'arena/forge/GgoOfficialAuthState.class' in names
+              assert 'arena/forge/GgoPreAuthQuarantine.class' in names
+          with zipfile.ZipFile(ui) as z:
+              names=set(z.namelist())
+              assert 'arena/client/shell/GgoLaunchTicketClient.class' in names
+              assert 'arena/client/shell/GgoSessionVerificationOverlay.class' in names
+          print('manifest + GGO ACK runtime contract: PASS')
           PY
 
-          # Static contract gates for the exact production fixes requested for this hotfix.
           bash -n corrected/web/site/install-site.sh
           bash -n corrected/web/site/verify-production.sh
           bash -n corrected/web/site/recover-production.sh
@@ -154,7 +155,7 @@ jobs:
 
           This bundle contains no VDS credentials and does not modify `main`.
 
-          ## 1. Deploy website + auth routing without deleting the auth database
+          ## Deploy
 
           Copy the extracted bundle to the Ubuntu VDS and run from the bundle root:
 
@@ -162,28 +163,28 @@ jobs:
           sudo ./web/site/recover-production.sh
           ```
 
-          The recovery script backs up `/var/lib/ggo-auth/auth.db`, disables duplicate enabled nginx vhosts for `ggo.kvicloud.ru`, installs the canonical HTTPS config, verifies `/api/v1/health`, register/login POST routing, installs the Stage68 server Core and hardened official run script when bundled, configures the GGO-only game environment, and starts the official Forge listener on TCP 24842.
+          The recovery script backs up `/var/lib/ggo-auth/auth.db`, disables duplicate enabled nginx vhosts for `ggo.kvicloud.ru`, installs the canonical HTTPS config, verifies `/api/v1/health` and register/login POST routing, installs the Stage68 server Core and hardened official run script, configures the GGO-only game environment, and starts Forge on TCP 24842.
 
-          The official listener intentionally uses `online-mode=false` and `enforce-secure-profile=false` because the launcher uses the GGO Account profile rather than a Microsoft session. Access is still fenced by `GGO_SERVER_KEY` plus the short-lived one-shot GGO ticket; the hardened server script refuses to start without the server key.
+          The official listener uses `online-mode=false` and `enforce-secure-profile=false` because GGO Account + the short-lived one-shot GGO ticket are the official identity/authentication layer. The hardened server refuses to start without `GGO_SERVER_KEY`, and the server quarantines gameplay until the ticket is consumed and ACKed.
 
           Never delete `/var/lib/ggo-auth/auth.db`.
 
-          ## 2. Expected public green state
+          ## Expected public green state
 
-          - `https://ggo.kvicloud.ru/` serves the portal.
-          - `GET https://ggo.kvicloud.ru/api/v1/health` returns JSON from `ggo-auth`.
-          - Empty JSON POST to register returns validation `400`, never `405`.
-          - Empty JSON POST to login returns auth `401`, never `405`.
-          - `play.kvicloud.ru` resolves to `2.26.100.125`.
-          - `play.kvicloud.ru:24842` accepts TCP.
+          - site HTTPS works;
+          - `/api/v1/health` is JSON from `ggo-auth`;
+          - empty register POST returns 400, never 405;
+          - empty login POST returns 401, never 405;
+          - `play.kvicloud.ru -> 2.26.100.125`;
+          - TCP 24842 accepts connections.
 
-          ## 3. Final manual end-to-end acceptance
+          ## Final acceptance
 
-          Install the launcher from `launcher/`, choose `SIGN IN / CREATE ACCOUNT`, register/login in the official GGO Account UI, allow the browser device flow to return to the launcher, install/sync the runtime, press PLAY ONLINE, and verify the one-shot ticket is ACKed by the server and the VERIFYING overlay disappears before gameplay unlocks.
+          Install the launcher, choose `SIGN IN / CREATE ACCOUNT`, register/login in the official GGO Account UI, let the browser device flow return to the launcher, install/sync, press PLAY ONLINE, and verify that the server consumes the one-shot ticket, sends VerificationAck, and the VERIFYING overlay disappears before gameplay unlocks.
           EOF
 
           cp .ci/public/32570294198.txt corrected/receipts/public-before-hotfix-32570294198.txt || true
-          printf 'launcher_package_run=%s\nsource_sha=%s\n' '${{ steps.source.outputs.run_id }}' '${{ steps.source.outputs.head_sha }}' > corrected/receipts/source.txt
+          printf 'launcher_package_run=%s\nlauncher_source_sha=%s\nhotfix_source_sha=%s\n' '${{ steps.source.outputs.run_id }}' '${{ steps.source.outputs.head_sha }}' "$GITHUB_SHA" > corrected/receipts/source.txt
 
           (cd corrected && find . -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt)
           zip -qr GunGloryOnline-Stage73-Auth-Hotfix-Bundle-2026-08-22.zip corrected
@@ -221,7 +222,8 @@ jobs:
           run_id=${GITHUB_RUN_ID}
           run_attempt=${GITHUB_RUN_ATTEMPT}
           run_url=https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
-          source_sha=${{ steps.source.outputs.head_sha }}
+          hotfix_source_sha=${GITHUB_SHA}
+          launcher_source_sha=${{ steps.source.outputs.head_sha }}
           launcher_package_run=${{ steps.source.outputs.run_id }}
           stage70_runtime_run=32567000478
           bundle=$BUNDLE
