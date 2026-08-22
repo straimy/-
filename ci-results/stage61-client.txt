@@ -1,0 +1,10 @@
+workflow=GGO Entry Stage 61 Verification Overlay Compile
+run_id=32554233574
+run_attempt=1
+run_url=https://github.com/straimy/-/actions/runs/32554233574
+source_sha=0c445bb82eb3624ee351ec3184a6fbfbba9e4a7c
+apply=success
+bootstrap=success
+compile=success
+verify=success
+result=success
