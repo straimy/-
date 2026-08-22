@@ -1,41 +1,353 @@
 workflow=GGO Runtime Stage 71 Channel Ownership Probe
-run_id=32599767144
+run_id=32599817778
 run_attempt=1
-run_url=https://github.com/straimy/-/actions/runs/32599767144
-client_sha=78e646e8aa4300369b05c0e9e983b34ef123830b
+run_url=https://github.com/straimy/-/actions/runs/32599817778
+client_sha=0349d2d331aa3d83d148cbaa529013998b64d3fd
 inspect=success
 client_network_file_count=1
 core_network_file_count=1
 --- source ---
-=== CORE NETWORK DECLARATIONS ===
-ga-probe/src/main/java/arena/forge/ammo/ForgeAmmoPointService.java:14:import net.minecraft.resources.ResourceLocation;
-ga-probe/src/main/java/arena/forge/ammo/ForgeAmmoPointService.java:210:        ResourceLocation key = ResourceLocation.tryParse(id);
-ga-probe/src/main/java/arena/forge/spawn/ArenaSpawnStore.java:4:import net.minecraft.resources.ResourceLocation;
-ga-probe/src/main/java/arena/forge/spawn/ArenaSpawnStore.java:74:            ResourceLocation id = new ResourceLocation(s[0]);
-ga-probe/src/main/java/arena/forge/loadout/ForgeLoadoutService.java:11:import net.minecraft.resources.ResourceLocation;
-ga-probe/src/main/java/arena/forge/loadout/ForgeLoadoutService.java:150:        ResourceLocation key = ResourceLocation.tryParse(id);
-ga-probe/src/main/java/arena/forge/cleanup/ArenaVisualCleanupService.java:3:import net.minecraft.resources.ResourceLocation;
-ga-probe/src/main/java/arena/forge/cleanup/ArenaVisualCleanupService.java:78:        ResourceLocation id = ForgeRegistries.ENTITY_TYPES.getKey(entity.getType());
-ga-probe/src/main/java/arena/forge/ArenaRuntime.java:63:import net.minecraft.resources.ResourceLocation;
-ga-probe/src/main/java/arena/forge/ArenaRuntime.java:642:        ResourceLocation id = BuiltInRegistries.ITEM.getKey(stack.getItem());
-ga-probe/src/main/java/arena/forge/GunnerCommands.java:347:        boolean jegAssault = net.minecraftforge.registries.ForgeRegistries.ITEMS.containsKey(new net.minecraft.resources.ResourceLocation("jeg", "assault_rifle"));
-ga-probe/src/main/java/arena/forge/GunnerCommands.java:348:        boolean jegPistolAmmo = net.minecraftforge.registries.ForgeRegistries.ITEMS.containsKey(new net.minecraft.resources.ResourceLocation("jeg", "pistol_ammo"));
-ga-probe/src/main/java/arena/forge/GunnerCommands.java:390:            new net.minecraft.resources.ResourceLocation("jeg", "assault_rifle"));
-ga-probe/src/main/java/arena/forge/net/ArenaNetwork.java:13:import net.minecraft.resources.ResourceLocation;
-ga-probe/src/main/java/arena/forge/net/ArenaNetwork.java:30:    private static final ResourceLocation CHANNEL_ID = new ResourceLocation("gunnerarena", "ui");
-ga-probe/src/main/java/arena/forge/net/ArenaNetwork.java:31:    public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
+=== CORE ArenaNetwork.java ===
+package arena.forge.net;
 
-=== CLIENT UI NETWORK DECLARATIONS ===
-ga-probe/client-ui/src/main/java/arena/client/ui/GunnerArenaUiMod.java:18:    public static final String MODID = "gunnerarena_ui";
-ga-probe/client-ui/src/main/java/arena/client/ui/GunnerArenaUiMod.java:19:    private static final boolean DEV_KEY_ENABLED = UiNavigationPolicy.devKeyEnabled(System.getProperty("gunnerarena.ui.devKey"));
-ga-probe/client-ui/src/main/java/arena/client/ui/GunnerArenaUiMod.java:21:        "key.gunnerarena_ui.reload_weapon", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_R, "key.categories.gunnerarena_ui"
-ga-probe/client-ui/src/main/java/arena/client/ui/GunnerArenaUiMod.java:24:        "key.gunnerarena_ui.firemode", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_V, "key.categories.gunnerarena_ui"
-ga-probe/client-ui/src/main/java/arena/client/ui/GunnerArenaUiMod.java:27:        "key.gunnerarena_ui.open_menu_dev",
-ga-probe/client-ui/src/main/java/arena/client/ui/GunnerArenaUiMod.java:30:        "key.categories.gunnerarena_ui"
-ga-probe/client-ui/src/main/java/arena/client/net/ArenaClientNetwork.java:4:import net.minecraft.resources.ResourceLocation;
-ga-probe/client-ui/src/main/java/arena/client/net/ArenaClientNetwork.java:13:/** Client half of gunnerarena:ui. Packet IDs and field order must match Core. */
-ga-probe/client-ui/src/main/java/arena/client/net/ArenaClientNetwork.java:16:    private static final ResourceLocation CHANNEL_ID = new ResourceLocation("gunnerarena", "ui");
-ga-probe/client-ui/src/main/java/arena/client/net/ArenaClientNetwork.java:17:    public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
+import arena.GunnerArenaMod;
+import arena.forge.player.ArenaPlayerState;
+import arena.loadout.LoadoutManager;
+import arena.net.ArenaSnapshot;
+import arena.profile.RoundSession;
+import arena.round.RoundState;
+import arena.weapon.WeaponDefinition;
+import arena.weapon.WeaponSafetyPolicy;
+import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraftforge.network.NetworkEvent;
+import net.minecraftforge.network.NetworkRegistry;
+import net.minecraftforge.network.PacketDistributor;
+import net.minecraftforge.network.simple.SimpleChannel;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
+
+/** Server half of the Gunner Arena UI protocol. No client-only classes are referenced here. */
+public final class ArenaNetwork {
+    public static final String PROTOCOL_VERSION = "5";
+    private static final ResourceLocation CHANNEL_ID = new ResourceLocation("gunnerarena", "ui");
+    public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
+        CHANNEL_ID,
+        () -> PROTOCOL_VERSION,
+        PROTOCOL_VERSION::equals,
+        PROTOCOL_VERSION::equals
+    );
+    private static final Map<UUID, Long> LAST_BUY_TICK = new ConcurrentHashMap<>();
+    private static final Map<UUID, Long> LAST_WEAPON_ACTION_TICK = new ConcurrentHashMap<>();
+    private static final Map<UUID, Long> LAST_SKILL_ACTION_TICK = new ConcurrentHashMap<>();
+    private static boolean registered;
+
+    private ArenaNetwork() {}
+
+    public static synchronized void register() {
+        if (registered) return;
+        int id = 0;
+        CHANNEL.registerMessage(id++, SnapshotRequest.class, SnapshotRequest::encode, SnapshotRequest::decode, SnapshotRequest::handle);
+        CHANNEL.registerMessage(id++, SnapshotPacket.class, SnapshotPacket::encode, SnapshotPacket::decode, SnapshotPacket::handleServerNoop);
+        CHANNEL.registerMessage(id++, CatalogRequest.class, CatalogRequest::encode, CatalogRequest::decode, CatalogRequest::handle);
+        CHANNEL.registerMessage(id++, CatalogPacket.class, CatalogPacket::encode, CatalogPacket::decode, CatalogPacket::handleServerNoop);
+        CHANNEL.registerMessage(id++, BuyRequest.class, BuyRequest::encode, BuyRequest::decode, BuyRequest::handle);
+        CHANNEL.registerMessage(id++, BuyResultPacket.class, BuyResultPacket::encode, BuyResultPacket::decode, BuyResultPacket::handleServerNoop);
+        CHANNEL.registerMessage(id++, OpenUiPacket.class, OpenUiPacket::encode, OpenUiPacket::decode, OpenUiPacket::handleServerNoop);
+        CHANNEL.registerMessage(id++, WeaponActionRequest.class, WeaponActionRequest::encode, WeaponActionRequest::decode, WeaponActionRequest::handle);
+        CHANNEL.registerMessage(id++, SkillTreeRequest.class, SkillTreeRequest::encode, SkillTreeRequest::decode, SkillTreeRequest::handle);
+        CHANNEL.registerMessage(id++, SkillTreePacket.class, SkillTreePacket::encode, SkillTreePacket::decode, SkillTreePacket::handleServerNoop);
+        CHANNEL.registerMessage(id, SkillUnlockRequest.class, SkillUnlockRequest::encode, SkillUnlockRequest::decode, SkillUnlockRequest::handle);
+        registered = true;
+    }
+
+    public static void sendSnapshot(ServerPlayer player) {
+        if (player == null) return;
+        ArenaSnapshot snapshot = GunnerArenaMod.RUNTIME.createSnapshot(player);
+        CHANNEL.send(PacketDistributor.PLAYER.with(player), new SnapshotPacket(snapshot));
+    }
+
+    public static void sendCatalog(ServerPlayer player) {
+        if (player == null) return;
+        List<CatalogEntry> entries = new ArrayList<>();
+        for (WeaponDefinition def : GunnerArenaMod.RUNTIME.weapons().all()) {
+            boolean quarantined = WeaponSafetyPolicy.isQuarantined(def.id());
+            boolean available = !quarantined && GunnerArenaMod.RUNTIME.forgeLoadouts().isAvailable(def.id());
+            entries.add(CatalogEntry.from(def, available, quarantined));
+        }
+        CHANNEL.send(PacketDistributor.PLAYER.with(player), new CatalogPacket(List.copyOf(entries)));
+    }
+
+
+    /** Server-authoritative UI opener. Future NPC interaction should call this instead of simulating a key press. */
+    public static void openUi(ServerPlayer player, UiTarget target) {
+        if (player == null || target == null) return;
+        CHANNEL.send(PacketDistributor.PLAYER.with(player), new OpenUiPacket(target));
+    }
+
+    public static void openMainUi(ServerPlayer player) { openUi(player, UiTarget.MAIN); }
+
+    public enum UiTarget { MAIN, SHOP, PROFILE, SKILLS }
+
+    /** Clears per-connection anti-spam bookkeeping. */
+    public static void forget(ServerPlayer player) {
+        if (player != null) {
+            LAST_BUY_TICK.remove(player.getUUID());
+            LAST_WEAPON_ACTION_TICK.remove(player.getUUID());
+            LAST_SKILL_ACTION_TICK.remove(player.getUUID());
+        }
+    }
+
+    public record OpenUiPacket(UiTarget target) {
+        public OpenUiPacket { target = target == null ? UiTarget.MAIN : target; }
+        static void encode(OpenUiPacket packet, FriendlyByteBuf buf) { buf.writeByte(packet.target.ordinal()); }
+        static OpenUiPacket decode(FriendlyByteBuf buf) {
+            int raw = buf.readUnsignedByte();
+            UiTarget[] values = UiTarget.values();
+            return new OpenUiPacket(raw >= 0 && raw < values.length ? values[raw] : UiTarget.MAIN);
+        }
+        static void handleServerNoop(OpenUiPacket ignored, Supplier<NetworkEvent.Context> supplier) { supplier.get().setPacketHandled(true); }
+    }
+
+
+    public enum WeaponAction { RELOAD, CYCLE_FIREMODE }
+
+    /** Client sends only an action enum; weapon/ammo/mode authority remains entirely server-side. */
+    public record WeaponActionRequest(WeaponAction action) {
+        public WeaponActionRequest { action = action == null ? WeaponAction.RELOAD : action; }
+        static void encode(WeaponActionRequest p, FriendlyByteBuf b) { b.writeByte(p.action.ordinal()); }
+        static WeaponActionRequest decode(FriendlyByteBuf b) {
+            int raw = b.readUnsignedByte();
+            WeaponAction[] values = WeaponAction.values();
+            return new WeaponActionRequest(raw >= 0 && raw < values.length ? values[raw] : WeaponAction.RELOAD);
+        }
+        static void handle(WeaponActionRequest packet, Supplier<NetworkEvent.Context> supplier) {
+            NetworkEvent.Context ctx = supplier.get();
+            ctx.enqueueWork(() -> {
+                ServerPlayer player = ctx.getSender();
+                if (player == null) return;
+                var runtime = GunnerArenaMod.RUNTIME;
+                if (!runtime.isCustomCombatAllowed(player)) return;
+                long tick = runtime.serverTick();
+                Long previous = LAST_WEAPON_ACTION_TICK.get(player.getUUID());
+                if (previous != null && tick - previous < 2L) return;
+                LAST_WEAPON_ACTION_TICK.put(player.getUUID(), tick);
+
+                var result = switch (packet.action) {
+                    case RELOAD -> runtime.customWeaponCombat().requestReload(player, tick * 50L);
+                    case CYCLE_FIREMODE -> runtime.customWeaponCombat().cycleMode(player);
+                };
+                player.displayClientMessage(Component.literal(result.message()), true);
+            });
+            ctx.setPacketHandled(true);
+        }
+    }
+
+
+    public static void sendSkillTree(ServerPlayer player) {
+        if (player == null) return;
+        var runtime = GunnerArenaMod.RUNTIME;
+        var profile = runtime.players().profile(player);
+        if (profile == null) return;
+        List<SkillEntry> entries = new ArrayList<>();
+        for (var skill : runtime.rpg().catalog().all()) {
+            var check = runtime.rpg().checkUnlock(profile, skill.id());
+            entries.add(new SkillEntry(skill.id(), skill.name(), skill.branch().name(), skill.cost(), skill.minLevel(),
+                String.join(",", skill.prerequisites()), skill.major(), skill.active(), profile.unlockedSkills.contains(skill.id()),
+                check.ok(), check.code().name()));
+        }
+        CHANNEL.send(PacketDistributor.PLAYER.with(player), new SkillTreePacket(profile.level, profile.skillPoints, profile.specialization, entries));
+    }
+
+    public record SkillTreeRequest() {
+        static void encode(SkillTreeRequest ignored, FriendlyByteBuf b) {}
+        static SkillTreeRequest decode(FriendlyByteBuf b) { return new SkillTreeRequest(); }
+        static void handle(SkillTreeRequest ignored, Supplier<NetworkEvent.Context> supplier) {
+            NetworkEvent.Context ctx = supplier.get();
+            ctx.enqueueWork(() -> { ServerPlayer p = ctx.getSender(); if (p != null) sendSkillTree(p); });
+            ctx.setPacketHandled(true);
+        }
+    }
+
+    public record SkillEntry(String id, String name, String branch, int cost, int minLevel, String prerequisites,
+                             boolean major, boolean active, boolean unlocked, boolean available, String reason) {
+        public SkillEntry {
+            id = id == null ? "" : id;
+            name = name == null ? "" : name;
+            branch = branch == null ? "" : branch;
+            prerequisites = prerequisites == null ? "" : prerequisites;
+            reason = reason == null ? "" : reason;
+            cost = Math.max(0, cost); minLevel = Math.max(1, minLevel);
+        }
+        static void write(FriendlyByteBuf b, SkillEntry e) {
+            b.writeUtf(e.id, 64); b.writeUtf(e.name, 96); b.writeUtf(e.branch, 24); b.writeVarInt(e.cost); b.writeVarInt(e.minLevel);
+
+=== CLIENT ArenaClientNetwork.java ===
+package arena.client.net;
+
+import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraftforge.network.NetworkEvent;
+import net.minecraftforge.network.NetworkRegistry;
+import net.minecraftforge.network.simple.SimpleChannel;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Supplier;
+
+/** Client half of gunnerarena:ui. Packet IDs and field order must match Core. */
+public final class ArenaClientNetwork {
+    public static final String PROTOCOL_VERSION = "5";
+    private static final ResourceLocation CHANNEL_ID = new ResourceLocation("gunnerarena", "ui");
+    public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
+        CHANNEL_ID, () -> PROTOCOL_VERSION, PROTOCOL_VERSION::equals, PROTOCOL_VERSION::equals
+    );
+    private static boolean registered;
+    private ArenaClientNetwork() {}
+
+    public static synchronized void register() {
+        if (registered) return;
+        int id = 0;
+        CHANNEL.registerMessage(id++, SnapshotRequest.class, SnapshotRequest::encode, SnapshotRequest::decode, SnapshotRequest::handleClientNoop);
+        CHANNEL.registerMessage(id++, SnapshotPacket.class, SnapshotPacket::encode, SnapshotPacket::decode, SnapshotPacket::handle);
+        CHANNEL.registerMessage(id++, CatalogRequest.class, CatalogRequest::encode, CatalogRequest::decode, CatalogRequest::handleClientNoop);
+        CHANNEL.registerMessage(id++, CatalogPacket.class, CatalogPacket::encode, CatalogPacket::decode, CatalogPacket::handle);
+        CHANNEL.registerMessage(id++, BuyRequest.class, BuyRequest::encode, BuyRequest::decode, BuyRequest::handleClientNoop);
+        CHANNEL.registerMessage(id++, BuyResultPacket.class, BuyResultPacket::encode, BuyResultPacket::decode, BuyResultPacket::handle);
+        CHANNEL.registerMessage(id++, OpenUiPacket.class, OpenUiPacket::encode, OpenUiPacket::decode, OpenUiPacket::handle);
+        CHANNEL.registerMessage(id++, WeaponActionRequest.class, WeaponActionRequest::encode, WeaponActionRequest::decode, WeaponActionRequest::handleClientNoop);
+        CHANNEL.registerMessage(id++, SkillTreeRequest.class, SkillTreeRequest::encode, SkillTreeRequest::decode, SkillTreeRequest::handleClientNoop);
+        CHANNEL.registerMessage(id++, SkillTreePacket.class, SkillTreePacket::encode, SkillTreePacket::decode, SkillTreePacket::handle);
+        CHANNEL.registerMessage(id, SkillUnlockRequest.class, SkillUnlockRequest::encode, SkillUnlockRequest::decode, SkillUnlockRequest::handleClientNoop);
+        registered = true;
+    }
+
+    public static void requestSnapshot() { CHANNEL.sendToServer(new SnapshotRequest()); }
+    public static void requestCatalog() { CHANNEL.sendToServer(new CatalogRequest()); }
+    public static void requestReload() { CHANNEL.sendToServer(new WeaponActionRequest(0)); }
+    public static void requestCycleFireMode() { CHANNEL.sendToServer(new WeaponActionRequest(1)); }
+    public static void requestSkillTree() { CHANNEL.sendToServer(new SkillTreeRequest()); }
+    public static void unlockSkill(String id) { if (id != null && !id.isBlank() && id.length() <= 64) CHANNEL.sendToServer(new SkillUnlockRequest(id.trim())); }
+    public static void buy(String weaponId) {
+        if (weaponId == null || weaponId.isBlank() || weaponId.length() > 128) return;
+        CHANNEL.sendToServer(new BuyRequest(weaponId.trim()));
+    }
+
+    public record OpenUiPacket(int target) {
+        static void encode(OpenUiPacket p, FriendlyByteBuf b) { b.writeByte(Math.max(0, Math.min(3, p.target))); }
+        static OpenUiPacket decode(FriendlyByteBuf b) { return new OpenUiPacket(Math.max(0, Math.min(3, b.readUnsignedByte()))); }
+        static void handle(OpenUiPacket p, Supplier<NetworkEvent.Context> supplier) {
+            NetworkEvent.Context ctx = supplier.get();
+            ctx.enqueueWork(() -> arena.client.ui.ClientUiOpener.open(p.target));
+            ctx.setPacketHandled(true);
+        }
+    }
+
+
+    /** C2S input hook. 0=reload, 1=cycle fire mode. Server validates player/weapon/state. */
+    public record WeaponActionRequest(int action) {
+        public WeaponActionRequest { action = Math.max(0, Math.min(1, action)); }
+        static void encode(WeaponActionRequest p, FriendlyByteBuf b) { b.writeByte(p.action); }
+        static WeaponActionRequest decode(FriendlyByteBuf b) { return new WeaponActionRequest(b.readUnsignedByte()); }
+        static void handleClientNoop(WeaponActionRequest ignored, Supplier<NetworkEvent.Context> supplier) { supplier.get().setPacketHandled(true); }
+    }
+
+
+    public record SkillTreeRequest() {
+        static void encode(SkillTreeRequest ignored, FriendlyByteBuf b) {}
+        static SkillTreeRequest decode(FriendlyByteBuf b) { return new SkillTreeRequest(); }
+        static void handleClientNoop(SkillTreeRequest ignored, Supplier<NetworkEvent.Context> supplier) { supplier.get().setPacketHandled(true); }
+    }
+    public record SkillEntry(String id,String name,String branch,int cost,int minLevel,String prerequisites,boolean major,boolean active,boolean unlocked,boolean available,String reason) {
+        static void write(FriendlyByteBuf b,SkillEntry e){b.writeUtf(e.id,64);b.writeUtf(e.name,96);b.writeUtf(e.branch,24);b.writeVarInt(Math.max(0,e.cost));b.writeVarInt(Math.max(1,e.minLevel));b.writeUtf(e.prerequisites,192);b.writeBoolean(e.major);b.writeBoolean(e.active);b.writeBoolean(e.unlocked);b.writeBoolean(e.available);b.writeUtf(e.reason,48);}
+        static SkillEntry read(FriendlyByteBuf b){return new SkillEntry(b.readUtf(64),b.readUtf(96),b.readUtf(24),b.readVarInt(),b.readVarInt(),b.readUtf(192),b.readBoolean(),b.readBoolean(),b.readBoolean(),b.readBoolean(),b.readUtf(48));}
+        ArenaClientSkillEntry client(){return new ArenaClientSkillEntry(id,name,branch,cost,minLevel,prerequisites,major,active,unlocked,available,reason);}
+    }
+    public record SkillTreePacket(int level,int points,String specialization,List<SkillEntry> entries) {
+        static void encode(SkillTreePacket p,FriendlyByteBuf b){b.writeVarInt(Math.max(1,p.level));b.writeVarInt(Math.max(0,p.points));b.writeUtf(p.specialization==null?"NONE":p.specialization,32);int n=Math.min(64,p.entries.size());b.writeVarInt(n);for(int i=0;i<n;i++)SkillEntry.write(b,p.entries.get(i));}
+        static SkillTreePacket decode(FriendlyByteBuf b){int l=b.readVarInt(),p=b.readVarInt();String s=b.readUtf(32);int n=Math.max(0,Math.min(64,b.readVarInt()));List<SkillEntry> e=new ArrayList<>(n);for(int i=0;i<n;i++)e.add(SkillEntry.read(b));return new SkillTreePacket(l,p,s,e);}
+        static void handle(SkillTreePacket p,Supplier<NetworkEvent.Context> supplier){NetworkEvent.Context ctx=supplier.get();ctx.enqueueWork(()->ClientSkillTreeStore.accept(p.level,p.points,p.specialization,p.entries.stream().map(SkillEntry::client).toList()));ctx.setPacketHandled(true);}
+    }
+    public record SkillUnlockRequest(String id) {
+        static void encode(SkillUnlockRequest p,FriendlyByteBuf b){b.writeUtf(p.id==null?"":p.id,64);}
+        static SkillUnlockRequest decode(FriendlyByteBuf b){return new SkillUnlockRequest(b.readUtf(64));}
+        static void handleClientNoop(SkillUnlockRequest ignored,Supplier<NetworkEvent.Context> supplier){supplier.get().setPacketHandled(true);}
+    }
+
+    public record SnapshotRequest() {
+        static void encode(SnapshotRequest ignored, FriendlyByteBuf buf) {}
+        static SnapshotRequest decode(FriendlyByteBuf buf) { return new SnapshotRequest(); }
+        static void handleClientNoop(SnapshotRequest ignored, Supplier<NetworkEvent.Context> supplier) { supplier.get().setPacketHandled(true); }
+    }
+    public record SnapshotPacket(ArenaClientSnapshot snapshot) {
+        static void encode(SnapshotPacket p, FriendlyByteBuf b) { SnapshotWire.write(b, p.snapshot); }
+        static SnapshotPacket decode(FriendlyByteBuf b) { return new SnapshotPacket(SnapshotWire.read(b)); }
+        static void handle(SnapshotPacket p, Supplier<NetworkEvent.Context> supplier) {
+            NetworkEvent.Context ctx = supplier.get(); ctx.enqueueWork(() -> ClientSnapshotStore.accept(p.snapshot)); ctx.setPacketHandled(true);
+        }
+    }
+    public record CatalogRequest() {
+        static void encode(CatalogRequest ignored, FriendlyByteBuf buf) {}
+        static CatalogRequest decode(FriendlyByteBuf buf) { return new CatalogRequest(); }
+        static void handleClientNoop(CatalogRequest ignored, Supplier<NetworkEvent.Context> supplier) { supplier.get().setPacketHandled(true); }
+    }
+    public record CatalogPacket(List<ArenaClientShopItem> entries) {
+        public CatalogPacket { entries = entries == null ? List.of() : List.copyOf(entries); }
+        static void encode(CatalogPacket p, FriendlyByteBuf b) {
+            int size = Math.min(p.entries.size(), 128); b.writeVarInt(size);
+            for (int i=0;i<size;i++) writeEntry(b,p.entries.get(i));
+        }
+        static CatalogPacket decode(FriendlyByteBuf b) {
+            int size=Math.max(0,Math.min(b.readVarInt(),128)); List<ArenaClientShopItem> out=new ArrayList<>(size);
+            for(int i=0;i<size;i++) out.add(readEntry(b)); return new CatalogPacket(out);
+        }
+        static void handle(CatalogPacket p, Supplier<NetworkEvent.Context> supplier) {
+            NetworkEvent.Context ctx=supplier.get(); ctx.enqueueWork(() -> ClientShopStore.acceptCatalog(p.entries)); ctx.setPacketHandled(true);
+        }
+    }
+    public record BuyRequest(String weaponId) {
+        static void encode(BuyRequest p,FriendlyByteBuf b){ b.writeUtf(p.weaponId == null ? "" : p.weaponId,128); }
+        static BuyRequest decode(FriendlyByteBuf b){ return new BuyRequest(b.readUtf(128)); }
+        static void handleClientNoop(BuyRequest ignored,Supplier<NetworkEvent.Context> supplier){ supplier.get().setPacketHandled(true); }
+    }
+    public record BuyResultPacket(boolean ok,String code,String message,int credits) {
+        static void encode(BuyResultPacket p,FriendlyByteBuf b){ b.writeBoolean(p.ok);b.writeUtf(p.code==null?"":p.code,48);b.writeUtf(p.message==null?"":p.message,160);b.writeVarInt(Math.max(0,p.credits)); }
+        static BuyResultPacket decode(FriendlyByteBuf b){ return new BuyResultPacket(b.readBoolean(),b.readUtf(48),b.readUtf(160),b.readVarInt()); }
+        static void handle(BuyResultPacket p,Supplier<NetworkEvent.Context> supplier){
+            NetworkEvent.Context ctx=supplier.get(); ctx.enqueueWork(() -> { ClientShopStore.acceptResult(p.ok,p.message); requestSnapshot(); requestCatalog(); }); ctx.setPacketHandled(true);
+        }
+    }
+
+    private static void writeEntry(FriendlyByteBuf b,ArenaClientShopItem e){
+        b.writeUtf(e.id(),128);b.writeUtf(e.displayName(),96);b.writeUtf(e.category(),24);b.writeUtf(e.slot(),24);b.writeVarInt(e.price());
+        b.writeUtf(e.ammoItem(),128);b.writeVarInt(e.magazineSize());b.writeVarInt(e.startingReserve());b.writeUtf(e.fireModes(),96);b.writeUtf(e.scope(),24);
+        b.writeBoolean(e.available());b.writeBoolean(e.quarantined());
+    }
+    private static ArenaClientShopItem readEntry(FriendlyByteBuf b){
+        return new ArenaClientShopItem(b.readUtf(128),b.readUtf(96),b.readUtf(24),b.readUtf(24),b.readVarInt(),b.readUtf(128),b.readVarInt(),b.readVarInt(),b.readUtf(96),b.readUtf(24),b.readBoolean(),b.readBoolean());
+    }
+
+    static final class SnapshotWire {
+        private SnapshotWire() {}
+        static void write(FriendlyByteBuf b, ArenaClientSnapshot s) {
+            b.writeBoolean(s.authenticated()); b.writeBoolean(s.initialized()); b.writeUtf(s.playerName(),64); b.writeUtf(s.roundState(),32);
+            b.writeVarInt(s.roundNumber());b.writeVarInt(s.roundRemainingTicks());b.writeVarInt(s.roundCredits());b.writeVarLong(s.coins());b.writeVarLong(s.crystals());
+            b.writeVarInt(s.level());b.writeVarLong(s.xp());b.writeVarInt(s.skillPoints());b.writeVarLong(s.kills());b.writeVarLong(s.deaths());b.writeVarLong(s.assists());
+            b.writeVarLong(s.damageDealt());b.writeVarLong(s.shotsFired());b.writeVarLong(s.shotsHit());b.writeVarInt(s.bestKillStreak());b.writeVarLong(s.roundsPlayed());
+            b.writeVarLong(s.roundsWon());b.writeVarLong(s.playTimeSeconds());b.writeVarInt(s.roundKills());b.writeVarInt(s.roundDeaths());b.writeVarInt(s.roundAssists());b.writeVarLong(s.roundDamage());
+        }
+        static ArenaClientSnapshot read(FriendlyByteBuf b) {
+            return new ArenaClientSnapshot(b.readBoolean(),b.readBoolean(),b.readUtf(64),b.readUtf(32),b.readVarInt(),b.readVarInt(),b.readVarInt(),b.readVarLong(),b.readVarLong(),b.readVarInt(),b.readVarLong(),b.readVarInt(),b.readVarLong(),b.readVarLong(),b.readVarLong(),b.readVarLong(),b.readVarLong(),b.readVarLong(),b.readVarInt(),b.readVarLong(),b.readVarLong(),b.readVarLong(),b.readVarInt(),b.readVarInt(),b.readVarInt(),b.readVarLong());
+        }
+    }
+}
 --- client network files ---
 ga-probe/client-ui/src/main/java/arena/client/net/ArenaClientNetwork.java
 --- core network files ---
