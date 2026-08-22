@@ -62,7 +62,7 @@ export default function LauncherUpdateGate({ children }: { children: ReactNode }
       <div style={{fontSize:12,lineHeight:1.5,color:"#8e9aab",marginTop:6}}>{update.notes || "A newer GunGloryOnline Launcher build is ready."}</div>
       {progress && <div style={{fontSize:11,color:"#8e9aab",marginTop:8}}>{mb(progress.downloadedBytes)}{progress.totalBytes ? ` / ${mb(progress.totalBytes)}` : ""}</div>}
       {error && <div style={{fontSize:11,color:"#ff7c8b",marginTop:8}}>{error}</div>}
-      <button disabled={busy} onClick={() => void install()} style={{width:"100%",marginTop:12,border:0,borderRadius:9,padding:"11px 14px",fontWeight:850,letterSpacing:".08em",background:"#df3549",color:"white",cursor:busy?"default":"pointer",opacity:busy?.65:1}}>{busy ? "DOWNLOADING…" : "DOWNLOAD LAUNCHER UPDATE"}</button>
+      <button disabled={busy} onClick={() => void install()} style={{width:"100%",marginTop:12,border:0,borderRadius:9,padding:"11px 14px",fontWeight:850,letterSpacing:".08em",background:"#df3549",color:"white",cursor:busy?"default":"pointer",opacity:busy?0.65:1}}>{busy ? "DOWNLOADING…" : "DOWNLOAD LAUNCHER UPDATE"}</button>
       <div style={{fontSize:10,color:"#697586",marginTop:8}}>The package is downloaded only from ggo.kvicloud.ru and verified by SHA-256 before opening.</div>
     </div>}
   </>;
