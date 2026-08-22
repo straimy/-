@@ -1,8 +1,8 @@
 workflow=GGO Auth Smoke
-run_id=32545545352
+run_id=32545699043
 run_attempt=1
-run_url=https://github.com/straimy/-/actions/runs/32545545352
-source_sha=20742ebece5c508a3062fd119b1db5c87f665c3c
+run_url=https://github.com/straimy/-/actions/runs/32545699043
+source_sha=4b4f47436da01ff265fa8665046bedf2413e38d6
 syntax=success
 smoke=success
 deploy=success
