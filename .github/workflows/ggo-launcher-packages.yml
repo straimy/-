@@ -126,17 +126,24 @@ jobs:
           ref: launcher/bootstrap-v0.1
       - name: Python syntax gate
         run: python3 -m py_compile services/ggo-auth/server.py services/ggo-auth/test_auth.py
-      - name: GGO account API smoke
+      - name: GGO account and support API smoke
         run: python3 services/ggo-auth/test_auth.py -v
-      - name: Validate current ticket contract and systemd source
+      - name: Validate auth, roles and ticket contract
         run: |
           set -euo pipefail
           grep -q 'GAME_TICKET_TTL = 3 \* 60' services/ggo-auth/server.py
           grep -q 'assertGreaterEqual(ticket\["expires_in"\], 175)' services/ggo-auth/test_auth.py
+          grep -q 'ALLOWED_ROLES = {"user", "support", "admin"}' services/ggo-auth/server.py
+          grep -q 'GGO_OWNER_USERNAMES' services/ggo-auth/server.py
+          grep -q 'support_tickets' services/ggo-auth/server.py
+          grep -q 'owner_role_locked' services/ggo-auth/server.py
+          grep -q 'Тех. Поддержка' services/ggo-auth/server.py
+          grep -q 'Администратор' services/ggo-auth/server.py
           test -f services/ggo-auth/ggo-auth.service
           test -f services/ggo-auth/install.sh
           grep -q '127.0.0.1' services/ggo-auth/ggo-auth.service
           grep -q '/var/lib/ggo-auth/auth.db' services/ggo-auth/ggo-auth.service
+          grep -q 'systemctl restart ggo-auth.service' services/ggo-auth/install.sh
           grep -q 'GGO auth health: PASS' services/ggo-auth/install.sh
 
   website:
@@ -152,6 +159,9 @@ jobs:
           bash -n site/verify-production.sh
           grep -q 'auth.db' site/install-site.sh
           grep -q 'runtime-files' site/install-site.sh
+          grep -q 'support admin content' site/install-site.sh
+          grep -q 'НАПИСАТЬ В ПОДДЕРЖКУ' site/install-site.sh
+          grep -q 'support API auth wall' site/install-site.sh
           grep -q 'Disabling duplicate nginx vhost' site/install-site.sh
           grep -q '/api/v1/auth/register' site/install-site.sh
           grep -q '/api/v1/auth/login' site/install-site.sh
@@ -162,9 +172,26 @@ jobs:
           grep -q 'SIGN IN / CREATE ACCOUNT' launcher/src/AccountHub.tsx
           grep -q 'OFFLINE TRAINING FALLBACK' launcher/src/AccountHub.tsx
           grep -q 'returnAfterAuth' site/account/account.js
+          grep -q 'staffAccountLink' site/account/account.js
+          grep -q 'role-badge' site/account/account.js
           grep -q "approve.*===.*'1'" site/account/device.html
           grep -q 'auth/device/approve' site/account/device.html
           ! grep -q 'прямого входа в GGO Launcher' site/account/index.html
+      - name: Validate support and staff console
+        run: |
+          set -euo pipefail
+          test -f site/support/index.html
+          test -f site/support/support.js
+          test -f site/admin/index.html
+          test -f site/admin/admin.js
+          grep -q 'НАПИСАТЬ В ПОДДЕРЖКУ' site/support/index.html
+          grep -q '/api/v1/support/tickets' site/support/support.js
+          grep -q 'ПАНЕЛЬ СОТРУДНИКА' site/support/index.html
+          grep -q 'STAFF CONSOLE' site/admin/index.html
+          grep -q '/api/v1/staff/tickets' site/admin/admin.js
+          grep -q '/api/v1/admin/users' site/admin/admin.js
+          grep -q 'role-badge admin' site/portal.css
+          grep -q 'role-badge support' site/portal.css
       - name: Validate menu-first release transform
         run: |
           set -euo pipefail
