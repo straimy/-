@@ -13,6 +13,7 @@ fi
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AUTH_ENV="/etc/ggo-auth.env"
+GAME_ENV="/etc/ggo-game.env"
 AUTH_URL="https://ggo.kvicloud.ru/api/v1"
 SERVICE_FILE="/etc/systemd/system/ggo-game.service"
 
@@ -34,11 +35,24 @@ if ! grep -q '^GGO_SERVER_KEY=.' "$AUTH_ENV"; then
 fi
 chmod 600 "$AUTH_ENV"
 
-if grep -q '^GGO_AUTH_API_URL=' "$AUTH_ENV"; then
-  sed -i "s#^GGO_AUTH_API_URL=.*#GGO_AUTH_API_URL=$AUTH_URL#" "$AUTH_ENV"
-else
-  printf '\nGGO_AUTH_API_URL=%s\n' "$AUTH_URL" >> "$AUTH_ENV"
+# The auth API must keep the server key because /auth/game-ticket/consume validates
+# X-GGO-Server-Key against this exact environment value. Do not print the secret.
+SERVER_KEY="$(sed -n 's/^GGO_SERVER_KEY=//p' "$AUTH_ENV" | head -n1)"
+if [ -z "$SERVER_KEY" ]; then
+  echo "GGO_SERVER_KEY resolved empty from $AUTH_ENV" >&2
+  exit 3
 fi
+
+# Give the game process only the two variables it needs instead of exposing the whole
+# auth service environment. The same server key is intentionally shared by the auth
+# API and the official Forge server, but remains root-readable only.
+umask 077
+{
+  printf 'GGO_SERVER_KEY=%s\n' "$SERVER_KEY"
+  printf 'GGO_AUTH_API_URL=%s\n' "$AUTH_URL"
+} > "$GAME_ENV"
+chmod 600 "$GAME_ENV"
+unset SERVER_KEY
 
 # Locate the already-installed Forge server by its exact runtime args file. The previous
 # Stage72 deployment log shows this installation exists; do not create a second server tree.
@@ -81,7 +95,7 @@ Requires=ggo-auth.service
 [Service]
 Type=simple
 WorkingDirectory=$SERVER_DIR
-EnvironmentFile=$AUTH_ENV
+EnvironmentFile=$GAME_ENV
 ExecStart=/bin/bash $RUN_SH nogui
 Restart=on-failure
 RestartSec=8
