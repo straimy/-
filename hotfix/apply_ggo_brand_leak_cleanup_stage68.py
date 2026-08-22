@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import re
 
 ROOT = Path("ga-build") if Path("ga-build").exists() else Path(".")
 JAVA = ROOT / "client-ui/src/main/java/arena/client/shell"
@@ -28,15 +29,21 @@ shell = shell.replace(
 )
 SHELL.write_text(shell, encoding="utf-8")
 
-# Audit only player-facing literal calls. Technical imports/reflection strings may legitimately
-# contain engine package names, but UI labels/copy must not reveal them.
+# Audit only quoted literals on player-facing UI call lines. Technical Java identifiers such as
+# Minecraft.getInstance(), imports and reflection package names may remain in the hidden engine,
+# but the string values rendered to the player must not expose engine brands.
+STRING_LITERAL = re.compile(r'"(?:\\.|[^"\\])*"')
+UI_CALLS = ("Component.literal(", "drawString(", "drawCenteredString(", "Button.builder(")
+ENGINE_BRANDS = ("minecraft", "forge", "mojang")
 violations = []
 for path in JAVA.glob("*.java"):
     for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-        lower = line.lower()
-        player_facing = any(token in line for token in ("Component.literal(", "drawString(", "drawCenteredString(", "Button.builder("))
-        if player_facing and any(word in lower for word in ("minecraft", "forge", "mojang")):
-            violations.append(f"{path.name}:{number}:{line.strip()}")
+        if not any(token in line for token in UI_CALLS):
+            continue
+        for literal in STRING_LITERAL.findall(line):
+            value = literal[1:-1].lower()
+            if any(word in value for word in ENGINE_BRANDS):
+                violations.append(f"{path.name}:{number}:{literal}")
 
 if violations:
     raise SystemExit("player-facing engine brand leak(s):\n" + "\n".join(violations))
