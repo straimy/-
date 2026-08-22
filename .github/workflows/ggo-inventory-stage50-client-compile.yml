@@ -8,6 +8,7 @@ on:
     paths:
       - 'hotfix/GgoCombatInputFence.java'
       - 'hotfix/GgoCombatHud.java'
+      - 'hotfix/GgoKeyMappings.java'
       - 'hotfix/GgoDeathRecapState.java'
       - 'hotfix/GgoKillFeedState.java'
       - 'hotfix/GgoDeathRecapAdapter.java'
@@ -78,7 +79,8 @@ jobs:
           grep -q 'BACKPACK / FIELD LOOT' "$root/GgoShellScreen.java"
           grep -q 'PROTECTED GEAR' "$root/GgoShellScreen.java"
           grep -q 'DROP ON KIA' "$root/GgoShellScreen.java"
-          grep -q 'GLFW_KEY_H' "$root/GgoCombatHud.java"
+          grep -q 'GgoKeyMappings.MEDICAL_WHEEL.isDown()' "$root/GgoCombatHud.java"
+          grep -q 'key.gungloryonline.medical_wheel' "$root/GgoKeyMappings.java"
           grep -q 'ggomed use' "$root/GgoCombatHud.java"
           grep -q 'renderKillFeed' "$root/GgoCombatHud.java"
           grep -q 'COMBAT REPORT' "$root/GgoRespawnScreen.java"
@@ -108,7 +110,7 @@ jobs:
         run: |
           set -euo pipefail
           root=ga-build/client-ui/build/classes/java/main/arena/client/shell
-          for c in GgoCombatHud GgoCombatInputFence GgoRespawnScreen GgoVanillaRuntimeFence GgoDeathRecapState GgoKillFeedState GgoDeathRecapAdapter GgoDeathRecapBootstrap GgoShellScreen; do test -f "$root/$c.class"; done
+          for c in GgoCombatHud GgoKeyMappings GgoCombatInputFence GgoRespawnScreen GgoVanillaRuntimeFence GgoDeathRecapState GgoKillFeedState GgoDeathRecapAdapter GgoDeathRecapBootstrap GgoShellScreen; do test -f "$root/$c.class"; done
       - name: Publish exact CI receipt
         if: always()
         env:
