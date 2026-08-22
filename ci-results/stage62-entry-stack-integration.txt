@@ -1,0 +1,14 @@
+workflow=GGO Runtime Stage 62 Entry Stack Integration
+run_id=32555227197
+run_attempt=1
+run_url=https://github.com/straimy/-/actions/runs/32555227197
+server_sha=fbfbe0b58757a62ec445a043613e84aeed84d13a
+client_sha=6b052d40077166b6264b35c3e05252d57ac2009c
+launcher_sha=b4e8fb8fdbecd1d6a03d7696a2c7f76e991ceecc
+server_build=success
+client_build=success
+launcher_auth_assets=failure
+official_assets=skipped
+package=skipped
+dedicated_smoke=skipped
+result=failure
