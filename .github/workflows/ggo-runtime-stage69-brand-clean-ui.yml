@@ -1,0 +1,162 @@
+name: GGO Runtime Stage 69 Brand Clean UI
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - client/runtime-migration-v1
+    paths:
+      - '.github/workflows/ggo-runtime-stage69-brand-clean-ui.yml'
+      - 'hotfix/apply_ggo_brand_leak_cleanup_stage68.py'
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: client/runtime-migration-v1
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Capture exact ref
+        id: refs
+        run: echo "client_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare Forge wrapper
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/ggo-mdk /tmp/ggo-mdk.zip
+          curl -fL --retry 3 -o /tmp/ggo-mdk.zip https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-mdk.zip
+          mkdir -p /tmp/ggo-mdk
+          unzip -q /tmp/ggo-mdk.zip 'gradlew' 'gradlew.bat' 'gradle/*' -d /tmp/ggo-mdk
+
+      - name: Build brand-clean client UI
+        id: client
+        run: |
+          set -euo pipefail
+          rm -rf ga-build && mkdir ga-build
+          unzip -q "$SOURCE_ZIP" -d ga-build
+          python3 hotfix/apply_ggo_ui_shell_stage1.py
+          python3 hotfix/apply_ggo_ui_shell_stage2.py
+          python3 hotfix/apply_ggo_ui_shell_stage3.py
+          python3 hotfix/apply_ggo_hud_stage4.py
+          python3 hotfix/apply_ggo_frontend_stage5.py
+          python3 hotfix/apply_ggo_settings_stage6.py
+          python3 hotfix/apply_ggo_identity_minimap_stage7.py
+          python3 hotfix/apply_ggo_weapon_navigation_stage8.py
+          python3 hotfix/apply_ggo_ping_stage9.py
+          python3 hotfix/apply_ggo_navigation_zoom_stage10.py
+          python3 hotfix/apply_ggo_squad_ping_stage11.py
+          python3 hotfix/apply_ggo_ping_wheel_stage12.py
+          python3 hotfix/apply_ggo_tab_squad_stage13.py
+          python3 hotfix/apply_ggo_objective_squad_stage15.py
+          python3 hotfix/apply_ggo_runtime_network_stage17.py
+          python3 hotfix/apply_ggo_jeg_telemetry_stage18.py
+          python3 hotfix/apply_ggo_squad_map_stage19.py
+          python3 hotfix/apply_ggo_server_hud_stage20.py
+          python3 hotfix/apply_ggo_br_hud_stage21.py
+          python3 hotfix/apply_ggo_contracts_stage23.py
+          python3 hotfix/apply_ggo_br_map_client_stage24.py
+          python3 hotfix/apply_ggo_contract_map_stage27_fixed.py
+          python3 hotfix/apply_ggo_contract_session_stage35.py
+          python3 hotfix/apply_ggo_contract_reward_ui_stage37.py
+          python3 hotfix/apply_ggo_client_compile_baseline_stage28.py
+          python3 hotfix/apply_ggo_deminecraft_client_stage40.py
+          python3 hotfix/apply_ggo_inventory_stage42.py
+          python3 hotfix/apply_ggo_input_fence_stage45.py
+          python3 hotfix/apply_ggo_combat_hud_stage47.py
+          python3 hotfix/apply_ggo_death_recap_stage48.py
+          python3 hotfix/apply_ggo_inventory_stage50.py
+          python3 hotfix/apply_ggo_launch_ticket_stage55.py
+          python3 hotfix/apply_ggo_entry_ux_stage57.py
+          python3 hotfix/apply_ggo_launcher_authority_stage58.py
+          python3 hotfix/apply_ggo_session_verification_stage61.py
+          python3 hotfix/apply_ggo_ui_packets_stage65.py
+          python3 hotfix/apply_ggo_surface_fence_stage66.py
+          python3 hotfix/apply_ggo_chat_shell_stage67.py
+          python3 hotfix/apply_ggo_brand_leak_cleanup_stage68.py
+          cp /tmp/ggo-mdk/gradlew ga-build/client-ui/gradlew
+          cp /tmp/ggo-mdk/gradlew.bat ga-build/client-ui/gradlew.bat
+          rm -rf ga-build/client-ui/gradle && cp -a /tmp/ggo-mdk/gradle ga-build/client-ui/gradle
+          chmod +x ga-build/client-ui/gradlew
+          (cd ga-build/client-ui && ./gradlew --no-daemon build --stacktrace)
+          UI="$(find ga-build/client-ui/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          test -n "$UI"
+          for c in GgoChatScreen GgoChatShellHook GgoProductionSurfaceFence GgoUiActionClientBridge GgoShellScreen GgoSettingsScreen; do
+            jar tf "$UI" | grep -q "^arena/client/shell/$c.class$"
+          done
+          mkdir -p stage69
+          cp "$UI" stage69/gungloryonline-ui-runtime-v1-stage69.jar
+
+      - name: Verify player-facing brand fence
+        id: contract
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          java=Path('ga-build/client-ui/src/main/java/arena/client/shell')
+          bad=[]
+          for path in java.glob('*.java'):
+              for n,line in enumerate(path.read_text(encoding='utf-8').splitlines(),1):
+                  lower=line.lower()
+                  facing=any(x in line for x in ('Component.literal(', 'drawString(', 'drawCenteredString(', 'Button.builder('))
+                  if facing and any(word in lower for word in ('minecraft','forge','mojang')):
+                      bad.append(f'{path.name}:{n}:{line.strip()}')
+          assert not bad, '\n'.join(bad)
+          PY
+          grep -q 'GGO client settings. Advanced runtime options stay hidden by default.' ga-build/client-ui/src/main/java/arena/client/shell/GgoSettingsScreen.java
+          grep -q 'Only GGO equipment and field storage are available here.' ga-build/client-ui/src/main/java/arena/client/shell/GgoShellScreen.java
+          ! grep -R -F 'sendCommand("ggomed' ga-build/client-ui/src/main/java/arena/client/shell
+          ! grep -R -F 'runClientCommand("ggoinv' ga-build/client-ui/src/main/java/arena/client/shell
+
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: GunGloryOnline-UI-Stage69-BrandClean
+          path: stage69/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish exact Stage 69 receipt
+        if: always()
+        env:
+          CLIENT_OUTCOME: ${{ steps.client.outcome }}
+          CONTRACT_OUTCOME: ${{ steps.contract.outcome }}
+        run: |
+          set -euo pipefail
+          result=success
+          for value in "$CLIENT_OUTCOME" "$CONTRACT_OUTCOME"; do
+            [ "$value" = success ] || result=failure
+          done
+          mkdir -p ci-results
+          cat > ci-results/stage69-brand-clean-ui.txt <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_id=${GITHUB_RUN_ID}
+          run_attempt=${GITHUB_RUN_ATTEMPT}
+          run_url=https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          client_sha=${{ steps.refs.outputs.client_sha }}
+          baseline_stage67_run=32562603117
+          client_build=$CLIENT_OUTCOME
+          player_facing_brand_contract=$CONTRACT_OUTCOME
+          engine_brand_names_in_ggo_ui=false
+          packet_ui_actions=true
+          chat_shell=true
+          result=$result
+          EOF
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ci-results/stage69-brand-clean-ui.txt
+          git commit -m "ci: record Stage 69 brand clean UI ${GITHUB_RUN_ID}" || exit 0
+          git fetch origin client/runtime-migration-v1
+          git rebase origin/client/runtime-migration-v1
+          git push origin HEAD:client/runtime-migration-v1
