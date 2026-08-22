@@ -6,6 +6,7 @@ on:
     branches:
       - server/runtime-hardening-v1
     paths:
+      - 'hotfix/ArenaBeltGuard.java'
       - 'hotfix/GgoVisibleItemPolicy.java'
       - 'hotfix/GgoVanillaLootFence.java'
       - 'hotfix/InventoryUtilityCommands.java'
@@ -61,6 +62,8 @@ jobs:
           grep -q '!GgoVisibleItemPolicy.allowed(stack)' "$root/GgoVanillaLootFence.java"
           grep -q 'Commands.literal("swap")' "$root/InventoryUtilityCommands.java"
           grep -q 'GgoSupplyExtractionService.isSupply(s)' "$root/InventoryUtilityCommands.java"
+          grep -q 'normalizeOffhand(p)' "$root/ArenaBeltGuard.java"
+          grep -q 'Extra weapons are field inventory' "$root/ArenaBeltGuard.java"
       - name: Bootstrap ForgeGradle wrapper
         id: bootstrap
         run: |
@@ -84,6 +87,7 @@ jobs:
         run: |
           set -euo pipefail
           root=ga-build/build/classes/java/main/arena/forge
+          test -f "$root/ArenaBeltGuard.class"
           test -f "$root/GgoVisibleItemPolicy.class"
           test -f "$root/GgoVanillaLootFence.class"
           test -f "$root/InventoryUtilityCommands.class"
