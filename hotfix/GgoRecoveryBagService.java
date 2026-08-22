@@ -4,6 +4,7 @@ import arena.GunnerArenaMod;
 import net.minecraft.ChatFormatting;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionResult;
@@ -31,6 +32,7 @@ public final class GgoRecoveryBagService {
     public static final String BAG_TAG="GgoRecoveryBag";
     public static final String OWNER_TAG="GgoRecoveryOwner";
     public static final String CONTENTS_TAG="GgoRecoveryContents";
+    private static final int FIELD_FIRST=18,FIELD_LAST=35;
     private static final Map<UUID,PendingDeath> PENDING=new HashMap<>();
     private GgoRecoveryBagService(){}
 
@@ -41,7 +43,7 @@ public final class GgoRecoveryBagService {
         ArenaRuntime r=GunnerArenaMod.RUNTIME;if(r==null||!r.auth().isAuthenticated(p))return;
         ProtectedLoadout protectedLoadout=ProtectedLoadout.capture(p);
         ListTag contents=new ListTag();int stacks=0,items=0;
-        for(int i=18;i<=35;i++){
+        for(int i=FIELD_FIRST;i<=FIELD_LAST;i++){
             ItemStack s=p.getInventory().getItem(i);if(s.isEmpty())continue;
             CompoundTag entry=new CompoundTag();s.save(entry);contents.add(entry);stacks++;items+=s.getCount();p.getInventory().setItem(i,ItemStack.EMPTY);
         }
@@ -70,14 +72,62 @@ public final class GgoRecoveryBagService {
         pending.loadout.restore(next);next.getInventory().setChanged();
     }
 
-    /** Recovery bags are sealed: neither owner nor carrier can invoke vanilla bundle/item behavior. */
+    /**
+     * A carrier cannot inspect another player's bag. The owner may reclaim it; recovery is atomic
+     * per stack and field-capacity safe. Any overflow stays serialized inside the same bag.
+     */
     @SubscribeEvent public static void use(PlayerInteractEvent.RightClickItem event){
-        ItemStack stack=event.getItemStack();if(!isRecoveryBag(stack))return;
+        ItemStack bag=event.getItemStack();if(!isRecoveryBag(bag))return;
         event.setCanceled(true);event.setCancellationResult(InteractionResult.FAIL);
-        if(event.getEntity() instanceof ServerPlayer p){
-            UUID owner=owner(stack);String who=owner!=null&&owner.equals(p.getUUID())?"YOUR RECOVERY BAG":"SEALED RECOVERY BAG";
-            p.displayClientMessage(Component.literal(who+" // RETURN MARKET COMING LATER").withStyle(ChatFormatting.GOLD),true);
+        if(!(event.getEntity() instanceof ServerPlayer p))return;
+        UUID owner=owner(bag);
+        if(owner==null||!owner.equals(p.getUUID())){
+            p.displayClientMessage(Component.literal("SEALED RECOVERY BAG // ONLY THE OWNER CAN OPEN IT").withStyle(ChatFormatting.GOLD),true);
+            return;
         }
+        int restored=recoverOwnerContents(p,bag);
+        if(restored<=0){
+            p.displayClientMessage(Component.literal("RECOVERY BAG // FIELD INVENTORY FULL").withStyle(ChatFormatting.YELLOW),true);
+            return;
+        }
+        p.getInventory().setChanged();
+        if(contents(bag).isEmpty()){
+            bag.shrink(1);
+            p.displayClientMessage(Component.literal("RECOVERY COMPLETE // +"+restored+" ITEMS").withStyle(ChatFormatting.GREEN),true);
+        }else{
+            refreshCounts(bag);
+            p.displayClientMessage(Component.literal("PARTIAL RECOVERY // +"+restored+" ITEMS // BAG STILL CONTAINS LOOT").withStyle(ChatFormatting.YELLOW),true);
+        }
+    }
+
+    private static int recoverOwnerContents(ServerPlayer p,ItemStack bag){
+        ListTag source=contents(bag);if(source.isEmpty())return 0;
+        ListTag remaining=new ListTag();int restored=0;
+        for(int i=0;i<source.size();i++){
+            CompoundTag raw=source.getCompound(i).copy();ItemStack stack=ItemStack.of(raw);if(stack.isEmpty())continue;
+            int before=stack.getCount();storeField(p,stack);restored+=before-stack.getCount();
+            if(!stack.isEmpty()){CompoundTag left=new CompoundTag();stack.save(left);remaining.add(left);}
+        }
+        bag.getOrCreateTag().put(CONTENTS_TAG,remaining);
+        return restored;
+    }
+
+    private static void storeField(ServerPlayer p,ItemStack stack){
+        for(int i=FIELD_FIRST;i<=FIELD_LAST&&!stack.isEmpty();i++){
+            ItemStack dst=p.getInventory().getItem(i);if(dst.isEmpty()||!ItemStack.isSameItemSameTags(dst,stack))continue;
+            int room=dst.getMaxStackSize()-dst.getCount();int move=Math.min(room,stack.getCount());if(move>0){dst.grow(move);stack.shrink(move);}
+        }
+        for(int i=FIELD_FIRST;i<=FIELD_LAST&&!stack.isEmpty();i++)if(p.getInventory().getItem(i).isEmpty()){
+            int move=Math.min(stack.getCount(),stack.getMaxStackSize());ItemStack part=stack.copy();part.setCount(move);p.getInventory().setItem(i,part);stack.shrink(move);
+        }
+    }
+
+    private static ListTag contents(ItemStack bag){
+        CompoundTag tag=bag.getTag();return tag!=null&&tag.contains(CONTENTS_TAG,Tag.TAG_LIST)?tag.getList(CONTENTS_TAG,Tag.TAG_COMPOUND):new ListTag();
+    }
+    private static void refreshCounts(ItemStack bag){
+        ListTag list=contents(bag);int items=0;for(int i=0;i<list.size();i++)items+=Math.max(0,ItemStack.of(list.getCompound(i)).getCount());
+        CompoundTag tag=bag.getOrCreateTag();tag.putInt("GgoRecoveryStacks",list.size());tag.putInt("GgoRecoveryItems",items);
     }
 
     public static boolean isRecoveryBag(ItemStack stack){return stack!=null&&!stack.isEmpty()&&stack.hasTag()&&stack.getTag().getBoolean(BAG_TAG)&&stack.getTag().hasUUID(OWNER_TAG);}
