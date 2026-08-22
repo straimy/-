@@ -1,0 +1,51 @@
+name: GGO Launcher Local Assets Migration
+
+on:
+  push:
+    branches:
+      - launcher/bootstrap-v0.1
+    paths:
+      - .github/workflows/ggo-launcher-local-assets-migration.yml
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+          fetch-depth: 0
+      - name: Align local install resource-pack state
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('launcher/src-tauri/src/runtime/ggo_local_install.rs')
+          s=p.read_text(encoding='utf-8')
+          replacements={
+            'use serde::Serialize;':'use super::official_resource_pack;\nuse serde::Serialize;',
+            '    write_local_state(install_dir)?;\n\n    Ok(LocalInstallReport {':'    let official_pack_present = install_dir\n        .join("resourcepacks")\n        .join(official_resource_pack::OFFICIAL_PACK_FILE)\n        .is_file();\n    if official_pack_present {\n        official_resource_pack::ensure_official_resource_pack(install_dir)?;\n    }\n    write_local_state(install_dir, official_pack_present)?;\n\n    Ok(LocalInstallReport {',
+            '        resource_pack_enabled: false,':'        resource_pack_enabled: official_pack_present,',
+            'fn write_local_state(install_dir: &Path) -> Result<(), io::Error> {':'fn write_local_state(install_dir: &Path, official_pack_present: bool) -> Result<(), io::Error> {',
+            '        "resourcePackDelivery": "server-prompt",':'        "resourcePackDelivery": if official_pack_present { "launcher-managed" } else { "not-bundled" },',
+          }
+          for old,new in replacements.items():
+              if old not in s:
+                  raise SystemExit(f'missing expected local install fragment: {old}')
+              s=s.replace(old,new)
+          if '"server-prompt"' in s:
+              raise SystemExit('legacy server-prompt state remains')
+          p.write_text(s,encoding='utf-8')
+          PY
+          cargo fmt --manifest-path launcher/src-tauri/Cargo.toml --all
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add launcher/src-tauri/src/runtime/ggo_local_install.rs
+          git commit -m 'fix(launcher): align local install with managed assets'
+          git fetch origin launcher/bootstrap-v0.1
+          git rebase origin/launcher/bootstrap-v0.1
+          git push origin HEAD:launcher/bootstrap-v0.1
