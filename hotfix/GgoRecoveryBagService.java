@@ -11,7 +11,7 @@ import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraftforge.event.entity.living.LivingDeathEvent;
-import net.minecraftforge.event.entity.player.PlayerDropsEvent;
+import net.minecraftforge.event.entity.living.LivingDropsEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.eventbus.api.EventPriority;
@@ -58,7 +58,7 @@ public final class GgoRecoveryBagService {
     }
 
     /** Suppress Minecraft's loose death pile; the GGO bag was spawned explicitly above. */
-    @SubscribeEvent public static void drops(PlayerDropsEvent event){
+    @SubscribeEvent public static void drops(LivingDropsEvent event){
         if(!(event.getEntity() instanceof ServerPlayer p))return;
         if(PENDING.containsKey(p.getUUID()))event.getDrops().clear();
     }
