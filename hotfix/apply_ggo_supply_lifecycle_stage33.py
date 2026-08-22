@@ -1,5 +1,6 @@
 from pathlib import Path
 
+# Canonical Stage 33 entrypoint used by the full contracts compile gate.
 ROOT = Path("ga-build") if Path("ga-build").exists() else Path(".")
 LOOT = ROOT / "src/main/java/arena/forge/GgoLootSpawnService.java"
 if not LOOT.exists():
