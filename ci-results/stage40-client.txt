@@ -1,0 +1,10 @@
+workflow=GGO UI Shell Stage 40 Compile
+run_id=32546697519
+run_attempt=1
+run_url=https://github.com/straimy/-/actions/runs/32546697519
+source_sha=8b9cf7e39126466a083a4768816f4bb67465377b
+apply=success
+bootstrap=success
+compile=success
+verify=success
+result=success
