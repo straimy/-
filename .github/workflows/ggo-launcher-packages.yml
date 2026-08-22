@@ -34,6 +34,8 @@ jobs:
       GGO_SITE_URL: https://ggo.kvicloud.ru
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -46,8 +48,8 @@ jobs:
         working-directory: .
       - name: Install frontend dependencies
         run: npm install
-      - name: Apply release UI state machine
-        run: node scripts/prepare-release-ui.mjs
+      - name: Apply menu-first beta launcher contract
+        run: python3 hotfix/apply_menu_first_beta_stage76.py
       - name: Generate platform icons
         run: npm run tauri icon src-tauri/icons/icon.png
       - name: Frontend type/build gate
@@ -58,6 +60,17 @@ jobs:
         run: cargo check --manifest-path src-tauri/Cargo.toml
       - name: Runtime unit tests
         run: cargo test --manifest-path src-tauri/Cargo.toml
+      - name: Verify packaged launch surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'async fn launch_game(' src-tauri/src/lib.rs
+          grep -q 'options.connect_server = false;' src-tauri/src/lib.rs
+          grep -q 'GGO_GAME_TICKET_EXPIRES_AT' src-tauri/src/lib.rs
+          ! grep -q 'async fn launch_minecraft(' src-tauri/src/lib.rs
+          ! grep -q 'async fn preview_minecraft_launch(' src-tauri/src/lib.rs
+          ! grep -q 'onClick={()=>void launch(true)}' src/App.tsx
+          grep -q '?t.install:updateAvailable?t.updateGame:t.play' src/App.tsx
       - name: Build Tauri package
         run: npm run tauri build -- --bundles ${{ matrix.bundle }}
       - name: Normalize Linux packages
@@ -109,6 +122,8 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
       - name: Python syntax gate
         run: python3 -m py_compile services/ggo-auth/server.py services/ggo-auth/test_auth.py
       - name: GGO account API smoke
@@ -128,6 +143,8 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
       - name: Validate production deploy scripts
         run: |
           set -euo pipefail
@@ -148,12 +165,14 @@ jobs:
           grep -q "approve.*===.*'1'" site/account/device.html
           grep -q 'auth/device/approve' site/account/device.html
           ! grep -q 'прямого входа в GGO Launcher' site/account/index.html
-      - name: Validate release UI transform
+      - name: Validate menu-first release transform
         run: |
           set -euo pipefail
-          node launcher/scripts/prepare-release-ui.mjs
-          grep -q 'gameInstalled&&!updateAvailable?launch(false):installGame()' launcher/src/App.tsx
+          python3 launcher/hotfix/apply_menu_first_beta_stage76.py
+          grep -q '?t.install:updateAvailable?t.updateGame:t.play' launcher/src/App.tsx
+          ! grep -q 'onClick={()=>void launch(true)}' launcher/src/App.tsx
           ! grep -q 'className="repair-link"' launcher/src/App.tsx
+          grep -q 'options.connect_server = false;' launcher/src-tauri/src/lib.rs
       - name: Validate portal and production manifest
         run: |
           set -euo pipefail
@@ -231,6 +250,7 @@ jobs:
           build_status=${{ needs.build.result }}
           auth_status=${{ needs.auth.result }}
           website_status=${{ needs.website.result }}
+          menu_first_packaging=true
           windows_artifact=GunGloryOnline-Launcher-Windows
           windows_installers=GunGloryOnline-Launcher-Windows.exe,GunGloryOnline-Launcher-Windows.msi,GunGloryOnline-Launcher-Windows-Portable.zip
           linux_artifact=GunGloryOnline-Launcher-Linux
