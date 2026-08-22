@@ -37,7 +37,8 @@ fn update_options(input: &str) -> Result<(String, bool), io::Error> {
             let original_len = packs.len();
             packs.retain(|value| value != OFFICIAL_PACK_ID);
             packs.push(OFFICIAL_PACK_ID.to_string());
-            if packs.len() != original_len || packs.last().map(String::as_str) != Some(OFFICIAL_PACK_ID)
+            if packs.len() != original_len
+                || packs.last().map(String::as_str) != Some(OFFICIAL_PACK_ID)
             {
                 changed = true;
             }
@@ -120,9 +121,8 @@ mod tests {
         let input = "resourcePacks:[\"file/User.zip\"]\nincompatibleResourcePacks:[]\n";
         let (updated, changed) = update_options(input).unwrap();
         assert!(changed);
-        assert!(updated.contains(
-            "resourcePacks:[\"file/User.zip\",\"file/GunGloryOnline-Official.zip\"]"
-        ));
+        assert!(updated
+            .contains("resourcePacks:[\"file/User.zip\",\"file/GunGloryOnline-Official.zip\"]"));
     }
 
     #[test]

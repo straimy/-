@@ -59,9 +59,8 @@ mod tests {
         finalize_remote_install(&root).unwrap();
 
         let options = std::fs::read_to_string(root.join("options.txt")).unwrap();
-        assert!(options.contains(
-            "resourcePacks:[\"file/User.zip\",\"file/GunGloryOnline-Official.zip\"]"
-        ));
+        assert!(options
+            .contains("resourcePacks:[\"file/User.zip\",\"file/GunGloryOnline-Official.zip\"]"));
         assert!(root.join("servers.dat").is_file());
         let _ = std::fs::remove_dir_all(root);
     }
