@@ -1,6 +1,5 @@
 package arena.forge;
 
-import arena.GunnerArenaMod;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import net.minecraft.network.FriendlyByteBuf;
@@ -118,8 +117,9 @@ public final class GgoLaunchTicketNetwork {
                     return;
                 }
                 try {
+                    // Success is deliberately silent. The user should flow straight into GGO,
+                    // not see a Minecraft-style chat acknowledgement.
                     GgoOfficialAuthState.bind(live, profile.id(), profile.displayName(), profile.skinSource());
-                    live.sendSystemMessage(Component.literal("GGO ACCOUNT VERIFIED · " + GgoIdentityBridge.publicIdFor(live)));
                 } catch (RuntimeException ex) {
                     GgoOfficialAuthState.verificationFailed(live);
                     live.connection.disconnect(Component.literal("GunGloryOnline: account identity could not be verified."));
