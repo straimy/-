@@ -1,0 +1,15 @@
+workflow=GGO Launcher Stage 62 Diagnostics
+run_id=32560104017
+head_sha=8b89bd09dd71eb888b7afec766c962b948d017a0
+python_compile=success
+auth_tests=success
+auth_assertions=success
+apt_dependencies=success
+npm_install=success
+frontend_build=success
+rust_fmt=success
+rust_check=success
+rust_tests=failure
+ticket_assertions=success
+frontend_assertions=success
+asset_assertions=success
