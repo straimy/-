@@ -63,6 +63,28 @@ for path in SRC.rglob("*.java"):
 if remaining:
     raise SystemExit("Stage 27 baseline: stale ActiveHazard constructors in " + ", ".join(remaining))
 
+# One archived debug command mutates `real` while counting connections, then
+# captures it in Brigadier's lazy message lambda. Snapshot the final count at
+# the send site so Java 17 sees an effectively-final value without changing the
+# calculation or command output.
+commands_path = SRC / "arena/forge/GunnerCommands.java"
+if commands_path.exists():
+    commands = commands_path.read_text(encoding="utf-8")
+    marker = '+ " real=" + real + " desired=" + desired + " reserved=" + reserved + " connected=" + connected'
+    if marker in commands and "final int realSnapshot = real;" not in commands:
+        marker_pos = commands.index(marker)
+        send_pos = commands.rfind("source.sendSuccess(", 0, marker_pos)
+        if send_pos < 0:
+            raise SystemExit("Stage 27 baseline: GunnerCommands sendSuccess anchor missing")
+        line_start = commands.rfind("\n", 0, send_pos) + 1
+        indent = commands[line_start:send_pos]
+        commands = commands[:line_start] + indent + "final int realSnapshot = real;\n" + commands[line_start:]
+        commands = commands.replace(marker, '+ " real=" + realSnapshot + " desired=" + desired + " reserved=" + reserved + " connected=" + connected', 1)
+    elif marker in commands and "final int realSnapshot = real;" in commands:
+        commands = commands.replace(marker, '+ " real=" + realSnapshot + " desired=" + desired + " reserved=" + reserved + " connected=" + connected', 1)
+    commands_path.write_text(commands, encoding="utf-8")
+
 print("GGO Stage 27 compile baseline applied")
 print(" - PacketDistributor uses Supplier<ServerPlayer>")
 print(" - ActiveHazard preserves its source dimension")
+print(" - command connection count is snapshotted before lazy feedback")
