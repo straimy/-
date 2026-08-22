@@ -54,8 +54,8 @@ umask 077
 chmod 600 "$GAME_ENV"
 unset SERVER_KEY
 
-# Locate the already-installed Forge server by its exact runtime args file. The previous
-# Stage72 deployment log shows this installation exists; do not create a second server tree.
+# Locate the already-installed Forge server by its exact runtime args file. Do not create
+# a second server tree or touch its world data.
 ARGS="$(find /root /opt /srv /home -type f -path '*/libraries/net/minecraftforge/forge/1.20.1-47.4.10/unix_args.txt' -print -quit 2>/dev/null || true)"
 if [ -z "$ARGS" ]; then
   echo "Forge 1.20.1-47.4.10 unix_args.txt not found" >&2
@@ -64,25 +64,65 @@ fi
 SERVER_DIR="${ARGS%%/libraries/*}"
 RUN_SH="$SERVER_DIR/run.sh"
 PROPS="$SERVER_DIR/server.properties"
+MODS="$SERVER_DIR/mods"
 
-if [ ! -f "$RUN_SH" ] || [ ! -f "$PROPS" ]; then
+if [ ! -f "$RUN_SH" ] || [ ! -f "$PROPS" ] || [ ! -d "$MODS" ]; then
   echo "Detected server directory is incomplete: $SERVER_DIR" >&2
   exit 5
 fi
 
 echo "Using existing Forge server: $SERVER_DIR"
 
-# Keep the world and all server state. Only force the official listener settings.
-if grep -q '^server-port=' "$PROPS"; then
-  sed -i 's/^server-port=.*/server-port=24842/' "$PROPS"
-else
-  echo 'server-port=24842' >> "$PROPS"
+# In the Stage73 bundle the hardened official run script and Stage68 Core sit next to
+# the web payload. When available, install them into the detected existing server while
+# preserving the previous launcher script/Core jars in a timestamped server backup.
+STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+SERVER_BACKUP="$SERVER_DIR/ggo-hotfix-backup-$STAMP"
+mkdir -p "$SERVER_BACKUP"
+
+BUNDLED_RUN=""
+for candidate in "$HERE/../../game-server/infra/run.sh" "$HERE/../infra/vds/game-server/run.sh"; do
+  if [ -f "$candidate" ]; then BUNDLED_RUN="$candidate"; break; fi
+done
+if [ -n "$BUNDLED_RUN" ]; then
+  cp -a "$RUN_SH" "$SERVER_BACKUP/run.sh.previous"
+  install -m 0755 "$BUNDLED_RUN" "$RUN_SH"
+  echo "Installed hardened GGO run.sh"
 fi
-if grep -q '^server-ip=' "$PROPS"; then
-  sed -i 's/^server-ip=.*/server-ip=/' "$PROPS"
-else
-  echo 'server-ip=' >> "$PROPS"
+
+BUNDLED_CORE=""
+for candidate in \
+  "$HERE/../../game-server/mods/gungloryonline-core-runtime-v1-stage68.jar" \
+  "$HERE/content/files/v40/gungloryonline-core-runtime-v1-stage68.jar"; do
+  if [ -f "$candidate" ]; then BUNDLED_CORE="$candidate"; break; fi
+done
+if [ -n "$BUNDLED_CORE" ]; then
+  shopt -s nullglob
+  old_core=("$MODS"/gungloryonline-core-*.jar "$MODS"/gunnerarena-*.jar)
+  for file in "${old_core[@]}"; do
+    mv "$file" "$SERVER_BACKUP/"
+  done
+  shopt -u nullglob
+  install -m 0644 "$BUNDLED_CORE" "$MODS/gungloryonline-core-runtime-v1-stage68.jar"
+  echo "Installed Stage68 server Core"
 fi
+
+# GGO Account is the sole official online identity. The launcher intentionally starts
+# Minecraft with the GGO profile rather than a Microsoft session, so vanilla Mojang
+# online-mode would reject the player before the one-shot GGO ticket handshake can run.
+# The Core refuses official startup/auth unlock without GGO_SERVER_KEY.
+set_property() {
+  local key="$1" value="$2"
+  if grep -q "^${key}=" "$PROPS"; then
+    sed -i "s|^${key}=.*|${key}=${value}|" "$PROPS"
+  else
+    printf '%s=%s\n' "$key" "$value" >> "$PROPS"
+  fi
+}
+set_property server-port 24842
+set_property server-ip ""
+set_property online-mode false
+set_property enforce-secure-profile false
 
 chmod +x "$RUN_SH"
 cat > "$SERVICE_FILE" <<EOF
@@ -131,11 +171,13 @@ if [ "$ready" -ne 1 ]; then
   systemctl status ggo-game.service --no-pager || true
   journalctl -u ggo-game.service -n 120 --no-pager || true
   echo "GGO game server did not bind TCP 24842" >&2
+  echo "Server hotfix backup: $SERVER_BACKUP" >&2
   exit 6
 fi
 
 echo "ggo-game.service: ACTIVE"
 echo "TCP 24842: LISTENING"
+echo "Server hotfix backup: $SERVER_BACKUP"
 
 chmod +x "$HERE/verify-production.sh"
 "$HERE/verify-production.sh"
