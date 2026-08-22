@@ -1,5 +1,6 @@
 from pathlib import Path
 
+# Canonical Stage 34 entrypoint used by the full contracts compile gate.
 ROOT = Path("ga-build") if Path("ga-build").exists() else Path(".")
 TARGET = ROOT / "src/main/java/arena/forge/GgoSupplyExtractionService.java"
 if not TARGET.exists():
