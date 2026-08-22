@@ -119,8 +119,7 @@ jobs:
         id: package
         run: |
           set -euo pipefail
-          mkdir -p stage63
-          cp -a server-src/stage63/server stage63/
+          test -f stage63/server/mods/gungloryonline-core-runtime-v1-stage63.jar
           mkdir -p stage63/client/resourcepacks
           cp client-src/stage63/client/resourcepacks/GunGloryOnline-Official.zip stage63/client/resourcepacks/
           cat > stage63/BUILD-INFO.txt <<EOF
