@@ -97,8 +97,10 @@ public final class GgoContractService {
         return true;
     }
     private static void pushState(ServerPlayer p,boolean includeEconomy){
-        GgoContractNetwork.sync(p);
+        // Economy/map state is sent first so a completion snapshot cannot render
+        // a popup against the previous credit balance.
         if(includeEconomy)GgoContractMapNetwork.sync(p);
+        GgoContractNetwork.sync(p);
     }
     private static void publishObjective(ServerPlayer p,Contract c){
         GgoObjectiveService.set(p,"contract:"+c.id(),c.activity(),c.title(),c.description(),c.current(),c.target());
