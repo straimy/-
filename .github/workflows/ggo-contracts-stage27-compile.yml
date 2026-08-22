@@ -1,0 +1,82 @@
+name: GGO Contracts Stage 27 Compile
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - server/runtime-hardening-v1
+    paths:
+      - 'hotfix/GgoContractMapNetwork.java'
+      - 'hotfix/apply_ggo_contract_map_stage27.py'
+      - 'config-examples/loot-spawns.properties.example'
+      - '.github/workflows/ggo-contracts-stage27-compile.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Unpack Runtime v1 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "$SOURCE_ZIP"
+          rm -rf ga-build
+          mkdir ga-build
+          unzip -q "$SOURCE_ZIP" -d ga-build
+
+      - name: Apply contracts through Stage 27
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 hotfix/apply_ggo_contract_rewards_stage26.py
+          python3 hotfix/apply_ggo_contract_map_stage27.py
+          root=ga-build/src/main/java/arena/forge
+          test -f "$root/GgoContractMapNetwork.java"
+          grep -q 'SUPPLY' "$root/GgoLootSpawnService.java"
+          grep -q 'ggo_supply_point' "$root/GgoLootSpawnService.java"
+          grep -q 'ExtractionMarker' "$root/GgoSupplyExtractionService.java"
+          grep -q 'creditBalance' "$root/GgoContractMapNetwork.java"
+
+      - name: Bootstrap ForgeGradle wrapper
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -x ga-build/gradlew ] || [ ! -f ga-build/gradle/wrapper/gradle-wrapper.jar ]; then
+            rm -rf /tmp/forge-mdk /tmp/forge-mdk.zip
+            curl -fL --retry 3 -o /tmp/forge-mdk.zip \
+              https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-mdk.zip
+            mkdir -p /tmp/forge-mdk
+            unzip -q /tmp/forge-mdk.zip 'gradlew' 'gradlew.bat' 'gradle/*' -d /tmp/forge-mdk
+            cp /tmp/forge-mdk/gradlew ga-build/gradlew
+            cp /tmp/forge-mdk/gradlew.bat ga-build/gradlew.bat
+            rm -rf ga-build/gradle
+            cp -a /tmp/forge-mdk/gradle ga-build/gradle
+            chmod +x ga-build/gradlew
+          fi
+
+      - name: Compile Forge Core
+        working-directory: ga-build
+        shell: bash
+        run: ./gradlew --no-daemon compileJava --stacktrace
+
+      - name: Verify Stage 27 classes
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=ga-build/build/classes/java/main/arena/forge
+          test -f "$root/GgoContractMapNetwork.class"
+          test -f "${root}/GgoContractMapNetwork\$Snapshot.class"
+          test -f "${root}/GgoLootSpawnService\$SupplyMarker.class"
+          test -f "${root}/GgoSupplyExtractionService\$ExtractionMarker.class"
