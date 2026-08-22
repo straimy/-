@@ -190,8 +190,8 @@ jobs:
           grep -q 'STAFF CONSOLE' site/admin/index.html
           grep -q '/api/v1/staff/tickets' site/admin/admin.js
           grep -q '/api/v1/admin/users' site/admin/admin.js
-          grep -q 'role-badge admin' site/portal.css
-          grep -q 'role-badge support' site/portal.css
+          grep -q 'role-badge.admin' site/portal.css
+          grep -q 'role-badge.support' site/portal.css
       - name: Validate menu-first release transform
         run: |
           set -euo pipefail
