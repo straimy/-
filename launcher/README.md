@@ -40,18 +40,25 @@ npm run tauri dev
 
 ## Launcher packages
 
-`.github/workflows/ggo-launcher-packages.yml` builds downloadable unsigned beta artifacts on the native target OS:
+`.github/workflows/ggo-launcher-packages.yml` builds downloadable unsigned beta artifacts on the native target OS. Windows is built and verified on a real Windows runner; Linux is built on Ubuntu 22.04 for a conservative glibc baseline.
 
-- Windows: NSIS `.exe`
-- Linux: `.AppImage` built on Ubuntu 22.04 for a conservative glibc baseline
-- Website: static `site/` bundle with download page, guide and launcher content catalogs
+Windows outputs:
 
-The CI output names are normalized to:
+- NSIS installer: `GunGloryOnline-Launcher-Windows.exe`
+- Windows Installer package: `GunGloryOnline-Launcher-Windows.msi`
+- portable archive: `GunGloryOnline-Launcher-Windows-Portable.zip`
 
-- `GunGloryOnline-Launcher-Windows.exe`
-- `GunGloryOnline-Launcher-Linux.AppImage`
+Linux outputs:
 
-Production releases still need signing and updater signing. The game-content manifest is intentionally fail-closed until final client artifacts are published.
+- universal desktop package: `GunGloryOnline-Launcher-Linux.AppImage`
+- Ubuntu/Debian package: `GunGloryOnline-Launcher-Ubuntu-Debian.deb`
+- Fedora/RHEL package: `GunGloryOnline-Launcher-Fedora-RHEL.rpm`
+
+The static website bundle is built separately in the same package gate. Production releases still require signing and updater signing. The game-content manifest is intentionally fail-closed until final client artifacts are published.
+
+## Cross-platform runtime
+
+Runtime v1 does not launch Minecraft through shell scripts. The Rust backend selects `java.exe` on Windows and `java` elsewhere, builds classpaths with OS-aware path handling, selects native libraries for the active OS, and launches Java with `std::process::Command`. Forge installation uses the same cross-platform process path.
 
 ## Security
 
