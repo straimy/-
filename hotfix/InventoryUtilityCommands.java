@@ -19,46 +19,58 @@ public final class InventoryUtilityCommands {
 
     private InventoryUtilityCommands(){}
 
+    /** Debug/admin fallback only. Normal GGO clients use GgoUiActionNetwork. */
     @SubscribeEvent public static void commands(RegisterCommandsEvent e){
-        e.getDispatcher().register(Commands.literal("ggoinv")
-            .then(Commands.literal("ammo").executes(ctx->{
-                ServerPlayer p=ctx.getSource().getPlayerOrException();if(!authorized(p))return 0;
-                ArenaBeltGuard.normalizeAmmoSlots(p);msg(p,"✓ Патроны собраны в подсумок.",ChatFormatting.AQUA);return 1;
-            }))
+        e.getDispatcher().register(Commands.literal("ggoinv").requires(s->s.hasPermission(2))
+            .then(Commands.literal("ammo").executes(ctx->uiAmmo(ctx.getSource().getPlayerOrException())))
             .then(Commands.literal("select")
-                .then(Commands.argument("slot",IntegerArgumentType.integer(COMBAT_FIRST,COMBAT_LAST)).executes(ctx->{
-                    ServerPlayer p=ctx.getSource().getPlayerOrException();if(!authorized(p))return 0;
-                    int slot=IntegerArgumentType.getInteger(ctx,"slot");p.getInventory().selected=slot;p.getInventory().setChanged();return 1;
-                })))
+                .then(Commands.argument("slot",IntegerArgumentType.integer(COMBAT_FIRST,COMBAT_LAST)).executes(ctx->
+                    uiSelect(ctx.getSource().getPlayerOrException(),IntegerArgumentType.getInteger(ctx,"slot")))))
             .then(Commands.literal("drop")
-                .then(Commands.argument("slot",IntegerArgumentType.integer(0,FIELD_LAST)).executes(ctx->{
-                    ServerPlayer p=ctx.getSource().getPlayerOrException();if(!authorized(p))return 0;
-                    int slot=IntegerArgumentType.getInteger(ctx,"slot");return dropSlot(p,slot);
-                })))
+                .then(Commands.argument("slot",IntegerArgumentType.integer(0,FIELD_LAST)).executes(ctx->
+                    uiDrop(ctx.getSource().getPlayerOrException(),IntegerArgumentType.getInteger(ctx,"slot")))))
             .then(Commands.literal("swap")
                 .then(Commands.argument("from",IntegerArgumentType.integer(0,FIELD_LAST))
-                    .then(Commands.argument("to",IntegerArgumentType.integer(0,FIELD_LAST)).executes(ctx->{
-                        ServerPlayer p=ctx.getSource().getPlayerOrException();if(!authorized(p))return 0;
-                        return swapSlots(p,IntegerArgumentType.getInteger(ctx,"from"),IntegerArgumentType.getInteger(ctx,"to"));
-                    }))))
-            .then(Commands.literal("clear").executes(ctx->{
-                ServerPlayer p=ctx.getSource().getPlayerOrException();if(!authorized(p))return 0;
-                int n=dropTrash(p);msg(p,n==0?"✓ Мусора в полевых слотах нет.":"✓ Выброшено предметов: "+n,ChatFormatting.YELLOW);return 1;
-            }))
-            .then(Commands.literal("dropammo").executes(ctx->{
-                ServerPlayer p=ctx.getSource().getPlayerOrException();if(!authorized(p))return 0;
-                int n=dropAmmo(p);msg(p,n==0?"✓ Патронов нет.":"✓ Патроны выброшены: "+n,ChatFormatting.YELLOW);return 1;
-            })));
+                    .then(Commands.argument("to",IntegerArgumentType.integer(0,FIELD_LAST)).executes(ctx->
+                        uiSwap(ctx.getSource().getPlayerOrException(),IntegerArgumentType.getInteger(ctx,"from"),IntegerArgumentType.getInteger(ctx,"to"))))))
+            .then(Commands.literal("clear").executes(ctx->uiClear(ctx.getSource().getPlayerOrException())))
+            .then(Commands.literal("dropammo").executes(ctx->uiDropAmmo(ctx.getSource().getPlayerOrException()))));
+    }
+
+    public static int uiAmmo(ServerPlayer p){
+        if(!authorized(p))return 0;
+        ArenaBeltGuard.normalizeAmmoSlots(p);msg(p,"✓ Патроны собраны в подсумок.",ChatFormatting.AQUA);return 1;
+    }
+    public static int uiSelect(ServerPlayer p,int slot){
+        if(!authorized(p)||slot<COMBAT_FIRST||slot>COMBAT_LAST)return 0;
+        p.getInventory().selected=slot;p.getInventory().setChanged();return 1;
+    }
+    public static int uiDrop(ServerPlayer p,int slot){
+        if(!authorized(p))return 0;
+        return dropSlot0(p,slot);
+    }
+    public static int uiSwap(ServerPlayer p,int from,int to){
+        if(!authorized(p)||from<0||from>FIELD_LAST||to<0||to>FIELD_LAST)return 0;
+        return swapSlots0(p,from,to);
+    }
+    public static int uiClear(ServerPlayer p){
+        if(!authorized(p))return 0;
+        int n=dropTrash0(p);msg(p,n==0?"✓ Мусора в полевых слотах нет.":"✓ Выброшено предметов: "+n,ChatFormatting.YELLOW);return 1;
+    }
+    public static int uiDropAmmo(ServerPlayer p){
+        if(!authorized(p))return 0;
+        int n=dropAmmo0(p);msg(p,n==0?"✓ Патронов нет.":"✓ Патроны выброшены: "+n,ChatFormatting.YELLOW);return 1;
     }
 
     private static boolean authorized(ServerPlayer p){
+        if(p==null)return false;
         ArenaRuntime runtime=GunnerArenaMod.RUNTIME;
         if(runtime!=null&&runtime.auth().isAuthenticated(p))return true;
         msg(p,"GGO inventory is unavailable until authentication completes.",ChatFormatting.RED);
         return false;
     }
 
-    private static int swapSlots(ServerPlayer p,int from,int to){
+    private static int swapSlots0(ServerPlayer p,int from,int to){
         if(from==to)return 1;
         if(!sameStorageCompartment(from,to))return 0;
         ItemStack a=p.getInventory().getItem(from),b=p.getInventory().getItem(to);
@@ -74,7 +86,7 @@ public final class InventoryUtilityCommands {
         return fieldA&&fieldB;
     }
 
-    private static int dropSlot(ServerPlayer p,int slot){
+    private static int dropSlot0(ServerPlayer p,int slot){
         if(slot<0||slot>FIELD_LAST)return 0;
         // Slots 3..8 are intentionally not part of the GGO inventory contract.
         if(slot>COMBAT_LAST&&slot<ArenaBeltGuard.AMMO_FIRST)return 0;
@@ -85,7 +97,7 @@ public final class InventoryUtilityCommands {
         msg(p,"Выброшено: "+count,ChatFormatting.YELLOW);return 1;
     }
 
-    private static int dropTrash(ServerPlayer p){
+    private static int dropTrash0(ServerPlayer p){
         int count=0;
         for(int i=FIELD_FIRST;i<=FIELD_LAST;i++){
             ItemStack s=p.getInventory().getItem(i);
@@ -95,7 +107,7 @@ public final class InventoryUtilityCommands {
         p.getInventory().setChanged();return count;
     }
 
-    private static int dropAmmo(ServerPlayer p){
+    private static int dropAmmo0(ServerPlayer p){
         int count=0;
         for(int i=ArenaBeltGuard.AMMO_FIRST;i<=ArenaBeltGuard.AMMO_LAST;i++){
             ItemStack s=p.getInventory().getItem(i);if(s.isEmpty()||!ArenaBeltGuard.isAmmo(s))continue;
