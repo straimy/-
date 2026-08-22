@@ -35,14 +35,14 @@ jobs:
         continue-on-error: true
         run: |
           set -euo pipefail
-          curl -fsS --connect-timeout 10 --max-time 20 https://ggo.kvicloud.ru/api/v1/health -o /tmp/ggo-auth-health.json
-          test -s /tmp/ggo-auth-health.json
+          curl -fsS --connect-timeout 10 --max-time 20 -D /tmp/ggo-auth-headers.txt https://ggo.kvicloud.ru/api/v1/health -o /tmp/ggo-auth-health.json
+          grep -Eqi '^content-type:.*application/json' /tmp/ggo-auth-headers.txt
           python3 - <<'PY'
           import json
-          p='/tmp/ggo-auth-health.json'
-          data=json.load(open(p,encoding='utf-8'))
-          text=json.dumps(data).lower()
-          assert any(x in text for x in ('ok','healthy','pass')), data
+          data=json.load(open('/tmp/ggo-auth-health.json',encoding='utf-8'))
+          assert data.get('ok') is True, data
+          assert data.get('service') == 'ggo-auth', data
+          assert data.get('game_tickets') is True, data
           PY
 
       - name: Beta manifest HTTPS
@@ -50,8 +50,7 @@ jobs:
         continue-on-error: true
         run: |
           set -euo pipefail
-          curl -fsS --connect-timeout 10 --max-time 20 https://updates.ggo.kvicloud.ru/manifests/beta.json -o /tmp/ggo-beta.json
-          test -s /tmp/ggo-beta.json
+          curl -fsS --connect-timeout 10 --max-time 20 https://ggo.kvicloud.ru/content/manifests/beta.json -o /tmp/ggo-beta.json
           python3 - <<'PY'
           import json
           data=json.load(open('/tmp/ggo-beta.json',encoding='utf-8'))
@@ -61,13 +60,26 @@ jobs:
           assert any('GunGloryOnline-Official.zip' in p for p in paths), paths
           PY
 
-      - name: Official server TCP
-        id: server
+      - name: Official hostname DNS
+        id: dns
         continue-on-error: true
         run: |
           set -euo pipefail
           getent ahosts play.kvicloud.ru | head -n1
+
+      - name: Official hostname TCP
+        id: server
+        continue-on-error: true
+        run: |
+          set -euo pipefail
           timeout 12 bash -c '</dev/tcp/play.kvicloud.ru/24842'
+
+      - name: Game server origin TCP
+        id: origin
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          timeout 12 bash -c '</dev/tcp/2.26.100.125/24842'
 
       - name: Publish immutable reachability receipt
         if: always()
@@ -75,11 +87,13 @@ jobs:
           WEBSITE: ${{ steps.website.outcome }}
           AUTH: ${{ steps.auth.outcome }}
           MANIFEST: ${{ steps.manifest.outcome }}
+          DNS: ${{ steps.dns.outcome }}
           SERVER: ${{ steps.server.outcome }}
+          ORIGIN: ${{ steps.origin.outcome }}
         run: |
           set -euo pipefail
           result=success
-          for value in "$WEBSITE" "$AUTH" "$MANIFEST" "$SERVER"; do
+          for value in "$WEBSITE" "$AUTH" "$MANIFEST" "$DNS" "$SERVER" "$ORIGIN"; do
             [ "$value" = success ] || result=failure
           done
           mkdir -p .ci/public
@@ -93,11 +107,14 @@ jobs:
           website_https=$WEBSITE
           auth_health_https=$AUTH
           beta_manifest_https=$MANIFEST
+          official_hostname_dns=$DNS
           official_server_tcp=$SERVER
+          origin_server_tcp=$ORIGIN
           website_url=https://ggo.kvicloud.ru/
           auth_health_url=https://ggo.kvicloud.ru/api/v1/health
-          manifest_url=https://updates.ggo.kvicloud.ru/manifests/beta.json
-          server=play.kvicloud.ru:24842
+          manifest_url=https://ggo.kvicloud.ru/content/manifests/beta.json
+          official_server=play.kvicloud.ru:24842
+          origin_server=2.26.100.125:24842
           result=$result
           EOF
           git config user.name 'github-actions[bot]'
