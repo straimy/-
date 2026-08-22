@@ -7,6 +7,7 @@ on:
       - client/runtime-migration-v1
     paths:
       - 'hotfix/apply_ggo_contract_map_stage27.py'
+      - 'hotfix/apply_ggo_contract_map_stage27_fixed.py'
       - '.github/workflows/ggo-ui-shell-stage27-compile.yml'
 
 permissions:
@@ -56,7 +57,7 @@ jobs:
           python3 hotfix/apply_ggo_br_hud_stage21.py
           python3 hotfix/apply_ggo_contracts_stage23.py
           python3 hotfix/apply_ggo_br_map_client_stage24.py
-          python3 hotfix/apply_ggo_contract_map_stage27.py
+          python3 hotfix/apply_ggo_contract_map_stage27_fixed.py
           root=ga-build/client-ui/src/main/java/arena/client/shell
           test -f "$root/GgoSupplyMapState.java"
           test -f "$root/GgoRuntimeV1ContractMapAdapter.java"
