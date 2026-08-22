@@ -5,16 +5,21 @@ import shutil
 ROOT = Path("ga-build/src/main/java/arena/forge")
 SOURCE = Path("hotfix/GgoPlayerPresencePolicy.java")
 TARGET = ROOT / "GgoPlayerPresencePolicy.java"
+LEGACY_GAMEPLAY_SOURCE = Path("hotfix/MinimalGameplayFixes.java")
 GAMEPLAY = ROOT / "MinimalGameplayFixes.java"
 
 if not ROOT.is_dir():
     raise SystemExit("ga-build source tree is missing")
 if not SOURCE.is_file():
     raise SystemExit("GgoPlayerPresencePolicy.java is missing")
-if not GAMEPLAY.is_file():
-    raise SystemExit("MinimalGameplayFixes.java is missing")
+if not LEGACY_GAMEPLAY_SOURCE.is_file():
+    raise SystemExit("hotfix/MinimalGameplayFixes.java is missing")
 
 shutil.copy2(SOURCE, TARGET)
+# Runtime-v1 source archive does not carry this older gameplay layer. Materialize the tracked
+# hotfix first so Stage 38 changes the actual runtime behavior instead of only adding policy code.
+if not GAMEPLAY.is_file():
+    shutil.copy2(LEGACY_GAMEPLAY_SOURCE, GAMEPLAY)
 text = GAMEPLAY.read_text(encoding="utf-8")
 
 old_state = "if(!r.auth().isAuthenticated(p)){clearQueueState(p);continue;}ArenaPlayerState state=r.players().session(p).state();\n            if(state==ArenaPlayerState.LOBBY||state==ArenaPlayerState.QUEUED){p.setInvisible(true);p.setGameMode(GameType.ADVENTURE);selectEmptyHotbarSlot(p);ensureMenuCompass(p);if(state==ArenaPlayerState.LOBBY){JOIN_AT.remove(p.getUUID());LAST_COUNT.remove(p.getUUID());}else JOIN_AT.putIfAbsent(p.getUUID(),now+20L);}\n            else if(state==ArenaPlayerState.ALIVE||state==ArenaPlayerState.SPAWNING){p.setInvisible(false);p.setGameMode(GameType.ADVENTURE);clearQueueState(p);}" 
@@ -36,7 +41,7 @@ if old_fire not in text:
 text = text.replace(old_fire, new_fire, 1)
 
 # The menu is virtual (M). Remove the obsolete physical compass interaction path instead of
-# continuously injecting a vanilla item which SpawnLoadoutGuard then removes again.
+# continuously injecting a vanilla item which the belt guard then removes again.
 start = text.find("    @SubscribeEvent(priority=EventPriority.HIGHEST,receiveCanceled=true)\n    public static void onRightClickItem")
 end = text.find("\n    @SubscribeEvent(priority=EventPriority.HIGHEST,receiveCanceled=true)\n    public static void onEntityInteract", start)
 if start < 0 or end < 0:
