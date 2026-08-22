@@ -126,6 +126,25 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
+      - name: Validate production deploy scripts
+        run: |
+          set -euo pipefail
+          bash -n site/install-site.sh
+          bash -n site/verify-production.sh
+          grep -q 'auth.db' site/install-site.sh
+          grep -q 'Disabling duplicate nginx vhost' site/install-site.sh
+          grep -q '/api/v1/auth/register' site/install-site.sh
+          grep -q '/api/v1/auth/login' site/install-site.sh
+          grep -q '24842' site/verify-production.sh
+      - name: Validate unified GGO Account flow
+        run: |
+          set -euo pipefail
+          grep -q 'SIGN IN / CREATE ACCOUNT' launcher/src/AccountHub.tsx
+          grep -q 'OFFLINE TRAINING FALLBACK' launcher/src/AccountHub.tsx
+          grep -q 'returnAfterAuth' site/account/account.js
+          grep -q "approve.*===.*'1'" site/account/device.html
+          grep -q 'auth/device/approve' site/account/device.html
+          ! grep -q 'прямого входа в GGO Launcher' site/account/index.html
       - name: Validate portal and production manifest
         run: |
           set -euo pipefail
@@ -142,6 +161,7 @@ jobs:
           test -f site/support/index.html
           test -f site/nginx/ggo.conf
           test -f site/DEPLOY-VDS.md
+          test -f site/verify-production.sh
           python3 -m json.tool site/content/api/servers.json >/dev/null
           python3 -m json.tool site/content/api/news.json >/dev/null
           python3 -m json.tool site/content/api/game-modes.json >/dev/null
@@ -165,6 +185,7 @@ jobs:
           grep -q 'ggo.kvicloud.ru' site/index.html
           grep -q 'SHA1' site/index.html
           grep -q 'proxy_pass http://127.0.0.1:8787' site/nginx/ggo.conf
+          grep -q 'listen 443 ssl' site/nginx/ggo.conf
       - uses: actions/upload-artifact@v4
         with:
           name: GunGloryOnline-Website
