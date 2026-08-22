@@ -21,13 +21,20 @@ SERVER_KEY = os.environ.get("GGO_SERVER_KEY", "")
 ACCESS_TTL = 12 * 60 * 60
 REFRESH_TTL = 30 * 24 * 60 * 60
 DEVICE_TTL = 10 * 60
-# Still one-shot: this is only the maximum pre-consume window for slow first starts.
 GAME_TICKET_TTL = 3 * 60
 USERNAME_RE = re.compile(r"^[A-Za-z0-9_]{3,16}$")
 ALLOWED_SKINS = {"ggo", "microsoft", "default"}
 ALLOWED_LANGS = {"ru", "en", "uk"}
 ALLOWED_REGIONS = {"eu", "eeu", "na", "sa", "apac", "other"}
 ALLOWED_GAME_AUDIENCES = {"official-online", "play.kvicloud.ru"}
+ALLOWED_ROLES = {"user", "support", "admin"}
+ALLOWED_TICKET_STATUS = {"open", "pending", "closed"}
+ALLOWED_TICKET_CATEGORIES = {"technical", "account", "server", "moderation", "bug", "other"}
+OWNER_USERNAMES = {
+    value.strip().lower()
+    for value in os.environ.get("GGO_OWNER_USERNAMES", "kvi_nella").split(",")
+    if value.strip()
+}
 
 
 def now() -> int:
@@ -73,6 +80,7 @@ def init_db():
               region TEXT NOT NULL DEFAULT 'eu',
               language TEXT NOT NULL DEFAULT 'ru',
               country TEXT NOT NULL DEFAULT 'other',
+              role TEXT NOT NULL DEFAULT 'user',
               created_at INTEGER NOT NULL
             );
             CREATE TABLE IF NOT EXISTS access_sessions (
@@ -104,16 +112,47 @@ def init_db():
               created_at INTEGER NOT NULL,
               consumed_at INTEGER
             );
+            CREATE TABLE IF NOT EXISTS support_tickets (
+              id TEXT PRIMARY KEY,
+              user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+              subject TEXT NOT NULL,
+              category TEXT NOT NULL,
+              status TEXT NOT NULL DEFAULT 'open',
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL,
+              closed_at INTEGER
+            );
+            CREATE TABLE IF NOT EXISTS support_messages (
+              id TEXT PRIMARY KEY,
+              ticket_id TEXT NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,
+              user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+              body TEXT NOT NULL,
+              created_at INTEGER NOT NULL
+            );
             CREATE INDEX IF NOT EXISTS idx_access_user ON access_sessions(user_id);
             CREATE INDEX IF NOT EXISTS idx_refresh_user ON refresh_tokens(user_id);
             CREATE INDEX IF NOT EXISTS idx_device_expiry ON device_flows(expires_at);
             CREATE INDEX IF NOT EXISTS idx_game_ticket_expiry ON game_tickets(expires_at);
             CREATE INDEX IF NOT EXISTS idx_game_ticket_user ON game_tickets(user_id);
+            CREATE INDEX IF NOT EXISTS idx_support_ticket_user ON support_tickets(user_id);
+            CREATE INDEX IF NOT EXISTS idx_support_ticket_status ON support_tickets(status,updated_at);
+            CREATE INDEX IF NOT EXISTS idx_support_message_ticket ON support_messages(ticket_id,created_at);
             """
         )
+        columns = {row["name"] for row in db.execute("PRAGMA table_info(users)")}
+        if "role" not in columns:
+            db.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'")
+        for owner in OWNER_USERNAMES:
+            db.execute("UPDATE users SET role='admin' WHERE username_norm=?", (owner,))
+        db.commit()
+
+
+def role_label(role: str) -> str:
+    return {"admin": "Администратор", "support": "Тех. Поддержка"}.get(role, "Игрок")
 
 
 def profile(row):
+    role = row["role"] if "role" in row.keys() else "user"
     return {
         "id": row["id"],
         "display_name": row["display_name"],
@@ -121,7 +160,19 @@ def profile(row):
         "region": row["region"],
         "language": row["language"],
         "country": row["country"],
+        "role": role,
+        "role_label": role_label(role),
         "created_at": row["created_at"],
+    }
+
+
+def public_user(row):
+    role = row["role"] if "role" in row.keys() else "user"
+    return {
+        "id": row["id"],
+        "display_name": row["display_name"],
+        "role": role,
+        "role_label": role_label(role),
     }
 
 
@@ -145,11 +196,14 @@ def cleanup(db):
     db.execute("DELETE FROM access_sessions WHERE expires_at <= ?", (ts,))
     db.execute("DELETE FROM refresh_tokens WHERE expires_at <= ?", (ts,))
     db.execute("DELETE FROM device_flows WHERE expires_at <= ?", (ts,))
-    db.execute("DELETE FROM game_tickets WHERE expires_at <= ? OR (consumed_at IS NOT NULL AND consumed_at <= ?)", (ts, ts - 300))
+    db.execute(
+        "DELETE FROM game_tickets WHERE expires_at <= ? OR (consumed_at IS NOT NULL AND consumed_at <= ?)",
+        (ts, ts - 300),
+    )
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "GGOAuth/1.1"
+    server_version = "GGOAuth/1.2"
 
     def log_message(self, fmt, *args):
         print(f"[ggo-auth] {self.address_string()} {fmt % args}", flush=True)
@@ -184,8 +238,9 @@ class Handler(BaseHTTPRequestHandler):
         raw = self.headers.get("Cookie")
         if not raw:
             return None
-        c = SimpleCookie(); c.load(raw)
-        item = c.get("ggo_session")
+        cookie = SimpleCookie()
+        cookie.load(raw)
+        item = cookie.get("ggo_session")
         return item.value if item else None
 
     def auth_user(self, db):
@@ -209,10 +264,78 @@ class Handler(BaseHTTPRequestHandler):
         secure = PUBLIC_URL.startswith("https://")
         return f"ggo_session={access}; Path=/; HttpOnly; SameSite=Lax; Max-Age={ACCESS_TTL}" + ("; Secure" if secure else "")
 
+    def require_user(self, db):
+        user = self.auth_user(db)
+        if not user:
+            self.json(401, {"error": "not_authenticated"})
+            return None
+        return user
+
+    def require_staff(self, db):
+        user = self.require_user(db)
+        if not user:
+            return None
+        if user["role"] not in ("support", "admin"):
+            self.json(403, {"error": "staff_required"})
+            return None
+        return user
+
+    def require_admin(self, db):
+        user = self.require_user(db)
+        if not user:
+            return None
+        if user["role"] != "admin":
+            self.json(403, {"error": "admin_required"})
+            return None
+        return user
+
+    def ticket_payload(self, db, ticket):
+        owner = db.execute("SELECT * FROM users WHERE id=?", (ticket["user_id"],)).fetchone()
+        messages = db.execute(
+            "SELECT m.*,u.display_name,u.role FROM support_messages m JOIN users u ON u.id=m.user_id WHERE m.ticket_id=? ORDER BY m.created_at ASC",
+            (ticket["id"],),
+        ).fetchall()
+        return {
+            "id": ticket["id"],
+            "subject": ticket["subject"],
+            "category": ticket["category"],
+            "status": ticket["status"],
+            "created_at": ticket["created_at"],
+            "updated_at": ticket["updated_at"],
+            "closed_at": ticket["closed_at"],
+            "owner": public_user(owner),
+            "messages": [
+                {
+                    "id": row["id"],
+                    "body": row["body"],
+                    "created_at": row["created_at"],
+                    "author": {
+                        "id": row["user_id"],
+                        "display_name": row["display_name"],
+                        "role": row["role"],
+                        "role_label": role_label(row["role"]),
+                    },
+                }
+                for row in messages
+            ],
+        }
+
+    def visible_ticket(self, db, user, ticket_id):
+        ticket = db.execute("SELECT * FROM support_tickets WHERE id=?", (ticket_id,)).fetchone()
+        if not ticket:
+            self.json(404, {"error": "ticket_not_found"})
+            return None
+        if user["role"] not in ("support", "admin") and ticket["user_id"] != user["id"]:
+            self.json(403, {"error": "ticket_forbidden"})
+            return None
+        return ticket
+
     def do_GET(self):
-        path = urllib.parse.urlparse(self.path).path
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+        query = urllib.parse.parse_qs(parsed.query)
         if path == "/api/v1/health":
-            return self.json(200, {"ok": True, "service": "ggo-auth", "version": 2, "game_tickets": True})
+            return self.json(200, {"ok": True, "service": "ggo-auth", "version": 3, "game_tickets": True, "support_tickets": True, "staff_roles": True})
         if path in ("/api/v1/me", "/api/v1/auth/session"):
             with connect() as db:
                 cleanup(db)
@@ -220,6 +343,64 @@ class Handler(BaseHTTPRequestHandler):
                 if not user:
                     return self.json(401, {"error": "not_authenticated"})
                 return self.json(200, profile(user))
+        if path == "/api/v1/support/tickets":
+            with connect() as db:
+                user = self.require_user(db)
+                if not user:
+                    return
+                rows = db.execute(
+                    "SELECT * FROM support_tickets WHERE user_id=? ORDER BY updated_at DESC LIMIT 50",
+                    (user["id"],),
+                ).fetchall()
+                return self.json(200, {"tickets": [self.ticket_payload(db, row) for row in rows]})
+        if path.startswith("/api/v1/support/tickets/"):
+            ticket_id = path.rsplit("/", 1)[-1]
+            with connect() as db:
+                user = self.require_user(db)
+                if not user:
+                    return
+                ticket = self.visible_ticket(db, user, ticket_id)
+                if not ticket:
+                    return
+                return self.json(200, self.ticket_payload(db, ticket))
+        if path == "/api/v1/staff/tickets":
+            with connect() as db:
+                user = self.require_staff(db)
+                if not user:
+                    return
+                status = str(query.get("status", [""])[0])
+                if status in ALLOWED_TICKET_STATUS:
+                    rows = db.execute(
+                        "SELECT * FROM support_tickets WHERE status=? ORDER BY updated_at DESC LIMIT 100",
+                        (status,),
+                    ).fetchall()
+                else:
+                    rows = db.execute("SELECT * FROM support_tickets ORDER BY updated_at DESC LIMIT 100").fetchall()
+                return self.json(200, {"tickets": [self.ticket_payload(db, row) for row in rows]})
+        if path == "/api/v1/staff/stats":
+            with connect() as db:
+                user = self.require_staff(db)
+                if not user:
+                    return
+                counts = {
+                    status: db.execute("SELECT COUNT(*) FROM support_tickets WHERE status=?", (status,)).fetchone()[0]
+                    for status in ALLOWED_TICKET_STATUS
+                }
+                return self.json(200, {"tickets": counts})
+        if path == "/api/v1/admin/users":
+            with connect() as db:
+                user = self.require_admin(db)
+                if not user:
+                    return
+                needle = str(query.get("q", [""])[0]).strip().lower()[:32]
+                if needle:
+                    rows = db.execute(
+                        "SELECT * FROM users WHERE username_norm LIKE ? OR lower(display_name) LIKE ? ORDER BY created_at DESC LIMIT 50",
+                        (f"%{needle}%", f"%{needle}%"),
+                    ).fetchall()
+                else:
+                    rows = db.execute("SELECT * FROM users ORDER BY created_at DESC LIMIT 50").fetchall()
+                return self.json(200, {"users": [profile(row) for row in rows]})
         return self.json(404, {"error": "not_found"})
 
     def do_POST(self):
@@ -227,14 +408,30 @@ class Handler(BaseHTTPRequestHandler):
         data = self.read_json()
         if data is None:
             return self.json(400, {"error": "invalid_json"})
-        if path == "/api/v1/auth/register": return self.register(data)
-        if path == "/api/v1/auth/login": return self.login(data)
-        if path == "/api/v1/auth/logout": return self.logout(data)
-        if path == "/api/v1/auth/device/start": return self.device_start(data)
-        if path == "/api/v1/auth/device/approve": return self.device_approve(data)
-        if path == "/api/v1/auth/device/token": return self.device_token(data)
-        if path == "/api/v1/auth/game-ticket": return self.game_ticket(data)
-        if path == "/api/v1/auth/game-ticket/consume": return self.consume_game_ticket(data)
+        if path == "/api/v1/auth/register":
+            return self.register(data)
+        if path == "/api/v1/auth/login":
+            return self.login(data)
+        if path == "/api/v1/auth/logout":
+            return self.logout(data)
+        if path == "/api/v1/auth/device/start":
+            return self.device_start(data)
+        if path == "/api/v1/auth/device/approve":
+            return self.device_approve(data)
+        if path == "/api/v1/auth/device/token":
+            return self.device_token(data)
+        if path == "/api/v1/auth/game-ticket":
+            return self.game_ticket(data)
+        if path == "/api/v1/auth/game-ticket/consume":
+            return self.consume_game_ticket(data)
+        if path == "/api/v1/support/tickets":
+            return self.create_ticket(data)
+        if path.startswith("/api/v1/support/tickets/") and path.endswith("/messages"):
+            return self.add_ticket_message(path.split("/")[-2], data)
+        if path.startswith("/api/v1/support/tickets/") and path.endswith("/close"):
+            return self.change_ticket_status(path.split("/")[-2], "closed")
+        if path.startswith("/api/v1/support/tickets/") and path.endswith("/reopen"):
+            return self.change_ticket_status(path.split("/")[-2], "open")
         return self.json(404, {"error": "not_found"})
 
     def do_PUT(self):
@@ -242,14 +439,21 @@ class Handler(BaseHTTPRequestHandler):
         data = self.read_json()
         if data is None:
             return self.json(400, {"error": "invalid_json"})
-        if path == "/api/v1/me/skin/source": return self.update_skin(data)
-        if path == "/api/v1/me/profile": return self.update_profile(data)
+        if path == "/api/v1/me/skin/source":
+            return self.update_skin(data)
+        if path == "/api/v1/me/profile":
+            return self.update_profile(data)
         if path == "/api/v1/me/identities/minecraft":
             return self.json(501, {"error": "minecraft_link_not_enabled", "message": "Minecraft identity verification is not enabled yet."})
+        if path.startswith("/api/v1/admin/users/") and path.endswith("/role"):
+            return self.update_role(path.split("/")[-2], data)
+        if path.startswith("/api/v1/staff/tickets/") and path.endswith("/status"):
+            return self.staff_ticket_status(path.split("/")[-2], data)
         return self.json(404, {"error": "not_found"})
 
     def register(self, data):
-        if not self.same_origin_ok(): return self.json(403, {"error": "origin_rejected"})
+        if not self.same_origin_ok():
+            return self.json(403, {"error": "origin_rejected"})
         username = str(data.get("username", "")).strip()
         password = str(data.get("password", ""))
         region = str(data.get("region", "eu"))
@@ -259,17 +463,21 @@ class Handler(BaseHTTPRequestHandler):
             return self.json(400, {"error": "invalid_username", "message": "Use 3-16 latin letters, numbers or underscore."})
         if len(password) < 8 or len(password) > 128:
             return self.json(400, {"error": "invalid_password", "message": "Password must be 8-128 characters."})
-        if region not in ALLOWED_REGIONS: region = "other"
-        if language not in ALLOWED_LANGS: language = "en"
+        if region not in ALLOWED_REGIONS:
+            region = "other"
+        if language not in ALLOWED_LANGS:
+            language = "en"
         salt = secrets.token_bytes(16)
         digest = password_hash(password, salt)
         user_id = secrets.token_hex(16)
+        username_norm = username.lower()
+        role = "admin" if username_norm in OWNER_USERNAMES else "user"
         with connect() as db:
             cleanup(db)
             try:
                 db.execute(
-                    "INSERT INTO users(id,username_norm,display_name,password_salt,password_hash,skin_source,region,language,country,created_at) VALUES(?,?,?,?,?,'default',?,?,?,?)",
-                    (user_id, username.lower(), username, salt, digest, region, language, country, now()),
+                    "INSERT INTO users(id,username_norm,display_name,password_salt,password_hash,skin_source,region,language,country,role,created_at) VALUES(?,?,?,?,?,'default',?,?,?,?,?)",
+                    (user_id, username_norm, username, salt, digest, region, language, country, role, now()),
                 )
             except sqlite3.IntegrityError:
                 return self.json(409, {"error": "username_taken"})
@@ -279,7 +487,8 @@ class Handler(BaseHTTPRequestHandler):
         return self.json(201, {"access_token": access, "refresh_token": refresh, "profile": profile(user)}, {"Set-Cookie": self.set_session_cookie(access)})
 
     def login(self, data):
-        if not self.same_origin_ok(): return self.json(403, {"error": "origin_rejected"})
+        if not self.same_origin_ok():
+            return self.json(403, {"error": "origin_rejected"})
         username = str(data.get("username", "")).strip().lower()
         password = str(data.get("password", ""))
         with connect() as db:
@@ -294,6 +503,9 @@ class Handler(BaseHTTPRequestHandler):
             if not valid:
                 time.sleep(0.15)
                 return self.json(401, {"error": "invalid_credentials"})
+            if user["username_norm"] in OWNER_USERNAMES and user["role"] != "admin":
+                db.execute("UPDATE users SET role='admin' WHERE id=?", (user["id"],))
+                user = db.execute("SELECT * FROM users WHERE id=?", (user["id"],)).fetchone()
             access, refresh = issue_session(db, user["id"])
             db.commit()
         return self.json(200, {"access_token": access, "refresh_token": refresh, "profile": profile(user)}, {"Set-Cookie": self.set_session_cookie(access)})
@@ -302,8 +514,10 @@ class Handler(BaseHTTPRequestHandler):
         access = self.bearer() or self.cookie_token()
         refresh = str(data.get("refresh_token", ""))
         with connect() as db:
-            if access: db.execute("DELETE FROM access_sessions WHERE token_hash=?", (token_hash(access),))
-            if refresh: db.execute("DELETE FROM refresh_tokens WHERE token_hash=?", (token_hash(refresh),))
+            if access:
+                db.execute("DELETE FROM access_sessions WHERE token_hash=?", (token_hash(access),))
+            if refresh:
+                db.execute("DELETE FROM refresh_tokens WHERE token_hash=?", (token_hash(refresh),))
             db.commit()
         cookie = "ggo_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0" + ("; Secure" if PUBLIC_URL.startswith("https://") else "")
         return self.json(200, {"ok": True}, {"Set-Cookie": cookie})
@@ -316,20 +530,26 @@ class Handler(BaseHTTPRequestHandler):
         device_id = token()
         with connect() as db:
             cleanup(db)
-            db.execute("INSERT INTO device_flows(device_id,code_challenge,installation_id,expires_at,created_at) VALUES(?,?,?,?,?)", (device_id, challenge, installation_id, now()+DEVICE_TTL, now()))
+            db.execute(
+                "INSERT INTO device_flows(device_id,code_challenge,installation_id,expires_at,created_at) VALUES(?,?,?,?,?)",
+                (device_id, challenge, installation_id, now() + DEVICE_TTL, now()),
+            )
             db.commit()
         uri = f"{PUBLIC_URL}/account/device.html?device_id={urllib.parse.quote(device_id)}"
         return self.json(200, {"device_id": device_id, "verification_uri": uri, "expires_in": DEVICE_TTL, "interval": 3})
 
     def device_approve(self, data):
-        if not self.same_origin_ok(): return self.json(403, {"error": "origin_rejected"})
+        if not self.same_origin_ok():
+            return self.json(403, {"error": "origin_rejected"})
         device_id = str(data.get("device_id", ""))
         with connect() as db:
             cleanup(db)
             user = self.auth_user(db)
-            if not user: return self.json(401, {"error": "not_authenticated"})
+            if not user:
+                return self.json(401, {"error": "not_authenticated"})
             flow = db.execute("SELECT * FROM device_flows WHERE device_id=? AND expires_at>?", (device_id, now())).fetchone()
-            if not flow: return self.json(404, {"error": "device_flow_not_found"})
+            if not flow:
+                return self.json(404, {"error": "device_flow_not_found"})
             db.execute("UPDATE device_flows SET user_id=?, approved=1 WHERE device_id=?", (user["id"], device_id))
             db.commit()
         return self.json(200, {"approved": True})
@@ -341,9 +561,12 @@ class Handler(BaseHTTPRequestHandler):
         with connect() as db:
             cleanup(db)
             flow = db.execute("SELECT * FROM device_flows WHERE device_id=? AND expires_at>?", (device_id, now())).fetchone()
-            if not flow: return self.json(404, {"error": "device_flow_not_found"})
-            if not hmac.compare_digest(challenge, flow["code_challenge"]): return self.json(401, {"error": "pkce_failed"})
-            if not flow["approved"] or not flow["user_id"]: return self.json(428, {"error": "authorization_pending"})
+            if not flow:
+                return self.json(404, {"error": "device_flow_not_found"})
+            if not hmac.compare_digest(challenge, flow["code_challenge"]):
+                return self.json(401, {"error": "pkce_failed"})
+            if not flow["approved"] or not flow["user_id"]:
+                return self.json(428, {"error": "authorization_pending"})
             access, refresh = issue_session(db, flow["user_id"])
             db.execute("DELETE FROM device_flows WHERE device_id=?", (device_id,))
             db.commit()
@@ -365,12 +588,7 @@ class Handler(BaseHTTPRequestHandler):
                 (token_hash(raw_ticket), user["id"], audience, ts + GAME_TICKET_TTL, ts),
             )
             db.commit()
-        return self.json(201, {
-            "ticket": raw_ticket,
-            "expires_in": GAME_TICKET_TTL,
-            "player_id": user["id"],
-            "display_name": user["display_name"],
-        })
+        return self.json(201, {"ticket": raw_ticket, "expires_in": GAME_TICKET_TTL, "player_id": user["id"], "display_name": user["display_name"]})
 
     def consume_game_ticket(self, data):
         if not self.server_key_ok():
@@ -382,9 +600,6 @@ class Handler(BaseHTTPRequestHandler):
         ts = now()
         with connect() as db:
             cleanup(db)
-            # cleanup() performs DELETE statements and therefore may open an
-            # implicit transaction. Finish that maintenance transaction before
-            # taking the write lock used for one-shot ticket consumption.
             db.commit()
             db.execute("BEGIN IMMEDIATE")
             row = db.execute(
@@ -402,36 +617,169 @@ class Handler(BaseHTTPRequestHandler):
                 db.rollback()
                 return self.json(409, {"error": "ticket_already_consumed"})
             db.commit()
-        return self.json(200, {
-            "valid": True,
-            "audience": audience,
-            "player": profile(row),
-        })
+        return self.json(200, {"valid": True, "audience": audience, "player": profile(row)})
 
     def update_skin(self, data):
         source = str(data.get("source", ""))
-        if source not in ALLOWED_SKINS: return self.json(400, {"error": "invalid_skin_source"})
+        if source not in ALLOWED_SKINS:
+            return self.json(400, {"error": "invalid_skin_source"})
         with connect() as db:
             user = self.auth_user(db)
-            if not user: return self.json(401, {"error": "not_authenticated"})
+            if not user:
+                return self.json(401, {"error": "not_authenticated"})
             db.execute("UPDATE users SET skin_source=? WHERE id=?", (source, user["id"]))
             db.commit()
             updated = db.execute("SELECT * FROM users WHERE id=?", (user["id"],)).fetchone()
         return self.json(200, profile(updated))
 
     def update_profile(self, data):
-        if not self.same_origin_ok(): return self.json(403, {"error": "origin_rejected"})
-        language = str(data.get("language", "")); region = str(data.get("region", "")); country = str(data.get("country", ""))[:32]
+        if not self.same_origin_ok():
+            return self.json(403, {"error": "origin_rejected"})
+        language = str(data.get("language", ""))
+        region = str(data.get("region", ""))
+        country = str(data.get("country", ""))[:32]
         with connect() as db:
             user = self.auth_user(db)
-            if not user: return self.json(401, {"error": "not_authenticated"})
-            if language not in ALLOWED_LANGS: language = user["language"]
-            if region not in ALLOWED_REGIONS: region = user["region"]
-            if not country: country = user["country"]
+            if not user:
+                return self.json(401, {"error": "not_authenticated"})
+            if language not in ALLOWED_LANGS:
+                language = user["language"]
+            if region not in ALLOWED_REGIONS:
+                region = user["region"]
+            if not country:
+                country = user["country"]
             db.execute("UPDATE users SET language=?, region=?, country=? WHERE id=?", (language, region, country, user["id"]))
             db.commit()
             updated = db.execute("SELECT * FROM users WHERE id=?", (user["id"],)).fetchone()
         return self.json(200, profile(updated))
+
+    def create_ticket(self, data):
+        if not self.same_origin_ok():
+            return self.json(403, {"error": "origin_rejected"})
+        subject = str(data.get("subject", "")).strip()
+        body = str(data.get("body", "")).strip()
+        category = str(data.get("category", "technical")).strip().lower()
+        if not 3 <= len(subject) <= 120:
+            return self.json(400, {"error": "invalid_subject"})
+        if not 5 <= len(body) <= 4000:
+            return self.json(400, {"error": "invalid_message"})
+        if category not in ALLOWED_TICKET_CATEGORIES:
+            category = "other"
+        with connect() as db:
+            user = self.require_user(db)
+            if not user:
+                return
+            open_count = db.execute(
+                "SELECT COUNT(*) FROM support_tickets WHERE user_id=? AND status!='closed'",
+                (user["id"],),
+            ).fetchone()[0]
+            if open_count >= 10:
+                return self.json(429, {"error": "too_many_open_tickets"})
+            ts = now()
+            ticket_id = secrets.token_hex(8)
+            message_id = secrets.token_hex(12)
+            db.execute(
+                "INSERT INTO support_tickets(id,user_id,subject,category,status,created_at,updated_at) VALUES(?,?,?,?, 'open',?,?)",
+                (ticket_id, user["id"], subject, category, ts, ts),
+            )
+            db.execute(
+                "INSERT INTO support_messages(id,ticket_id,user_id,body,created_at) VALUES(?,?,?,?,?)",
+                (message_id, ticket_id, user["id"], body, ts),
+            )
+            db.commit()
+            ticket = db.execute("SELECT * FROM support_tickets WHERE id=?", (ticket_id,)).fetchone()
+            return self.json(201, self.ticket_payload(db, ticket))
+
+    def add_ticket_message(self, ticket_id, data):
+        if not self.same_origin_ok():
+            return self.json(403, {"error": "origin_rejected"})
+        body = str(data.get("body", "")).strip()
+        if not 1 <= len(body) <= 8000:
+            return self.json(400, {"error": "invalid_message"})
+        with connect() as db:
+            user = self.require_user(db)
+            if not user:
+                return
+            ticket = self.visible_ticket(db, user, ticket_id)
+            if not ticket:
+                return
+            if ticket["status"] == "closed" and user["role"] not in ("support", "admin"):
+                return self.json(409, {"error": "ticket_closed"})
+            ts = now()
+            db.execute(
+                "INSERT INTO support_messages(id,ticket_id,user_id,body,created_at) VALUES(?,?,?,?,?)",
+                (secrets.token_hex(12), ticket_id, user["id"], body, ts),
+            )
+            next_status = "pending" if user["role"] in ("support", "admin") else "open"
+            db.execute(
+                "UPDATE support_tickets SET status=?,updated_at=?,closed_at=NULL WHERE id=?",
+                (next_status, ts, ticket_id),
+            )
+            db.commit()
+            updated = db.execute("SELECT * FROM support_tickets WHERE id=?", (ticket_id,)).fetchone()
+            return self.json(201, self.ticket_payload(db, updated))
+
+    def change_ticket_status(self, ticket_id, status):
+        if not self.same_origin_ok():
+            return self.json(403, {"error": "origin_rejected"})
+        with connect() as db:
+            user = self.require_user(db)
+            if not user:
+                return
+            ticket = self.visible_ticket(db, user, ticket_id)
+            if not ticket:
+                return
+            ts = now()
+            closed_at = ts if status == "closed" else None
+            db.execute(
+                "UPDATE support_tickets SET status=?,updated_at=?,closed_at=? WHERE id=?",
+                (status, ts, closed_at, ticket_id),
+            )
+            db.commit()
+            updated = db.execute("SELECT * FROM support_tickets WHERE id=?", (ticket_id,)).fetchone()
+            return self.json(200, self.ticket_payload(db, updated))
+
+    def staff_ticket_status(self, ticket_id, data):
+        if not self.same_origin_ok():
+            return self.json(403, {"error": "origin_rejected"})
+        status = str(data.get("status", "")).strip().lower()
+        if status not in ALLOWED_TICKET_STATUS:
+            return self.json(400, {"error": "invalid_ticket_status"})
+        with connect() as db:
+            user = self.require_staff(db)
+            if not user:
+                return
+            ticket = db.execute("SELECT * FROM support_tickets WHERE id=?", (ticket_id,)).fetchone()
+            if not ticket:
+                return self.json(404, {"error": "ticket_not_found"})
+            ts = now()
+            db.execute(
+                "UPDATE support_tickets SET status=?,updated_at=?,closed_at=? WHERE id=?",
+                (status, ts, ts if status == "closed" else None, ticket_id),
+            )
+            db.commit()
+            updated = db.execute("SELECT * FROM support_tickets WHERE id=?", (ticket_id,)).fetchone()
+            return self.json(200, self.ticket_payload(db, updated))
+
+    def update_role(self, user_id, data):
+        if not self.same_origin_ok():
+            return self.json(403, {"error": "origin_rejected"})
+        role = str(data.get("role", "")).strip().lower()
+        if role not in ALLOWED_ROLES:
+            return self.json(400, {"error": "invalid_role"})
+        with connect() as db:
+            actor = self.require_admin(db)
+            if not actor:
+                return
+            target = db.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+            if not target:
+                return self.json(404, {"error": "user_not_found"})
+            if target["username_norm"] in OWNER_USERNAMES and role != "admin":
+                return self.json(409, {"error": "owner_role_locked"})
+            db.execute("UPDATE users SET role=? WHERE id=?", (role, user_id))
+            db.commit()
+            updated = db.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+            return self.json(200, profile(updated))
 
 
 if __name__ == "__main__":
