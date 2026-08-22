@@ -134,6 +134,7 @@ jobs:
           grep -q '"defaultProfile": "balanced"' site/content/api/graphics.json
           grep -q 'battle-royale' site/content/api/game-modes.json
           grep -q 'GunGloryOnline-Launcher-Windows.exe' site/index.html
+          grep -q 'GunGloryOnline-Launcher-Windows.msi' site/index.html
           grep -q 'GunGloryOnline-Launcher-Windows-Portable.zip' site/index.html
           grep -q 'GunGloryOnline-Launcher-Linux.AppImage' site/index.html
           grep -q 'GunGloryOnline-Launcher-Ubuntu-Debian.deb' site/index.html
