@@ -8,6 +8,8 @@ import sys
 import zipfile
 from pathlib import Path
 
+OFFICIAL_RESOURCE_PACK_NAME = "GunGloryOnline-Official.zip"
+
 
 def sha256_file(path: Path) -> str:
     h = hashlib.sha256()
@@ -131,12 +133,12 @@ def main() -> int:
     finally:
         archive.close()
 
-    # Resource packs are independent from the code build. If a new one is supplied,
-    # publish it under this game version. Otherwise keep the current channel RP entry.
+    # Resource packs are independent from the code build. Publish new packs under a
+    # stable launcher-managed name so activation does not depend on the source ZIP name.
     manifest_files = [f for f in manifest_files if f["kind"] != "resourcepack"]
     if args.resource_pack:
         rp = args.resource_pack.resolve()
-        relative = f"resourcepacks/{rp.name}"
+        relative = f"resourcepacks/{OFFICIAL_RESOURCE_PACK_NAME}"
         target = staging / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(rp, target)
