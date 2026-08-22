@@ -1,0 +1,13 @@
+workflow=GGO Stage 72 VDS Deploy Payload
+run_id=32567496437
+run_attempt=1
+run_url=https://github.com/straimy/-/actions/runs/32567496437
+source_sha=ba9d230ab6f1f75dc4c16a8013cb14ed8aebb82f
+baseline_stage70_run=32567000478
+auth_receipt_run=32567151493
+public_probe_run=32567346737
+payload=success
+upload=success
+payload_bytes=122401864
+payload_sha256=4265f34b5ef75fb237de715c4def83b384509004eae7ae73f3c6a0b1889ffa7d
+result=success
