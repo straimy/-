@@ -20,7 +20,10 @@ chown -R ggo-auth:ggo-auth /var/lib/ggo-auth
 chmod 0750 /var/lib/ggo-auth
 
 systemctl daemon-reload
-systemctl enable --now ggo-auth.service
+systemctl enable ggo-auth.service
+# Always restart after replacing server.py. `enable --now` alone leaves an already
+# running process on the previous code and would skip DB migrations/features.
+systemctl restart ggo-auth.service
 sleep 1
 systemctl --no-pager --full status ggo-auth.service || true
 
@@ -29,5 +32,7 @@ import json, urllib.request
 with urllib.request.urlopen('http://127.0.0.1:8787/api/v1/health', timeout=3) as r:
     data=json.load(r)
     assert data.get('ok') is True, data
+    assert data.get('support_tickets') is True, data
+    assert data.get('staff_roles') is True, data
     print('GGO auth health: PASS', data)
 PY
