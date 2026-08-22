@@ -1,0 +1,134 @@
+name: GGO UI Shell Stage 40 Compile
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - client/runtime-migration-v1
+    paths:
+      - 'hotfix/GgoRespawnScreen.java'
+      - 'hotfix/GgoVanillaRuntimeFence.java'
+      - 'hotfix/apply_ggo_deminecraft_client_stage40.py'
+      - '.github/workflows/ggo-ui-shell-stage40-compile.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Unpack Runtime v1 source
+        run: |
+          set -euo pipefail
+          rm -rf ga-build && mkdir ga-build
+          unzip -q "$SOURCE_ZIP" -d ga-build
+
+      - name: Apply GGO client patches through Stage 40
+        id: apply
+        run: |
+          set -euo pipefail
+          python3 hotfix/apply_ggo_ui_shell_stage1.py
+          python3 hotfix/apply_ggo_ui_shell_stage2.py
+          python3 hotfix/apply_ggo_ui_shell_stage3.py
+          python3 hotfix/apply_ggo_hud_stage4.py
+          python3 hotfix/apply_ggo_frontend_stage5.py
+          python3 hotfix/apply_ggo_settings_stage6.py
+          python3 hotfix/apply_ggo_identity_minimap_stage7.py
+          python3 hotfix/apply_ggo_weapon_navigation_stage8.py
+          python3 hotfix/apply_ggo_ping_stage9.py
+          python3 hotfix/apply_ggo_navigation_zoom_stage10.py
+          python3 hotfix/apply_ggo_squad_ping_stage11.py
+          python3 hotfix/apply_ggo_ping_wheel_stage12.py
+          python3 hotfix/apply_ggo_tab_squad_stage13.py
+          python3 hotfix/apply_ggo_objective_squad_stage15.py
+          python3 hotfix/apply_ggo_runtime_network_stage17.py
+          python3 hotfix/apply_ggo_jeg_telemetry_stage18.py
+          python3 hotfix/apply_ggo_squad_map_stage19.py
+          python3 hotfix/apply_ggo_server_hud_stage20.py
+          python3 hotfix/apply_ggo_br_hud_stage21.py
+          python3 hotfix/apply_ggo_contracts_stage23.py
+          python3 hotfix/apply_ggo_br_map_client_stage24.py
+          python3 hotfix/apply_ggo_contract_map_stage27_fixed.py
+          python3 hotfix/apply_ggo_contract_session_stage35.py
+          python3 hotfix/apply_ggo_contract_reward_ui_stage37.py
+          python3 hotfix/apply_ggo_client_compile_baseline_stage28.py
+          python3 hotfix/apply_ggo_deminecraft_client_stage40.py
+          root=ga-build/client-ui/src/main/java/arena/client/shell
+          grep -q 'DeathScreen' "$root/GgoVanillaRuntimeFence.java"
+          grep -q 'AdvancementsScreen' "$root/GgoVanillaRuntimeFence.java"
+          grep -q 'CreativeModeInventoryScreen' "$root/GgoVanillaRuntimeFence.java"
+          grep -q 'mc.player.respawn()' "$root/GgoRespawnScreen.java"
+          grep -q 'VanillaGuiOverlay.PLAYER_LIST' "$root/GgoShellHooks.java"
+          grep -q 'VanillaGuiOverlay.FOOD_LEVEL.id()' "$root/GgoCombatHud.java"
+
+      - name: Bootstrap ForgeGradle wrapper
+        id: bootstrap
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/forge-mdk /tmp/forge-mdk.zip
+          curl -fL --retry 3 -o /tmp/forge-mdk.zip https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-mdk.zip
+          mkdir -p /tmp/forge-mdk
+          unzip -q /tmp/forge-mdk.zip 'gradlew' 'gradlew.bat' 'gradle/*' -d /tmp/forge-mdk
+          cp /tmp/forge-mdk/gradlew ga-build/client-ui/gradlew
+          cp /tmp/forge-mdk/gradlew.bat ga-build/client-ui/gradlew.bat
+          rm -rf ga-build/client-ui/gradle && cp -a /tmp/forge-mdk/gradle ga-build/client-ui/gradle
+          chmod +x ga-build/client-ui/gradlew
+
+      - name: Compile patched client UI
+        id: compile
+        working-directory: ga-build/client-ui
+        run: ./gradlew --no-daemon compileJava --stacktrace
+
+      - name: Verify Stage 40 classes
+        id: verify
+        run: |
+          set -euo pipefail
+          root=ga-build/client-ui/build/classes/java/main/arena/client/shell
+          test -f "$root/GgoRespawnScreen.class"
+          test -f "$root/GgoVanillaRuntimeFence.class"
+          test -f "$root/GgoCombatHud.class"
+          test -f "$root/GgoShellHooks.class"
+          test -f "$root/GgoShellScreen.class"
+
+      - name: Publish exact CI receipt
+        if: always()
+        env:
+          APPLY_OUTCOME: ${{ steps.apply.outcome }}
+          BOOTSTRAP_OUTCOME: ${{ steps.bootstrap.outcome }}
+          COMPILE_OUTCOME: ${{ steps.compile.outcome }}
+          VERIFY_OUTCOME: ${{ steps.verify.outcome }}
+        run: |
+          set -euo pipefail
+          result=success
+          for value in "$APPLY_OUTCOME" "$BOOTSTRAP_OUTCOME" "$COMPILE_OUTCOME" "$VERIFY_OUTCOME"; do
+            [ "$value" = success ] || result=failure
+          done
+          mkdir -p ci-results
+          printf '%s\n' \
+            "workflow=${{ github.workflow }}" \
+            "run_id=${{ github.run_id }}" \
+            "run_attempt=${{ github.run_attempt }}" \
+            "run_url=https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            "source_sha=${{ github.sha }}" \
+            "apply=$APPLY_OUTCOME" \
+            "bootstrap=$BOOTSTRAP_OUTCOME" \
+            "compile=$COMPILE_OUTCOME" \
+            "verify=$VERIFY_OUTCOME" \
+            "result=$result" > ci-results/stage40-client.txt
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add ci-results/stage40-client.txt
+          git commit -m "ci: record stage40 client run ${{ github.run_id }}" || exit 0
+          git fetch origin "$GITHUB_REF_NAME"
+          git rebase "origin/$GITHUB_REF_NAME"
+          git push origin "HEAD:$GITHUB_REF_NAME"
