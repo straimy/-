@@ -68,7 +68,9 @@ fn signed_configuration() -> Result<Option<(Url, &'static str)>, String> {
     Ok(Some((endpoint, pubkey)))
 }
 
-async fn find_signed_update(app: &AppHandle) -> Result<Option<tauri_plugin_updater::Update>, String> {
+async fn find_signed_update(
+    app: &AppHandle,
+) -> Result<Option<tauri_plugin_updater::Update>, String> {
     let Some((endpoint, pubkey)) = signed_configuration()? else {
         return Ok(None);
     };
@@ -114,7 +116,10 @@ async fn beta_manifest() -> Result<Option<BetaManifest>, String> {
         return Ok(None);
     }
     if !response.status().is_success() {
-        return Err(format!("launcher update manifest returned {}", response.status()));
+        return Err(format!(
+            "launcher update manifest returned {}",
+            response.status()
+        ));
     }
     response
         .json::<BetaManifest>()
