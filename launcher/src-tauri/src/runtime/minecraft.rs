@@ -3,6 +3,7 @@ use serde::Serialize;
 use std::{
     collections::HashSet,
     env,
+    fs,
     path::{Path, PathBuf},
     process::Command,
 };
@@ -93,18 +94,22 @@ pub fn detect_java(custom_java: Option<&str>) -> Vec<JavaRuntimeInfo> {
     let mut seen = HashSet::new();
 
     if let Some(path) = custom_java.map(str::trim).filter(|value| !value.is_empty()) {
-        push_candidate(&mut candidates, &mut seen, PathBuf::from(path), "custom");
+        let path = normalize_java_candidate(PathBuf::from(path));
+        push_candidate(&mut candidates, &mut seen, path, "custom");
     }
     if let Ok(java_home) = env::var("JAVA_HOME") {
         push_candidate(
             &mut candidates,
             &mut seen,
-            PathBuf::from(java_home).join("bin").join(java_binary()),
+            java_from_home(PathBuf::from(java_home)),
             "JAVA_HOME",
         );
     }
     if let Some(path) = find_on_path(java_binary()) {
         push_candidate(&mut candidates, &mut seen, path, "PATH");
+    }
+    if cfg!(windows) {
+        push_windows_java_candidates(&mut candidates, &mut seen);
     }
 
     candidates
@@ -198,6 +203,62 @@ fn java_binary() -> &'static str {
     if cfg!(windows) { "java.exe" } else { "java" }
 }
 
+fn java_from_home(home: PathBuf) -> PathBuf {
+    home.join("bin").join(java_binary())
+}
+
+fn normalize_java_candidate(path: PathBuf) -> PathBuf {
+    if path.is_dir() {
+        java_from_home(path)
+    } else {
+        path
+    }
+}
+
+fn push_windows_java_candidates(
+    candidates: &mut Vec<JavaCandidate>,
+    seen: &mut HashSet<String>,
+) {
+    let mut vendor_roots = Vec::new();
+    if let Some(program_files) = env::var_os("ProgramFiles") {
+        let root = PathBuf::from(program_files);
+        for vendor in [
+            "Eclipse Adoptium",
+            "Java",
+            "Microsoft",
+            "Amazon Corretto",
+            "BellSoft",
+            "Zulu",
+        ] {
+            vendor_roots.push(root.join(vendor));
+        }
+    }
+    if let Some(local_app_data) = env::var_os("LOCALAPPDATA") {
+        let programs = PathBuf::from(local_app_data).join("Programs");
+        for vendor in ["Eclipse Adoptium", "Java", "Microsoft", "BellSoft"] {
+            vendor_roots.push(programs.join(vendor));
+        }
+    }
+
+    for vendor_root in vendor_roots {
+        let Ok(entries) = fs::read_dir(vendor_root) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let home = entry.path();
+            if !home.is_dir() {
+                continue;
+            }
+            push_candidate(
+                candidates,
+                seen,
+                java_from_home(home),
+                "Windows installation",
+            );
+        }
+    }
+}
+
 fn push_candidate(
     candidates: &mut Vec<JavaCandidate>,
     seen: &mut HashSet<String>,
@@ -247,8 +308,8 @@ fn find_on_path(binary: &str) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::{forge_required_artifacts, parse_java_major};
-    use std::path::Path;
+    use super::{forge_required_artifacts, java_from_home, parse_java_major};
+    use std::path::{Path, PathBuf};
 
     #[test]
     fn parses_java_17() {
@@ -258,6 +319,17 @@ mod tests {
     #[test]
     fn parses_legacy_java() {
         assert_eq!(parse_java_major("java version \"1.8.0_402\""), Some(8));
+    }
+
+    #[test]
+    fn java_home_points_to_platform_binary() {
+        let path = java_from_home(PathBuf::from("runtime"));
+        let expected = if cfg!(windows) {
+            PathBuf::from("runtime").join("bin").join("java.exe")
+        } else {
+            PathBuf::from("runtime").join("bin").join("java")
+        };
+        assert_eq!(path, expected);
     }
 
     #[test]
