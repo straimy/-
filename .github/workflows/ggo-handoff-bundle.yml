@@ -10,7 +10,7 @@ on:
       - 'docs/GGO-HANDOFF-2026-08-22.md'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   bundle:
@@ -22,7 +22,7 @@ jobs:
         with:
           ref: client/runtime-migration-v1
           path: client
-          fetch-depth: 1
+          fetch-depth: 0
 
       - name: Checkout server branch
         uses: actions/checkout@v4
@@ -39,7 +39,6 @@ jobs:
           fetch-depth: 1
 
       - name: Capture exact handoff refs
-        id: refs
         shell: bash
         run: |
           set -euo pipefail
@@ -71,7 +70,6 @@ jobs:
             tar -C "$tree" -czf "handoff/GGO-${tree}-2026-08-22.tar.gz" .
           done
           sha256sum handoff/GGO-*.tar.gz > handoff/SHA256SUMS.txt
-          cp HANDOFF-MANIFEST.txt handoff/HANDOFF-MANIFEST.txt
 
       - name: Upload complete handoff
         uses: actions/upload-artifact@v4
@@ -80,3 +78,28 @@ jobs:
           path: handoff/**
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish exact handoff receipt
+        working-directory: client
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci-results
+          printf '%s\n' \
+            "workflow=${{ github.workflow }}" \
+            "run_id=${{ github.run_id }}" \
+            "run_attempt=${{ github.run_attempt }}" \
+            "run_url=https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            "client_sha=$(git rev-parse HEAD)" \
+            "server_sha=$(git -C ../server rev-parse HEAD)" \
+            "launcher_sha=$(git -C ../launcher rev-parse HEAD)" \
+            "artifact=GunGloryOnline-Project-Handoff-2026-08-22" \
+            "result=success" \
+            > ci-results/handoff-bundle.txt
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add ci-results/handoff-bundle.txt
+          git commit -m "ci: record project handoff ${{ github.run_id }}" || exit 0
+          git fetch origin client/runtime-migration-v1
+          git rebase origin/client/runtime-migration-v1
+          git push origin HEAD:client/runtime-migration-v1
