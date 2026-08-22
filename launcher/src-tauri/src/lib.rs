@@ -4,7 +4,7 @@ mod client_tools;
 
 use core::{
     bootstrap::BootstrapInfo,
-    ggo_auth::{self, GameTicket, GgoAuthStatus, GgoSessionStore, MinecraftLinkResult},
+    ggo_auth::{self, GgoAuthStatus, GgoSessionStore, MinecraftLinkResult},
     identity_bridge,
     launcher_update::{self, LauncherUpdateStatus},
     microsoft_auth::{
@@ -179,7 +179,7 @@ fn local_session(name: String, id: String) -> MicrosoftSession {
 }
 
 #[tauri::command]
-async fn launch_game(_microsoft_store: State<'_, MicrosoftSessionStore>, ggo_store: State<'_, GgoSessionStore>, install_dir: String, custom_java: Option<String>, mut options: LaunchOptions, server_address: Option<String>, training: bool, profile: Option<MinecraftProfile>) -> Result<LaunchResult, String> {
+async fn launch_game(_microsoft_store: State<'_, MicrosoftSessionStore>, ggo_store: State<'_, GgoSessionStore>, install_dir: String, custom_java: Option<String>, mut options: LaunchOptions, server_address: Option<String>, training: bool, profile: Option<MinecraftProfile>, api_url: String) -> Result<LaunchResult, String> {
     if let Some(address) = server_address.as_deref() {
         let expected = format!("{}:{}", minecraft::DEFAULT_SERVER, minecraft::DEFAULT_SERVER_PORT);
         if !training && address != expected { return Err(format!("unsupported server target: {address}; expected {expected}")); }
@@ -189,15 +189,27 @@ async fn launch_game(_microsoft_store: State<'_, MicrosoftSessionStore>, ggo_sto
         return launch_training(ggo_store, install_dir, custom_java, display_name, options).await;
     }
 
-    let ggo = ggo_store.snapshot().await.ok_or_else(|| "GGO Account is required for official online play. Sign in through the GGO website first.".to_string())?;
+    let ggo = ggo_store.snapshot().await.ok_or_else(|| "GGO Account is required for official online play. Sign in through the GGO launcher first.".to_string())?;
     options.connect_server = true;
     options.launch_mode = "online".to_string();
 
     let root = PathBuf::from(&install_dir);
     identity_bridge::write(&root, Some(&ggo.profile.id), &ggo.profile.display_name, &ggo.profile.skin_source, "ggo")?;
     let runtime_id = ggo.profile.id.replace('-', "");
-    let session = local_session(ggo.profile.display_name, runtime_id);
-    minecraft_process::launch_with_natives(&root, custom_java.as_deref(), &session, &options).map_err(|error| error.to_string())
+    let session = local_session(ggo.profile.display_name.clone(), runtime_id);
+
+    // Issue as late as possible: official game tickets live only ~75 seconds and are one-shot.
+    // The raw value never crosses the Tauri frontend boundary and never enters Java command-line args.
+    let http = updater::client().map_err(|error| error.to_string())?;
+    let ticket = ggo_auth::issue_game_ticket(&http, &api_url, "official-online", ggo_store.inner()).await?;
+    if ticket.player_id != ggo.profile.id {
+        return Err("GGO launcher session changed while preparing the game. Sign in again.".to_string());
+    }
+    if ticket.expires_in < 15 {
+        return Err("GGO launcher session ticket lifetime is too short. Try PLAY ONLINE again.".to_string());
+    }
+    let child_environment = vec![("GGO_GAME_TICKET".to_string(), ticket.ticket)];
+    minecraft_process::launch_with_natives_environment(&root, custom_java.as_deref(), &session, &options, &child_environment).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -229,12 +241,6 @@ async fn ggo_login(store: State<'_, GgoSessionStore>, api_url: String, username:
 
 #[tauri::command]
 async fn ggo_auth_status(store: State<'_, GgoSessionStore>) -> Result<GgoAuthStatus, String> { Ok(ggo_auth::status(store.inner()).await) }
-
-#[tauri::command]
-async fn ggo_issue_game_ticket(store: State<'_, GgoSessionStore>, api_url: String, audience: String) -> Result<GameTicket, String> {
-    let http = updater::client().map_err(|error| error.to_string())?;
-    ggo_auth::issue_game_ticket(&http, &api_url, &audience, store.inner()).await
-}
 
 #[tauri::command]
 async fn ggo_logout(store: State<'_, GgoSessionStore>, api_url: String) -> Result<(), String> {
@@ -285,7 +291,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(MicrosoftSessionStore::default())
         .manage(GgoSessionStore::default())
-        .invoke_handler(tauri::generate_handler![bootstrap_info, default_install_dir, pick_install_dir, pick_zip_file, open_game_folder, open_client_folder, list_client_files, set_mod_enabled, read_latest_log, read_latest_crash, restart_launcher, local_game_installed, write_identity_bridge, ping_server, fetch_server_catalog, fetch_news_feed, check_launcher_update, install_launcher_update, detect_java, check_runtime, prepare_launch, install_runtime, install_local_ggo, preview_minecraft_launch, launch_minecraft, launch_training, launch_game, microsoft_login, microsoft_auth_status, microsoft_logout, ggo_login, ggo_auth_status, ggo_issue_game_ticket, ggo_logout, ggo_set_skin_source, ggo_link_minecraft, check_game, sync_game, repair_game])
+        .invoke_handler(tauri::generate_handler![bootstrap_info, default_install_dir, pick_install_dir, pick_zip_file, open_game_folder, open_client_folder, list_client_files, set_mod_enabled, read_latest_log, read_latest_crash, restart_launcher, local_game_installed, write_identity_bridge, ping_server, fetch_server_catalog, fetch_news_feed, check_launcher_update, install_launcher_update, detect_java, check_runtime, prepare_launch, install_runtime, install_local_ggo, preview_minecraft_launch, launch_minecraft, launch_training, launch_game, microsoft_login, microsoft_auth_status, microsoft_logout, ggo_login, ggo_auth_status, ggo_logout, ggo_set_skin_source, ggo_link_minecraft, check_game, sync_game, repair_game])
         .run(tauri::generate_context!())
         .expect("error while running GunGloryOnline launcher");
 }
