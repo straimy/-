@@ -14,28 +14,32 @@ shutil.copy2(SRC, DST)
 
 text = DST.read_text(encoding="utf-8")
 for required in [
-    "RETURN TO GGO LAUNCHER",
-    "Online play starts from GGO Launcher with a fresh secure session.",
+    "PLAY ONLINE",
+    "TRAINING",
+    "GgoLaunchTicketClient.isOfficialLaunch()",
+    "ConnectScreen.startConnecting",
+    "ServerAddress.parseString(OFFICIAL_SERVER)",
+    'OFFICIAL_SERVER = "play.kvicloud.ru:24842"',
     "GGO CLIENT  •  BETA",
-    "ONE ACCOUNT  •  SECURE ENTRY  •  GGO LAUNCHER",
+    "CHOOSE ACTIVITY",
     "new GgoSettingsScreen(this)",
 ]:
     if required not in text:
         raise SystemExit(f"stage58 frontend missing: {required}")
 for forbidden in [
-    "ConnectScreen.startConnecting",
-    "ServerAddress.parseString",
-    "play.kvicloud.ru:24842",
+    "ServerListScreen",
+    "DirectJoinServerScreen",
+    "MultiplayerScreen",
     "ENTER GGO",
     "OptionsScreen",
     "sendCommand(\"login",
     "sendCommand(\"register",
 ]:
     if forbidden in text:
-        raise SystemExit(f"stage58 direct online/runtime entry leak: {forbidden}")
+        raise SystemExit(f"stage58 unsafe/vanilla online entry leak: {forbidden}")
 
-print("Applied GGO Stage 58 launcher-authoritative online entry")
-print(" - in-client direct official reconnect removed")
-print(" - fresh online sessions originate only from GGO Launcher")
-print(" - fallback title surface is fully GGO-owned")
+print("Applied GGO Stage 58 launcher-authenticated menu-first entry")
+print(" - launcher owns authentication and short-lived session credential")
+print(" - GGO client owns final Online / Training activity choice")
+print(" - Online uses only the trusted official route; no server browser or manual address")
 print(" - settings stay inside first-party GGO UI")
