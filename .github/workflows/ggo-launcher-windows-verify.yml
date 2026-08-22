@@ -83,7 +83,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Publish exact Windows receipt
+      - name: Publish immutable Windows receipt
         if: always()
         shell: pwsh
         env:
@@ -99,7 +99,8 @@ jobs:
           foreach ($value in @($env:INSTALL_OUTCOME,$env:ICONS_OUTCOME,$env:FRONTEND_OUTCOME,$env:RUNTIME_TESTS_OUTCOME,$env:PACKAGE_OUTCOME,$env:VERIFY_OUTCOME)) {
             if ($value -ne 'success') { $result = 'failure' }
           }
-          New-Item -ItemType Directory -Force ../.ci | Out-Null
+          New-Item -ItemType Directory -Force ../.ci/windows | Out-Null
+          $receipt = '../.ci/windows/${{ github.run_id }}.txt'
           @(
             'workflow=${{ github.workflow }}',
             'run_id=${{ github.run_id }}',
@@ -114,11 +115,11 @@ jobs:
             "verify=$env:VERIFY_OUTCOME",
             'installers=GunGloryOnline-Launcher-Windows.exe,GunGloryOnline-Launcher-Windows.msi,GunGloryOnline-Launcher-Windows-Portable.zip',
             "result=$result"
-          ) | Set-Content -Encoding utf8 ../.ci/ggo-launcher-windows-last-run.txt
+          ) | Set-Content -Encoding utf8 $receipt
           Set-Location ..
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add .ci/ggo-launcher-windows-last-run.txt
+          git add '.ci/windows/${{ github.run_id }}.txt'
           git commit -m 'ci: record Windows launcher run ${{ github.run_id }}'
           if ($LASTEXITCODE -ne 0) { exit 0 }
           git fetch origin '${{ github.ref_name }}'
