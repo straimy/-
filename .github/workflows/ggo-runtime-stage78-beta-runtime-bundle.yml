@@ -264,7 +264,7 @@ jobs:
         run: |
           set -euo pipefail
           (cd stage78-rollout && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
-          sha256sum -c stage78-rollout/SHA256SUMS
+          (cd stage78-rollout && sha256sum -c SHA256SUMS)
           echo "bundle_manifest_sha=$(sha256sum stage78-rollout/SHA256SUMS | awk '{print $1}')" >> "$GITHUB_OUTPUT"
 
       - name: Upload Stage 78 rollout bundle
