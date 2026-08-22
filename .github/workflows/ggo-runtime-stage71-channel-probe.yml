@@ -32,12 +32,16 @@ jobs:
           mkdir ga-probe
           unzip -q "$SOURCE_ZIP" -d ga-probe
           mkdir -p ci-probe
+          CORE='ga-probe/src/main/java/arena/forge/net/ArenaNetwork.java'
+          CLIENT='ga-probe/client-ui/src/main/java/arena/client/net/ArenaClientNetwork.java'
+          test -f "$CORE"
+          test -f "$CLIENT"
           {
-            echo '=== CORE NETWORK DECLARATIONS ==='
-            grep -RInE 'newSimpleChannel|ChannelBuilder|ResourceLocation|gunnerarena.*ui|"ui"' ga-probe/src/main/java/arena 2>/dev/null | head -200 || true
+            echo '=== CORE ArenaNetwork.java ==='
+            sed -n '1,180p' "$CORE"
             echo
-            echo '=== CLIENT UI NETWORK DECLARATIONS ==='
-            grep -RInE 'newSimpleChannel|ChannelBuilder|ResourceLocation|gunnerarena.*ui|"ui"' ga-probe/client-ui/src/main/java 2>/dev/null | head -300 || true
+            echo '=== CLIENT ArenaClientNetwork.java ==='
+            sed -n '1,220p' "$CLIENT"
           } | tee ci-probe/stage71-channel-source.txt
           grep -RIlE 'newSimpleChannel|ChannelBuilder' ga-probe/client-ui/src/main/java > ci-probe/stage71-client-network-files.txt || true
           grep -RIlE 'newSimpleChannel|ChannelBuilder' ga-probe/src/main/java/arena > ci-probe/stage71-core-network-files.txt || true
