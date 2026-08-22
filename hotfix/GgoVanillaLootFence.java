@@ -1,7 +1,6 @@
 package arena.forge;
 
 import arena.GunnerArenaMod;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Player;
@@ -12,11 +11,11 @@ import net.minecraftforge.event.entity.player.EntityItemPickupEvent;
 import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
-import net.minecraftforge.registries.ForgeRegistries;
 
 /**
  * Keeps raw Minecraft loot/progression out of normal GGO gameplay while preserving GGO/JEG loot.
- * This is intentionally namespace/tag based: the vanilla registry remains intact for Forge safety.
+ * The visible-item policy is shared with inventory cleanup so intentionally tagged resource-pack
+ * proxy items remain valid while accidental vanilla content is removed.
  */
 @Mod.EventBusSubscriber(modid = "gunnerarena", bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class GgoVanillaLootFence {
@@ -47,13 +46,7 @@ public final class GgoVanillaLootFence {
     private static boolean isUnmarkedVanilla(ItemEntity entity, ItemStack stack) {
         if (stack == null || stack.isEmpty()) return false;
         if (entity.getPersistentData().contains("ggoLootPoint") || entity.getPersistentData().contains("ggoLootKind")) return false;
-        if (GgoSupplyExtractionService.isSupply(stack)) return false;
-        if (stack.hasTag()) {
-            var tag = stack.getTag();
-            if (tag != null && (tag.getBoolean("GunnerArenaBound") || tag.getBoolean("GunnerArenaKnife") || tag.getBoolean("GunGloryBotWeapon"))) return false;
-        }
-        ResourceLocation id = ForgeRegistries.ITEMS.getKey(stack.getItem());
-        return id != null && "minecraft".equals(id.getNamespace());
+        return !GgoVisibleItemPolicy.allowed(stack);
     }
 
     private static boolean governed(ServerPlayer player) {
