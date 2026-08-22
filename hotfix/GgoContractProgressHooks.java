@@ -10,7 +10,6 @@ import net.minecraftforge.fml.common.Mod;
 /** Authoritative gameplay hooks for contract progression. */
 @Mod.EventBusSubscriber(modid="gunnerarena",bus=Mod.EventBusSubscriber.Bus.FORGE)
 public final class GgoContractProgressHooks {
-    private static final double DISTANCE_DRILL_METERS=24.0D;
     private GgoContractProgressHooks(){}
 
     @SubscribeEvent
@@ -24,8 +23,8 @@ public final class GgoContractProgressHooks {
             GgoContractService.addProgress(player,"field_test",1);
         }
 
-        // DISTANCE DRILL: same authoritative kill, but only at meaningful range.
-        if(player.distanceTo(victim)>=DISTANCE_DRILL_METERS){
+        // DISTANCE DRILL: same authoritative kill, using the server balance threshold.
+        if(player.distanceTo(victim)>=GgoContractBalance.distanceDrillMeters()){
             GgoContractService.addProgress(player,"distance_drill",1);
         }
     }
