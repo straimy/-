@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -15,7 +16,7 @@ public final class GgoContractService {
 
     private static final Map<UUID, LinkedHashMap<String, Contract>> BY_PLAYER=new ConcurrentHashMap<>();
     private static final Map<UUID,String> TRACKED=new ConcurrentHashMap<>();
-    private static final Map<UUID, java.util.Set<String>> REWARDED=new ConcurrentHashMap<>();
+    private static final Map<UUID, Set<String>> REWARDED=new ConcurrentHashMap<>();
     private GgoContractService(){}
 
     public static List<Contract> list(ServerPlayer p){
@@ -23,7 +24,11 @@ public final class GgoContractService {
         ensureDefaults(p);
         return new ArrayList<>(BY_PLAYER.getOrDefault(p.getUUID(),new LinkedHashMap<>()).values()).stream().limit(8).toList();
     }
-    public static String trackedId(ServerPlayer p){return p==null?"":TRACKED.getOrDefault(p.getUUID(),"");}
+    public static String trackedId(ServerPlayer p){
+        if(p==null)return "";
+        ensureDefaults(p);
+        return TRACKED.getOrDefault(p.getUUID(),"");
+    }
     public static Contract tracked(ServerPlayer p){
         if(p==null)return null; ensureDefaults(p);
         String id=TRACKED.get(p.getUUID());
@@ -34,6 +39,7 @@ public final class GgoContractService {
         Contract c=BY_PLAYER.get(p.getUUID()).get(id);
         if(c==null)return false;
         TRACKED.put(p.getUUID(),id);
+        persist(p);
         publishObjective(p,c);
         pushState(p,true);
         return true;
@@ -50,20 +56,28 @@ public final class GgoContractService {
             return new Contract(c.id(),c.title(),c.description(),c.activity(),cur,c.target(),c.rewardCredits(),done);
         });
         if(!changed[0])return;
+        persist(p);
         Contract c=BY_PLAYER.get(p.getUUID()).get(id);
         if(c!=null&&id.equals(TRACKED.get(p.getUUID())))publishObjective(p,c);
         boolean balanceChanged=c!=null&&completedNow[0]&&rewardOnce(p,c);
         pushState(p,balanceChanged);
     }
+
+    /** Unload session caches only. Durable state remains in the world save. */
     public static void clear(UUID id){if(id!=null){BY_PLAYER.remove(id);TRACKED.remove(id);REWARDED.remove(id);}}
 
     private static boolean rewardOnce(ServerPlayer p,Contract c){
-        java.util.Set<String> rewarded=REWARDED.computeIfAbsent(p.getUUID(),id->ConcurrentHashMap.newKeySet());
+        Set<String> rewarded=REWARDED.computeIfAbsent(p.getUUID(),id->ConcurrentHashMap.newKeySet());
         if(!rewarded.add(c.id()))return false;
+
+        // Claim first, then grant. This gives at-most-once behavior across a crash/restart.
+        persist(p);
         if(!GgoContractRewardBridge.award(p,c.rewardCredits())){
             rewarded.remove(c.id());
+            persist(p);
             return false;
         }
+        persist(p);
         return true;
     }
     private static void pushState(ServerPlayer p,boolean includeEconomy){
@@ -74,13 +88,40 @@ public final class GgoContractService {
         GgoObjectiveService.set(p,"contract:"+c.id(),c.activity(),c.title(),c.description(),c.current(),c.target());
         if(c.completed())GgoObjectiveService.complete(p);
     }
+    private static void persist(ServerPlayer p){
+        LinkedHashMap<String,Contract> contracts=BY_PLAYER.get(p.getUUID());
+        if(contracts==null)return;
+        GgoContractPersistence.save(
+                p,
+                TRACKED.getOrDefault(p.getUUID(),""),
+                contracts.values(),
+                REWARDED.getOrDefault(p.getUUID(),Set.of())
+        );
+    }
     private static void ensureDefaults(ServerPlayer p){
-        BY_PLAYER.computeIfAbsent(p.getUUID(),id->{
-            LinkedHashMap<String,Contract> m=new LinkedHashMap<>();
-            m.put("field_test",new Contract("field_test","FIELD TEST","Eliminate hostiles with any firearm.","CONTRACT",0,10,1200,false));
-            m.put("supply_run",new Contract("supply_run","SUPPLY RUN","Recover marked supplies and return safely.","CONTRACT",0,5,900,false));
-            m.put("distance_drill",new Contract("distance_drill","DISTANCE DRILL","Land precision hits at range.","TRAINING",0,8,700,false));
+        UUID playerId=p.getUUID();
+        BY_PLAYER.computeIfAbsent(playerId,id->{
+            LinkedHashMap<String,Contract> m=defaults();
+            GgoContractPersistence.PlayerState state=GgoContractPersistence.load(p,m.values());
+            for(Map.Entry<String,Contract> entry:new ArrayList<>(m.entrySet())){
+                Contract base=entry.getValue();
+                int current=Math.max(0,Math.min(base.target(),state.progress().getOrDefault(base.id(),0)));
+                boolean completed=state.completed().contains(base.id())||current>=base.target();
+                m.put(entry.getKey(),new Contract(base.id(),base.title(),base.description(),base.activity(),current,base.target(),base.rewardCredits(),completed));
+            }
+            if(m.containsKey(state.trackedId()))TRACKED.put(playerId,state.trackedId());
+            Set<String> rewarded=ConcurrentHashMap.newKeySet();
+            for(String contractId:state.rewarded())if(m.containsKey(contractId))rewarded.add(contractId);
+            REWARDED.put(playerId,rewarded);
             return m;
         });
+        REWARDED.computeIfAbsent(playerId,id->ConcurrentHashMap.newKeySet());
+    }
+    private static LinkedHashMap<String,Contract> defaults(){
+        LinkedHashMap<String,Contract> m=new LinkedHashMap<>();
+        m.put("field_test",new Contract("field_test","FIELD TEST","Eliminate hostiles with any firearm.","CONTRACT",0,10,1200,false));
+        m.put("supply_run",new Contract("supply_run","SUPPLY RUN","Recover marked supplies and return safely.","CONTRACT",0,5,900,false));
+        m.put("distance_drill",new Contract("distance_drill","DISTANCE DRILL","Land precision hits at range.","TRAINING",0,8,700,false));
+        return m;
     }
 }
