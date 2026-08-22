@@ -45,7 +45,8 @@ fn base_url() -> Result<Option<Url>, String> {
     else {
         return Ok(None);
     };
-    let url = Url::parse(base).map_err(|error| error.to_string())?;
+    let normalized = format!("{}/", base.trim_end_matches('/'));
+    let url = Url::parse(&normalized).map_err(|error| error.to_string())?;
     if url.scheme() != "https" || url.host_str() != Some("ggo.kvicloud.ru") {
         return Err("launcher updater must use official GGO HTTPS content host".to_string());
     }
