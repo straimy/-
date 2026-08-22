@@ -24,6 +24,8 @@ jobs:
       GGO_SITE_URL: https://ggo.kvicloud.ru
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -108,8 +110,12 @@ jobs:
           for value in "$DEPS_OUTCOME" "$INSTALL_OUTCOME" "$ICONS_OUTCOME" "$FRONTEND_OUTCOME" "$RUST_FMT_OUTCOME" "$RUST_CHECK_OUTCOME" "$RUNTIME_TESTS_OUTCOME" "$PACKAGE_OUTCOME" "$VERIFY_OUTCOME"; do
             if [ "$value" != success ]; then result=failure; fi
           done
-          mkdir -p ../.ci/linux
-          receipt="../.ci/linux/${GITHUB_RUN_ID}.txt"
+          cd ..
+          # Tauri/icon/npm steps may touch tracked generated files. The immutable receipt must be
+          # the only commit payload, otherwise a later rebase can fail despite a valid build.
+          git restore --staged --worktree .
+          mkdir -p .ci/linux
+          receipt=".ci/linux/${GITHUB_RUN_ID}.txt"
           cat > "$receipt" <<EOF
           workflow=${{ github.workflow }}
           run_id=${GITHUB_RUN_ID}
@@ -128,10 +134,9 @@ jobs:
           installers=GunGloryOnline-Launcher-Linux.AppImage,GunGloryOnline-Launcher-Ubuntu-Debian.deb,GunGloryOnline-Launcher-Fedora-RHEL.rpm
           result=$result
           EOF
-          cd ..
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add ".ci/linux/${GITHUB_RUN_ID}.txt"
+          git add "$receipt"
           git commit -m "ci: record Linux launcher run ${GITHUB_RUN_ID}" || exit 0
           git fetch origin "${GITHUB_REF_NAME}"
           git rebase "origin/${GITHUB_REF_NAME}"
