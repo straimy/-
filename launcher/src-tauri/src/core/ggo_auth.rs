@@ -2,7 +2,7 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::time::Duration;
+use std::{fs, path::PathBuf, time::Duration};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -39,7 +39,7 @@ pub struct GameTicket {
     pub display_name: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GgoSession {
     pub access_token: String,
     pub refresh_token: String,
@@ -51,15 +51,79 @@ pub struct GgoSessionStore {
     inner: Mutex<Option<GgoSession>>,
 }
 
+fn session_path() -> Option<PathBuf> {
+    #[cfg(target_os = "windows")]
+    {
+        std::env::var_os("APPDATA")
+            .map(PathBuf::from)
+            .map(|root| root.join("GunGloryOnline").join("ggo-session.json"))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        if let Some(root) = std::env::var_os("XDG_CONFIG_HOME") {
+            return Some(PathBuf::from(root).join("gungloryonline").join("ggo-session.json"));
+        }
+        std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .map(|home| home.join(".config").join("gungloryonline").join("ggo-session.json"))
+    }
+}
+
+fn load_persisted_session() -> Option<GgoSession> {
+    let path = session_path()?;
+    let raw = fs::read(path).ok()?;
+    serde_json::from_slice(&raw).ok()
+}
+
+fn persist_session(session: &GgoSession) -> Result<(), String> {
+    let Some(path) = session_path() else {
+        return Ok(());
+    };
+    let parent = path
+        .parent()
+        .ok_or_else(|| "invalid GGO session path".to_string())?;
+    fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    let temp = path.with_extension("json.tmp");
+    let raw = serde_json::to_vec(session).map_err(|e| e.to_string())?;
+    fs::write(&temp, raw).map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&temp, fs::Permissions::from_mode(0o600)).map_err(|e| e.to_string())?;
+    }
+    fs::rename(&temp, &path).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn clear_persisted_session() {
+    if let Some(path) = session_path() {
+        let _ = fs::remove_file(path);
+    }
+}
+
 impl GgoSessionStore {
     pub async fn snapshot(&self) -> Option<GgoSession> {
-        self.inner.lock().await.clone()
+        {
+            let guard = self.inner.lock().await;
+            if guard.is_some() {
+                return guard.clone();
+            }
+        }
+        let restored = load_persisted_session();
+        if let Some(session) = restored.clone() {
+            *self.inner.lock().await = Some(session);
+        }
+        restored
     }
     pub async fn replace(&self, session: GgoSession) {
+        if let Err(error) = persist_session(&session) {
+            eprintln!("[ggo-auth] failed to persist session: {error}");
+        }
         *self.inner.lock().await = Some(session);
     }
     pub async fn clear(&self) {
         *self.inner.lock().await = None;
+        clear_persisted_session();
     }
 }
 
