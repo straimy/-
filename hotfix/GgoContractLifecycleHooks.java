@@ -36,6 +36,7 @@ public final class GgoContractLifecycleHooks {
         if (event.getEntity() instanceof ServerPlayer player) {
             GgoContractService.flush(player);
             GgoContractService.clear(player.getUUID());
+            GgoContractRequestGuard.clear(player.getUUID());
         }
     }
 }
