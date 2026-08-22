@@ -1,0 +1,43 @@
+workflow=GGO Runtime Stage 71 Channel Ownership Probe
+run_id=32599767144
+run_attempt=1
+run_url=https://github.com/straimy/-/actions/runs/32599767144
+client_sha=78e646e8aa4300369b05c0e9e983b34ef123830b
+inspect=success
+client_network_file_count=1
+core_network_file_count=1
+--- source ---
+=== CORE NETWORK DECLARATIONS ===
+ga-probe/src/main/java/arena/forge/ammo/ForgeAmmoPointService.java:14:import net.minecraft.resources.ResourceLocation;
+ga-probe/src/main/java/arena/forge/ammo/ForgeAmmoPointService.java:210:        ResourceLocation key = ResourceLocation.tryParse(id);
+ga-probe/src/main/java/arena/forge/spawn/ArenaSpawnStore.java:4:import net.minecraft.resources.ResourceLocation;
+ga-probe/src/main/java/arena/forge/spawn/ArenaSpawnStore.java:74:            ResourceLocation id = new ResourceLocation(s[0]);
+ga-probe/src/main/java/arena/forge/loadout/ForgeLoadoutService.java:11:import net.minecraft.resources.ResourceLocation;
+ga-probe/src/main/java/arena/forge/loadout/ForgeLoadoutService.java:150:        ResourceLocation key = ResourceLocation.tryParse(id);
+ga-probe/src/main/java/arena/forge/cleanup/ArenaVisualCleanupService.java:3:import net.minecraft.resources.ResourceLocation;
+ga-probe/src/main/java/arena/forge/cleanup/ArenaVisualCleanupService.java:78:        ResourceLocation id = ForgeRegistries.ENTITY_TYPES.getKey(entity.getType());
+ga-probe/src/main/java/arena/forge/ArenaRuntime.java:63:import net.minecraft.resources.ResourceLocation;
+ga-probe/src/main/java/arena/forge/ArenaRuntime.java:642:        ResourceLocation id = BuiltInRegistries.ITEM.getKey(stack.getItem());
+ga-probe/src/main/java/arena/forge/GunnerCommands.java:347:        boolean jegAssault = net.minecraftforge.registries.ForgeRegistries.ITEMS.containsKey(new net.minecraft.resources.ResourceLocation("jeg", "assault_rifle"));
+ga-probe/src/main/java/arena/forge/GunnerCommands.java:348:        boolean jegPistolAmmo = net.minecraftforge.registries.ForgeRegistries.ITEMS.containsKey(new net.minecraft.resources.ResourceLocation("jeg", "pistol_ammo"));
+ga-probe/src/main/java/arena/forge/GunnerCommands.java:390:            new net.minecraft.resources.ResourceLocation("jeg", "assault_rifle"));
+ga-probe/src/main/java/arena/forge/net/ArenaNetwork.java:13:import net.minecraft.resources.ResourceLocation;
+ga-probe/src/main/java/arena/forge/net/ArenaNetwork.java:30:    private static final ResourceLocation CHANNEL_ID = new ResourceLocation("gunnerarena", "ui");
+ga-probe/src/main/java/arena/forge/net/ArenaNetwork.java:31:    public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
+
+=== CLIENT UI NETWORK DECLARATIONS ===
+ga-probe/client-ui/src/main/java/arena/client/ui/GunnerArenaUiMod.java:18:    public static final String MODID = "gunnerarena_ui";
+ga-probe/client-ui/src/main/java/arena/client/ui/GunnerArenaUiMod.java:19:    private static final boolean DEV_KEY_ENABLED = UiNavigationPolicy.devKeyEnabled(System.getProperty("gunnerarena.ui.devKey"));
+ga-probe/client-ui/src/main/java/arena/client/ui/GunnerArenaUiMod.java:21:        "key.gunnerarena_ui.reload_weapon", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_R, "key.categories.gunnerarena_ui"
+ga-probe/client-ui/src/main/java/arena/client/ui/GunnerArenaUiMod.java:24:        "key.gunnerarena_ui.firemode", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_V, "key.categories.gunnerarena_ui"
+ga-probe/client-ui/src/main/java/arena/client/ui/GunnerArenaUiMod.java:27:        "key.gunnerarena_ui.open_menu_dev",
+ga-probe/client-ui/src/main/java/arena/client/ui/GunnerArenaUiMod.java:30:        "key.categories.gunnerarena_ui"
+ga-probe/client-ui/src/main/java/arena/client/net/ArenaClientNetwork.java:4:import net.minecraft.resources.ResourceLocation;
+ga-probe/client-ui/src/main/java/arena/client/net/ArenaClientNetwork.java:13:/** Client half of gunnerarena:ui. Packet IDs and field order must match Core. */
+ga-probe/client-ui/src/main/java/arena/client/net/ArenaClientNetwork.java:16:    private static final ResourceLocation CHANNEL_ID = new ResourceLocation("gunnerarena", "ui");
+ga-probe/client-ui/src/main/java/arena/client/net/ArenaClientNetwork.java:17:    public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
+--- client network files ---
+ga-probe/client-ui/src/main/java/arena/client/net/ArenaClientNetwork.java
+--- core network files ---
+ga-probe/src/main/java/arena/forge/net/ArenaNetwork.java
+result=success
