@@ -1,0 +1,203 @@
+name: GGO Runtime Stage 63 Recovery Bag Visual
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - client/runtime-migration-v1
+    paths:
+      - '.github/workflows/ggo-runtime-stage63-recovery-bag-visual.yml'
+      - 'hotfix/build_ggo_recovery_bag_rp_stage63.py'
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 70
+    env:
+      SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+    steps:
+      - name: Checkout client runtime
+        uses: actions/checkout@v4
+        with:
+          ref: client/runtime-migration-v1
+          path: client-src
+          fetch-depth: 0
+      - name: Checkout server runtime
+        uses: actions/checkout@v4
+        with:
+          ref: server/runtime-hardening-v1
+          path: server-src
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Capture exact refs
+        id: refs
+        run: |
+          echo "client_sha=$(git -C client-src rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "server_sha=$(git -C server-src rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Build Core with Stage 63 recovery bag contract
+        id: server
+        working-directory: server-src
+        run: |
+          set -euo pipefail
+          rm -rf ga-build && mkdir ga-build
+          unzip -q "$SOURCE_ZIP" -d ga-build
+          python3 hotfix/apply_ggo_contract_rewards_stage26.py
+          python3 hotfix/apply_ggo_contract_map_stage27.py
+          python3 hotfix/apply_ggo_contract_push_stage28.py
+          python3 hotfix/apply_ggo_contract_persistence_stage29.py
+          python3 hotfix/apply_ggo_contract_lifecycle_stage30.py
+          python3 hotfix/apply_ggo_contract_balance_stage31.py
+          python3 hotfix/apply_ggo_contract_eligibility_stage32.py
+          python3 hotfix/apply_ggo_supply_lifecycle_stage33.py
+          python3 hotfix/apply_ggo_extraction_runtime_stage34.py
+          python3 hotfix/apply_ggo_contract_network_guard_stage36.py
+          python3 hotfix/apply_ggo_contract_reward_order_stage37.py
+          python3 hotfix/apply_ggo_compile_baseline_stage27.py
+          python3 hotfix/apply_ggo_spawn_presence_stage38.py
+          python3 hotfix/apply_ggo_deminecraft_world_stage39.py
+          python3 hotfix/apply_ggo_deminecraft_loot_stage41.py
+          python3 hotfix/apply_ggo_inventory_stage42.py
+          python3 hotfix/apply_ggo_visible_content_stage43.py
+          python3 hotfix/apply_ggo_medicine_stage47.py
+          python3 hotfix/apply_ggo_death_recap_stage48.py
+          python3 hotfix/apply_ggo_recovery_bag_stage49.py
+          python3 hotfix/apply_ggo_map_integrity_stage51.py
+          python3 hotfix/apply_ggo_map_palette_stage54.py
+          python3 hotfix/apply_ggo_official_auth_stage55.py
+          python3 hotfix/apply_ggo_pre_auth_quarantine_stage59.py
+          grep -q 'RECOVERY_BAG_MODEL=720049' ga-build/src/main/java/arena/forge/GgoRecoveryBagService.java
+          grep -q 'putInt("CustomModelData",RECOVERY_BAG_MODEL)' ga-build/src/main/java/arena/forge/GgoRecoveryBagService.java
+          rm -rf /tmp/ggo-mdk /tmp/ggo-mdk.zip
+          curl -fL --retry 3 -o /tmp/ggo-mdk.zip https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-mdk.zip
+          mkdir -p /tmp/ggo-mdk
+          unzip -q /tmp/ggo-mdk.zip 'gradlew' 'gradlew.bat' 'gradle/*' -d /tmp/ggo-mdk
+          cp /tmp/ggo-mdk/gradlew ga-build/gradlew
+          cp /tmp/ggo-mdk/gradlew.bat ga-build/gradlew.bat
+          rm -rf ga-build/gradle && cp -a /tmp/ggo-mdk/gradle ga-build/gradle
+          chmod +x ga-build/gradlew
+          (cd ga-build && ./gradlew --no-daemon build --stacktrace)
+          CORE="$(find ga-build/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          test -n "$CORE"
+          jar tf "$CORE" | grep -q '^arena/forge/GgoRecoveryBagService.class$'
+          mkdir -p ../stage63/server/mods
+          cp "$CORE" ../stage63/server/mods/gungloryonline-core-runtime-v1-stage63.jar
+
+      - name: Build official RP with GGO recovery bag art
+        id: rp
+        working-directory: client-src
+        run: |
+          set -euo pipefail
+          mkdir -p stage63/client/resourcepacks
+          python3 hotfix/build_ggo_recovery_bag_rp_stage63.py \
+            GunnerArena-ResourcePack-1.20.1-v1.zip \
+            stage63/client/resourcepacks/GunGloryOnline-Official.zip
+          python3 - <<'PY'
+          import json, zipfile
+          from pathlib import Path
+          p=Path('stage63/client/resourcepacks/GunGloryOnline-Official.zip')
+          assert p.is_file() and p.stat().st_size > 1_000_000
+          with zipfile.ZipFile(p) as z:
+              names=z.namelist()
+              assert len(names)==len(set(names))
+              assert 'assets/gunnerarena/models/item/recovery_bag.json' in names
+              assert 'assets/gunnerarena/textures/item/recovery_bag.png' in names
+              data=json.loads(z.read('assets/minecraft/models/item/bundle.json'))
+              hits=[x for x in data.get('overrides',[]) if x.get('predicate',{}).get('custom_model_data')==720049]
+              assert hits==[{'predicate':{'custom_model_data':720049},'model':'gunnerarena:item/recovery_bag'}], hits
+              assert z.read('assets/gunnerarena/textures/item/recovery_bag.png').startswith(b'\x89PNG\r\n\x1a\n')
+          PY
+          sha256sum stage63/client/resourcepacks/GunGloryOnline-Official.zip
+
+      - name: Assemble Stage 63 verification bundle
+        id: package
+        run: |
+          set -euo pipefail
+          mkdir -p stage63
+          cp -a server-src/stage63/server stage63/
+          mkdir -p stage63/client/resourcepacks
+          cp client-src/stage63/client/resourcepacks/GunGloryOnline-Official.zip stage63/client/resourcepacks/
+          cat > stage63/BUILD-INFO.txt <<EOF
+          GGO_RUNTIME_STAGE=63
+          PURPOSE=RECOVERY_BAG_VISUAL_IDENTITY
+          SERVER_BRANCH=server/runtime-hardening-v1
+          SERVER_SHA=${{ steps.refs.outputs.server_sha }}
+          CLIENT_BRANCH=client/runtime-migration-v1
+          CLIENT_SHA=${{ steps.refs.outputs.client_sha }}
+          BASELINE_STAGE62_RUN=32555227197
+          RECOVERY_BAG_ENGINE_PROXY=minecraft:bundle
+          RECOVERY_BAG_CUSTOM_MODEL_DATA=720049
+          RECOVERY_BAG_MODEL=gunnerarena:item/recovery_bag
+          OFFICIAL_RESOURCE_PACK=client/resourcepacks/GunGloryOnline-Official.zip
+          EOF
+          sha256sum stage63/server/mods/* stage63/client/resourcepacks/* > stage63/SHA256SUMS.txt
+
+      - name: Dedicated server smoke
+        id: smoke
+        run: |
+          set -euo pipefail
+          rm -rf ds forge-installer.jar
+          mkdir ds
+          curl -fL --retry 5 --retry-all-errors -o forge-installer.jar https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-installer.jar
+          java -jar forge-installer.jar --installServer ds >/tmp/forge-install-stage63.log 2>&1
+          echo 'eula=true' > ds/eula.txt
+          mkdir -p ds/mods
+          cp stage63/server/mods/gungloryonline-core-runtime-v1-stage63.jar ds/mods/
+          cd ds
+          timeout 110s java -Xms512M -Xmx1G @libraries/net/minecraftforge/forge/1.20.1-47.4.10/unix_args.txt nogui > ../dedicated-stage63.log 2>&1 || true
+          cd ..
+          grep -q 'Done (' dedicated-stage63.log
+          ! grep -Eqi 'Failed to start|Exception in server tick loop|NoClassDefFoundError|ClassNotFoundException|ModLoadingException|Encountered an unexpected exception' dedicated-stage63.log
+
+      - name: Upload Stage 63 artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-Runtime-Stage63-RecoveryBagVisual
+          path: stage63/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish exact Stage 63 receipt
+        if: always()
+        env:
+          SERVER_OUTCOME: ${{ steps.server.outcome }}
+          RP_OUTCOME: ${{ steps.rp.outcome }}
+          PACKAGE_OUTCOME: ${{ steps.package.outcome }}
+          SMOKE_OUTCOME: ${{ steps.smoke.outcome }}
+        run: |
+          set -euo pipefail
+          result=success
+          for value in "$SERVER_OUTCOME" "$RP_OUTCOME" "$PACKAGE_OUTCOME" "$SMOKE_OUTCOME"; do
+            if [ "$value" != success ]; then result=failure; fi
+          done
+          mkdir -p client-src/ci-results
+          cat > client-src/ci-results/stage63-recovery-bag-visual.txt <<EOF
+          workflow=${{ github.workflow }}
+          run_id=${GITHUB_RUN_ID}
+          run_attempt=${GITHUB_RUN_ATTEMPT}
+          run_url=https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          server_sha=${{ steps.refs.outputs.server_sha }}
+          client_sha=${{ steps.refs.outputs.client_sha }}
+          baseline_stage62_run=32555227197
+          server_build=$SERVER_OUTCOME
+          resource_pack=$RP_OUTCOME
+          package=$PACKAGE_OUTCOME
+          dedicated_smoke=$SMOKE_OUTCOME
+          custom_model_data=720049
+          result=$result
+          EOF
+          cd client-src
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ci-results/stage63-recovery-bag-visual.txt
+          git commit -m "ci: record Stage 63 recovery bag visual run ${GITHUB_RUN_ID}" || exit 0
+          git fetch origin client/runtime-migration-v1
+          git rebase origin/client/runtime-migration-v1
+          git push origin HEAD:client/runtime-migration-v1
