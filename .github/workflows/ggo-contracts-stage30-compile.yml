@@ -9,6 +9,7 @@ on:
       - 'hotfix/GgoContractService.java'
       - 'hotfix/GgoContractPersistence.java'
       - 'hotfix/GgoContractLifecycleHooks.java'
+      - 'hotfix/GgoContractProgressHooks.java'
       - 'hotfix/apply_ggo_contract_lifecycle_stage30.py'
       - 'hotfix/apply_ggo_contract_persistence_stage29.py'
       - 'hotfix/apply_ggo_compile_baseline_stage27.py'
@@ -54,6 +55,7 @@ jobs:
           grep -q 'PlayerLoggedInEvent' "$root/GgoContractLifecycleHooks.java"
           grep -q 'PlayerLoggedOutEvent' "$root/GgoContractLifecycleHooks.java"
           grep -q 'PlayerChangedDimensionEvent' "$root/GgoContractLifecycleHooks.java"
+          ! grep -q 'PlayerLoggedOutEvent' "$root/GgoContractProgressHooks.java"
           grep -q 'ATOMIC_MOVE' "$root/GgoContractPersistence.java"
 
       - name: Bootstrap ForgeGradle wrapper
@@ -84,6 +86,7 @@ jobs:
           test -f "$root/GgoContractService.class"
           test -f "$root/GgoContractPersistence.class"
           test -f "$root/GgoContractLifecycleHooks.class"
+          test -f "$root/GgoContractProgressHooks.class"
           test -f "$root/GgoContractNetwork.class"
           test -f "$root/GgoContractMapNetwork.class"
           test -f "$root/GgoLootSpawnService\$SupplyMarker.class"
