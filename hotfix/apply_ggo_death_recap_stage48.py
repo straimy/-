@@ -8,8 +8,10 @@ for name in ["GgoDeathRecapNetwork.java","GgoDeathRecapHooks.java"]:
     shutil.copy2(src,ROOT/name)
 network=(ROOT/"GgoDeathRecapNetwork.java").read_text(encoding="utf-8")
 hooks=(ROOT/"GgoDeathRecapHooks.java").read_text(encoding="utf-8")
-for required in ["ggo_death_recap","PLAY_TO_CLIENT","setClientConsumer","killerHealth","finalDamage"]:
-    if required not in network: raise SystemExit(f"stage48 death network missing: {required}")
-for required in ["LivingHurtEvent","LivingDeathEvent","attacker.distanceTo(victim)","No guessed" if False else "LAST_HIT"]:
-    if required not in hooks: raise SystemExit(f"stage48 death hooks missing: {required}")
-print("Applied GGO Stage 48 authoritative death recap")
+for required in ["ggo_death_recap",'VERSION="2"',"PLAY_TO_CLIENT","setClientConsumer","setKillFeedConsumer","KillFeed","sendKillFeed","killerHealth","finalDamage"]:
+    if required not in network: raise SystemExit(f"stage48/55 death network missing: {required}")
+for required in ["LivingHurtEvent","LivingDeathEvent","attacker.distanceTo(victim)","LAST_HIT","new GgoDeathRecapNetwork.KillFeed","runtime.auth().isAuthenticated(viewer)"]:
+    if required not in hooks: raise SystemExit(f"stage48/55 death hooks missing: {required}")
+print("Applied GGO Stage 48/55 authoritative death presentation")
+print(" - victim receives detailed recap")
+print(" - authenticated players in the same dimension receive compact kill feed")
