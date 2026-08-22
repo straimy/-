@@ -32,7 +32,8 @@ import java.util.function.Supplier;
  */
 @Mod.EventBusSubscriber(modid = "gunnerarena", bus = Mod.EventBusSubscriber.Bus.MOD)
 public final class GgoLaunchTicketNetwork {
-    private static final String PROTOCOL = "1";
+    // v2 requires the server -> client VerificationAck added to the official entry handshake.
+    private static final String PROTOCOL = "2";
     private static final int MAX_TICKET_LENGTH = 256;
     private static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation("gunnerarena", "launch_ticket"),
