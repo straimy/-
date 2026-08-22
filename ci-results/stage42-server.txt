@@ -1,8 +1,8 @@
 workflow=GGO Inventory Stage 42 Server Compile
-run_id=32547109061
+run_id=32547266653
 run_attempt=1
-run_url=https://github.com/straimy/-/actions/runs/32547109061
-source_sha=f4b840a2e605a93c29884ad5797903cd67822833
+run_url=https://github.com/straimy/-/actions/runs/32547266653
+source_sha=9321ba542eda3384c63b1046e281762184d1e919
 apply=success
 bootstrap=success
 compile=success
