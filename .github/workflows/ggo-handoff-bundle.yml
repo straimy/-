@@ -1,0 +1,82 @@
+name: GGO Project Handoff Bundle
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - client/runtime-migration-v1
+    paths:
+      - '.github/workflows/ggo-handoff-bundle.yml'
+      - 'docs/GGO-HANDOFF-2026-08-22.md'
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout client branch
+        uses: actions/checkout@v4
+        with:
+          ref: client/runtime-migration-v1
+          path: client
+          fetch-depth: 1
+
+      - name: Checkout server branch
+        uses: actions/checkout@v4
+        with:
+          ref: server/runtime-hardening-v1
+          path: server
+          fetch-depth: 1
+
+      - name: Checkout launcher branch
+        uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+          path: launcher
+          fetch-depth: 1
+
+      - name: Capture exact handoff refs
+        id: refs
+        shell: bash
+        run: |
+          set -euo pipefail
+          CLIENT_SHA="$(git -C client rev-parse HEAD)"
+          SERVER_SHA="$(git -C server rev-parse HEAD)"
+          LAUNCHER_SHA="$(git -C launcher rev-parse HEAD)"
+          printf '%s\n' \
+            'GunGloryOnline project handoff' \
+            'DATE=2026-08-22' \
+            'REPOSITORY=straimy/-' \
+            'MAIN_WRITE=FORBIDDEN' \
+            "CLIENT_BRANCH=client/runtime-migration-v1" \
+            "CLIENT_SHA=$CLIENT_SHA" \
+            "SERVER_BRANCH=server/runtime-hardening-v1" \
+            "SERVER_SHA=$SERVER_SHA" \
+            "LAUNCHER_BRANCH=launcher/bootstrap-v0.1" \
+            "LAUNCHER_SHA=$LAUNCHER_SHA" \
+            > HANDOFF-MANIFEST.txt
+
+      - name: Build source snapshots
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p handoff
+          cp HANDOFF-MANIFEST.txt handoff/
+          cp client/docs/GGO-HANDOFF-2026-08-22.md handoff/
+          for tree in client server launcher; do
+            rm -rf "$tree/.git"
+            tar -C "$tree" -czf "handoff/GGO-${tree}-2026-08-22.tar.gz" .
+          done
+          sha256sum handoff/GGO-*.tar.gz > handoff/SHA256SUMS.txt
+          cp HANDOFF-MANIFEST.txt handoff/HANDOFF-MANIFEST.txt
+
+      - name: Upload complete handoff
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-Project-Handoff-2026-08-22
+          path: handoff/**
+          if-no-files-found: error
+          retention-days: 30
