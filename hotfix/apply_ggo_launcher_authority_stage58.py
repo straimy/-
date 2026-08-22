@@ -21,7 +21,7 @@ for required in [
     "ServerAddress.parseString(OFFICIAL_SERVER)",
     'OFFICIAL_SERVER = "play.kvicloud.ru:24842"',
     "GGO CLIENT  •  BETA",
-    "CHOOSE ACTIVITY",
+    "ACTIVITIES",
     "new GgoSettingsScreen(this)",
 ]:
     if required not in text:
