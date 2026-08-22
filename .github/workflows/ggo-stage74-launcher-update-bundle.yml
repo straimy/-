@@ -10,6 +10,10 @@ on:
       - "site/deploy-stage74.sh"
       - "site/install-site.sh"
       - "launcher/src-tauri/**"
+  workflow_run:
+    workflows: ["GunGloryOnline Launcher Packages"]
+    types: [completed]
+    branches: ["launcher/bootstrap-v0.1"]
   workflow_dispatch:
 
 permissions:
@@ -18,6 +22,7 @@ permissions:
 
 jobs:
   assemble:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
