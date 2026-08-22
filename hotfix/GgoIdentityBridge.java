@@ -10,27 +10,56 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Properties;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Stable GunGloryOnline identity layer. Minecraft UUID is only a temporary bootstrap binding until launcher auth is attached;
- * all gameplay/social systems consume the generated GGO account id and public GGO-ID instead.
+ * Stable GunGloryOnline identity layer.
+ * Official launcher sessions bind the verified GGO account id directly for the life of the connection.
+ * Minecraft UUID mapping remains only as a development/legacy bootstrap fallback.
  */
 public final class GgoIdentityBridge {
     private static final Object LOCK = new Object();
     private static final Properties IDS = new Properties();
     private static final Path FILE = FMLPaths.CONFIGDIR.get().resolve("gunnerarena").resolve("ggo-identities.properties");
+    private static final Map<UUID, UUID> AUTHENTICATED_BINDINGS = new ConcurrentHashMap<>();
     private static boolean loaded;
 
     private GgoIdentityBridge() {}
 
     public static UUID idFor(ServerPlayer player) {
         if (player == null) return new UUID(0L, 0L);
-        UUID id=idForBootstrap(player.getUUID());
-        rememberName(player.getGameProfile().getName(),id);
+        UUID bound = AUTHENTICATED_BINDINGS.get(player.getUUID());
+        UUID id = bound != null ? bound : idForBootstrap(player.getUUID());
+        rememberName(player.getGameProfile().getName(), id);
         publicIdFor(id);
         return id;
+    }
+
+    /** Bind a server connection to the authoritative account id returned by the GGO ticket service. */
+    public static UUID bindAuthenticated(ServerPlayer player, String accountId, String displayName) {
+        if (player == null) throw new IllegalArgumentException("player is required");
+        UUID ggo = parseAccountId(accountId);
+        AUTHENTICATED_BINDINGS.put(player.getUUID(), ggo);
+        rememberName(player.getGameProfile().getName(), ggo);
+        if (displayName != null && !displayName.isBlank()) rememberName(displayName.trim(), ggo);
+        publicIdFor(ggo);
+        return ggo;
+    }
+
+    public static void clearAuthenticated(ServerPlayer player) {
+        if (player != null) AUTHENTICATED_BINDINGS.remove(player.getUUID());
+    }
+
+    private static UUID parseAccountId(String accountId) {
+        if (accountId == null) throw new IllegalArgumentException("GGO account id is required");
+        String raw = accountId.trim().replace("-", "");
+        if (!raw.matches("(?i)[0-9a-f]{32}")) throw new IllegalArgumentException("invalid GGO account id");
+        String canonical = raw.substring(0, 8) + "-" + raw.substring(8, 12) + "-" + raw.substring(12, 16)
+                + "-" + raw.substring(16, 20) + "-" + raw.substring(20);
+        return UUID.fromString(canonical);
     }
 
     /** Temporary compatibility alias. New code should never persist/use a Minecraft UUID outside this bridge. */
