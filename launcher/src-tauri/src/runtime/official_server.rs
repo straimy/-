@@ -64,6 +64,10 @@ fn insert_or_update(entries: &mut Vec<Value>) -> bool {
             server.insert("name".to_string(), Value::String(SERVER_NAME.to_string()));
             changed = true;
         }
+        if !matches!(server.get("acceptTextures"), Some(Value::Byte(1))) {
+            server.insert("acceptTextures".to_string(), Value::Byte(1));
+            changed = true;
+        }
         break;
     }
 
@@ -121,5 +125,24 @@ mod tests {
             server.get("ip"),
             Some(&Value::String("play.kvicloud.ru:24842".into()))
         );
+        assert_eq!(server.get("acceptTextures"), Some(&Value::Byte(1)));
+    }
+
+    #[test]
+    fn repairs_existing_server_resource_pack_policy() {
+        let mut server = HashMap::new();
+        server.insert("name".to_string(), Value::String("GunGloryOnline".into()));
+        server.insert(
+            "ip".to_string(),
+            Value::String("play.kvicloud.ru:24842".into()),
+        );
+        let mut entries = vec![Value::Compound(server)];
+
+        assert!(insert_or_update(&mut entries));
+        let Value::Compound(server) = &entries[0] else {
+            panic!("expected compound")
+        };
+        assert_eq!(server.get("acceptTextures"), Some(&Value::Byte(1)));
+        assert!(!insert_or_update(&mut entries));
     }
 }
