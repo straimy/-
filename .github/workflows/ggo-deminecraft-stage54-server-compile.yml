@@ -1,0 +1,125 @@
+name: GGO DeMinecraft Stage 54 Server Compile
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - server/runtime-hardening-v1
+    paths:
+      - 'hotfix/GgoMedicineService.java'
+      - 'hotfix/GgoDeathRecapNetwork.java'
+      - 'hotfix/GgoDeathRecapHooks.java'
+      - 'hotfix/GgoRecoveryBagService.java'
+      - 'hotfix/GgoMapIntegrityGuard.java'
+      - 'hotfix/GgoMapPaletteAuditService.java'
+      - 'hotfix/ArenaBeltGuard.java'
+      - 'hotfix/apply_ggo_medicine_stage47.py'
+      - 'hotfix/apply_ggo_death_recap_stage48.py'
+      - 'hotfix/apply_ggo_recovery_bag_stage49.py'
+      - 'hotfix/apply_ggo_map_integrity_stage51.py'
+      - 'hotfix/apply_ggo_map_palette_stage54.py'
+      - '.github/workflows/ggo-deminecraft-stage54-server-compile.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Unpack Runtime v1 source
+        run: |
+          set -euo pipefail
+          rm -rf ga-build && mkdir ga-build
+          unzip -q "$SOURCE_ZIP" -d ga-build
+      - name: Apply server runtime through Stage 54
+        id: apply
+        run: |
+          set -euo pipefail
+          python3 hotfix/apply_ggo_contract_rewards_stage26.py
+          python3 hotfix/apply_ggo_contract_map_stage27.py
+          python3 hotfix/apply_ggo_contract_push_stage28.py
+          python3 hotfix/apply_ggo_contract_persistence_stage29.py
+          python3 hotfix/apply_ggo_contract_lifecycle_stage30.py
+          python3 hotfix/apply_ggo_contract_balance_stage31.py
+          python3 hotfix/apply_ggo_contract_eligibility_stage32.py
+          python3 hotfix/apply_ggo_supply_lifecycle_stage33.py
+          python3 hotfix/apply_ggo_extraction_runtime_stage34.py
+          python3 hotfix/apply_ggo_contract_network_guard_stage36.py
+          python3 hotfix/apply_ggo_contract_reward_order_stage37.py
+          python3 hotfix/apply_ggo_compile_baseline_stage27.py
+          python3 hotfix/apply_ggo_spawn_presence_stage38.py
+          python3 hotfix/apply_ggo_deminecraft_world_stage39.py
+          python3 hotfix/apply_ggo_deminecraft_loot_stage41.py
+          python3 hotfix/apply_ggo_inventory_stage42.py
+          python3 hotfix/apply_ggo_visible_content_stage43.py
+          python3 hotfix/apply_ggo_medicine_stage47.py
+          python3 hotfix/apply_ggo_death_recap_stage48.py
+          python3 hotfix/apply_ggo_recovery_bag_stage49.py
+          python3 hotfix/apply_ggo_map_integrity_stage51.py
+          python3 hotfix/apply_ggo_map_palette_stage54.py
+          root=ga-build/src/main/java/arena/forge
+          grep -q 'recoverOwnerContents' "$root/GgoRecoveryBagService.java"
+          grep -q 'getAffectedBlocks().clear()' "$root/GgoMapIntegrityGuard.java"
+          grep -q 'Commands.literal("ggopalette")' "$root/GgoMapPaletteAuditService.java"
+          grep -q 'BUDGET_PER_TICK=4096' "$root/GgoMapPaletteAuditService.java"
+      - name: Bootstrap ForgeGradle wrapper
+        id: bootstrap
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/forge-mdk /tmp/forge-mdk.zip
+          curl -fL --retry 3 -o /tmp/forge-mdk.zip https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-mdk.zip
+          mkdir -p /tmp/forge-mdk
+          unzip -q /tmp/forge-mdk.zip 'gradlew' 'gradlew.bat' 'gradle/*' -d /tmp/forge-mdk
+          cp /tmp/forge-mdk/gradlew ga-build/gradlew
+          cp /tmp/forge-mdk/gradlew.bat ga-build/gradlew.bat
+          rm -rf ga-build/gradle && cp -a /tmp/forge-mdk/gradle ga-build/gradle
+          chmod +x ga-build/gradlew
+      - name: Compile Forge Core
+        id: compile
+        working-directory: ga-build
+        run: ./gradlew --no-daemon compileJava --stacktrace
+      - name: Verify Stage 54 classes
+        id: verify
+        run: |
+          set -euo pipefail
+          root=ga-build/build/classes/java/main/arena/forge
+          for c in GgoMedicineService GgoDeathRecapNetwork GgoDeathRecapHooks GgoRecoveryBagService GgoMapIntegrityGuard GgoMapPaletteAuditService GgoVisibleItemPolicy GgoVanillaLootFence GgoWorldRuntimeFence GgoPlayerPresencePolicy InventoryUtilityCommands ArenaBeltGuard; do test -f "$root/$c.class"; done
+      - name: Publish exact CI receipt
+        if: always()
+        env:
+          APPLY_OUTCOME: ${{ steps.apply.outcome }}
+          BOOTSTRAP_OUTCOME: ${{ steps.bootstrap.outcome }}
+          COMPILE_OUTCOME: ${{ steps.compile.outcome }}
+          VERIFY_OUTCOME: ${{ steps.verify.outcome }}
+        run: |
+          set -euo pipefail
+          result=success
+          for value in "$APPLY_OUTCOME" "$BOOTSTRAP_OUTCOME" "$COMPILE_OUTCOME" "$VERIFY_OUTCOME"; do [ "$value" = success ] || result=failure; done
+          mkdir -p ci-results
+          printf '%s\n' \
+            "workflow=${{ github.workflow }}" \
+            "run_id=${{ github.run_id }}" \
+            "run_attempt=${{ github.run_attempt }}" \
+            "run_url=https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            "source_sha=${{ github.sha }}" \
+            "apply=$APPLY_OUTCOME" \
+            "bootstrap=$BOOTSTRAP_OUTCOME" \
+            "compile=$COMPILE_OUTCOME" \
+            "verify=$VERIFY_OUTCOME" \
+            "result=$result" > ci-results/stage54-server.txt
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add ci-results/stage54-server.txt
+          git commit -m "ci: record stage54 server run ${{ github.run_id }}" || exit 0
+          git fetch origin "$GITHUB_REF_NAME"
+          git rebase "origin/$GITHUB_REF_NAME"
+          git push origin "HEAD:$GITHUB_REF_NAME"
