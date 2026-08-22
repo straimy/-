@@ -14,6 +14,7 @@ import net.minecraftforge.event.entity.living.LivingDeathEvent;
 import net.minecraftforge.event.entity.player.PlayerDropsEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
+import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
@@ -33,7 +34,9 @@ public final class GgoRecoveryBagService {
     private static final Map<UUID,PendingDeath> PENDING=new HashMap<>();
     private GgoRecoveryBagService(){}
 
-    @SubscribeEvent public static void death(LivingDeathEvent event){
+    /** Runs late so a death canceled by another game mechanic never creates a bag. */
+    @SubscribeEvent(priority=EventPriority.LOWEST)
+    public static void death(LivingDeathEvent event){
         if(!(event.getEntity() instanceof ServerPlayer p))return;
         ArenaRuntime r=GunnerArenaMod.RUNTIME;if(r==null||!r.auth().isAuthenticated(p))return;
         ProtectedLoadout protectedLoadout=ProtectedLoadout.capture(p);
@@ -47,20 +50,17 @@ public final class GgoRecoveryBagService {
             bag=new ItemStack(Items.BUNDLE);
             bag.setHoverName(Component.literal("RECOVERY BAG // "+p.getGameProfile().getName()).withStyle(ChatFormatting.GOLD));
             CompoundTag tag=bag.getOrCreateTag();tag.putBoolean(BAG_TAG,true);tag.putBoolean("ggo_keep_vanilla",true);tag.putUUID(OWNER_TAG,p.getUUID());tag.put(CONTENTS_TAG,contents);tag.putInt("GgoRecoveryStacks",stacks);tag.putInt("GgoRecoveryItems",items);tag.putLong("GgoRecoveryCreatedTick",r.serverTick());
+            ItemEntity entity=new ItemEntity(p.serverLevel(),p.getX(),p.getY()+0.25,p.getZ(),bag.copy());
+            entity.setPickUpDelay(20);p.serverLevel().addFreshEntity(entity);
         }
         p.getInventory().setChanged();
         PENDING.put(p.getUUID(),new PendingDeath(protectedLoadout,bag));
     }
 
-    /** Suppress Minecraft's loose death pile and substitute at most one sealed GGO bag. */
+    /** Suppress Minecraft's loose death pile; the GGO bag was spawned explicitly above. */
     @SubscribeEvent public static void drops(PlayerDropsEvent event){
         if(!(event.getEntity() instanceof ServerPlayer p))return;
-        PendingDeath pending=PENDING.get(p.getUUID());if(pending==null)return;
-        event.getDrops().clear();
-        if(!pending.bag.isEmpty()){
-            ItemEntity entity=new ItemEntity(p.serverLevel(),p.getX(),p.getY()+0.25,p.getZ(),pending.bag.copy());
-            entity.setPickUpDelay(20);event.getDrops().add(entity);
-        }
+        if(PENDING.containsKey(p.getUUID()))event.getDrops().clear();
     }
 
     /** New player entity receives the protected combat loadout after a real death clone. */
