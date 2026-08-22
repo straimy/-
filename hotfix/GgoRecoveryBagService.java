@@ -32,6 +32,8 @@ public final class GgoRecoveryBagService {
     public static final String BAG_TAG="GgoRecoveryBag";
     public static final String OWNER_TAG="GgoRecoveryOwner";
     public static final String CONTENTS_TAG="GgoRecoveryContents";
+    /** Stable RP contract; never reuse for a different GGO proxy item. */
+    public static final int RECOVERY_BAG_MODEL=720049;
     private static final int FIELD_FIRST=18,FIELD_LAST=35;
     private static final Map<UUID,PendingDeath> PENDING=new HashMap<>();
     private GgoRecoveryBagService(){}
@@ -51,7 +53,15 @@ public final class GgoRecoveryBagService {
         if(!contents.isEmpty()){
             bag=new ItemStack(Items.BUNDLE);
             bag.setHoverName(Component.literal("RECOVERY BAG // "+p.getGameProfile().getName()).withStyle(ChatFormatting.GOLD));
-            CompoundTag tag=bag.getOrCreateTag();tag.putBoolean(BAG_TAG,true);tag.putBoolean("ggo_keep_vanilla",true);tag.putUUID(OWNER_TAG,p.getUUID());tag.put(CONTENTS_TAG,contents);tag.putInt("GgoRecoveryStacks",stacks);tag.putInt("GgoRecoveryItems",items);tag.putLong("GgoRecoveryCreatedTick",r.serverTick());
+            CompoundTag tag=bag.getOrCreateTag();
+            tag.putBoolean(BAG_TAG,true);
+            tag.putBoolean("ggo_keep_vanilla",true);
+            tag.putInt("CustomModelData",RECOVERY_BAG_MODEL);
+            tag.putUUID(OWNER_TAG,p.getUUID());
+            tag.put(CONTENTS_TAG,contents);
+            tag.putInt("GgoRecoveryStacks",stacks);
+            tag.putInt("GgoRecoveryItems",items);
+            tag.putLong("GgoRecoveryCreatedTick",r.serverTick());
             ItemEntity entity=new ItemEntity(p.serverLevel(),p.getX(),p.getY()+0.25,p.getZ(),bag.copy());
             entity.setPickUpDelay(20);p.serverLevel().addFreshEntity(entity);
         }
