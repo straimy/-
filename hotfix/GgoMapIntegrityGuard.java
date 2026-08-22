@@ -18,12 +18,13 @@ public final class GgoMapIntegrityGuard {
         event.getAffectedBlocks().clear();
     }
 
-    /** Disable vanilla systems that can mutate authored maps or populate them with Minecraft mobs. */
+    /** Disable vanilla systems that mutate maps/populate them or leak Minecraft death chat. */
     @SubscribeEvent public static void levelLoad(LevelEvent.Load event){
         if(!(event.getLevel() instanceof ServerLevel level))return;
         var server=level.getServer();
         level.getGameRules().getRule(GameRules.RULE_MOBGRIEFING).set(false,server);
         level.getGameRules().getRule(GameRules.RULE_DOFIRETICK).set(false,server);
         level.getGameRules().getRule(GameRules.RULE_DOMOBSPAWNING).set(false,server);
+        level.getGameRules().getRule(GameRules.RULE_SHOWDEATHMESSAGES).set(false,server);
     }
 }
