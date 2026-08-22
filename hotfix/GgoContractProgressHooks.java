@@ -4,7 +4,6 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraftforge.event.entity.living.LivingDeathEvent;
-import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
@@ -29,10 +28,5 @@ public final class GgoContractProgressHooks {
         if(player.distanceTo(victim)>=DISTANCE_DRILL_METERS){
             GgoContractService.addProgress(player,"distance_drill",1);
         }
-    }
-
-    @SubscribeEvent
-    public static void logout(PlayerEvent.PlayerLoggedOutEvent event){
-        GgoContractService.clear(event.getEntity().getUUID());
     }
 }
