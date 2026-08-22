@@ -9,6 +9,7 @@ on:
       - 'hotfix/GgoCombatHud.java'
       - 'hotfix/GgoDeathRecapState.java'
       - 'hotfix/GgoDeathRecapAdapter.java'
+      - 'hotfix/GgoDeathRecapBootstrap.java'
       - 'hotfix/GgoRespawnScreen.java'
       - 'hotfix/apply_ggo_combat_hud_stage47.py'
       - 'hotfix/apply_ggo_death_recap_stage48.py'
@@ -73,6 +74,7 @@ jobs:
           grep -q 'ggomed use' "$root/GgoCombatHud.java"
           grep -q 'COMBAT REPORT' "$root/GgoRespawnScreen.java"
           grep -q 'GgoDeathRecapNetwork' "$root/GgoDeathRecapAdapter.java"
+          grep -q 'GgoDeathRecapAdapter.install()' "$root/GgoDeathRecapBootstrap.java"
           grep -q 'keySwapOffhand' "$root/GgoCombatInputFence.java"
       - name: Bootstrap ForgeGradle wrapper
         id: bootstrap
@@ -95,7 +97,7 @@ jobs:
         run: |
           set -euo pipefail
           root=ga-build/client-ui/build/classes/java/main/arena/client/shell
-          for c in GgoCombatHud GgoCombatInputFence GgoRespawnScreen GgoVanillaRuntimeFence GgoDeathRecapState GgoDeathRecapAdapter GgoShellScreen; do test -f "$root/$c.class"; done
+          for c in GgoCombatHud GgoCombatInputFence GgoRespawnScreen GgoVanillaRuntimeFence GgoDeathRecapState GgoDeathRecapAdapter GgoDeathRecapBootstrap GgoShellScreen; do test -f "$root/$c.class"; done
       - name: Publish exact CI receipt
         if: always()
         env:
