@@ -1,0 +1,66 @@
+            return 0;
+        }
+    }
+
+    private static int customFireMode(CommandSourceStack source, ArenaRuntime runtime) {
+        try {
+            ServerPlayer player = source.getPlayerOrException();
+            if (!runtime.isCustomCombatAllowed(player)) {
+                source.sendFailure(Component.literal("[GA] Смена режима доступна только живому игроку в активном раунде."));
+                return 0;
+            }
+            var result = runtime.customWeaponCombat().cycleMode(player);
+            if (result.success()) ok(source, result.message());
+            else source.sendFailure(Component.literal("[GA] " + result.message()));
+            return result.success() ? 1 : 0;
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("[GA] Команда доступна только игроку."));
+            return 0;
+        }
+    }
+
+    private static int botAuth(CommandSourceStack source, ArenaRuntime runtime, String token) {
+        try {
+            ServerPlayer player = source.getPlayerOrException();
+            String name = player.getGameProfile().getName();
+            if (!runtime.bots().authenticate(name, token)) {
+                source.sendFailure(Component.literal("[GA] Неверный или устаревший bot token."));
+                return 0;
+            }
+            player.addTag("gunnerarena_bot");
+            player.addTag(AuthGate.AUTH_TAG);
+            ok(source, "AI Gunner authenticated as PLAYER: " + name);
+            return 1;
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("[GA] /botauth доступен только подключённому bot-клиенту."));
+            return 0;
+        }
+    }
+
+    private static int botsStatus(CommandSourceStack source, ArenaRuntime runtime) {
+        int real = 0;
+        var server = source.getServer();
+        for (ServerPlayer p : server.getPlayerList().getPlayers()) if (!p.getTags().contains("gunnerarena_bot")) real++;
+        int desired = runtime.bots().desired(real);
+        int reserved = runtime.bots().slots().size();
+        long connected = runtime.bots().slots().stream().filter(arena.bot.BotSlot::connected).count();
+        source.sendSuccess(() -> Component.literal("[GA] bots autofill=" + runtime.bots().autofill()
+            + " real=" + real + " desired=" + desired + " reserved=" + reserved + " connected=" + connected), false);
+        return reserved;
+    }
+
+    private static int botsList(CommandSourceStack source, ArenaRuntime runtime) {
+        var slots = runtime.bots().slots();
+        source.sendSuccess(() -> Component.literal("[GA] bot slots=" + slots.size()), false);
+        for (var s : slots) {
+            long left = Math.max(0L, s.rotateAtTick() - runtime.serverTick());
+            source.sendSuccess(() -> Component.literal("  " + s.name() + " | " + s.profile()
+                + " | " + (s.connected() ? "ONLINE" : "WAITING") + " | rotate~" + (left / 20L) + "s"
+                + " | token=" + s.launchToken()), false);
+        }
+        return slots.size();
+    }
+
+    private static int botsRotate(CommandSourceStack source, ArenaRuntime runtime) {
+        boolean ok = runtime.bots().rotateOne(runtime.serverTick());
+        if (ok) ok(source, "One bot slot rotated");
