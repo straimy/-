@@ -21,7 +21,8 @@ SERVER_KEY = os.environ.get("GGO_SERVER_KEY", "")
 ACCESS_TTL = 12 * 60 * 60
 REFRESH_TTL = 30 * 24 * 60 * 60
 DEVICE_TTL = 10 * 60
-GAME_TICKET_TTL = 75
+# Still one-shot: this is only the maximum pre-consume window for slow first starts.
+GAME_TICKET_TTL = 3 * 60
 USERNAME_RE = re.compile(r"^[A-Za-z0-9_]{3,16}$")
 ALLOWED_SKINS = {"ggo", "microsoft", "default"}
 ALLOWED_LANGS = {"ru", "en", "uk"}

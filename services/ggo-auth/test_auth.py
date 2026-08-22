@@ -96,7 +96,8 @@ class AuthSmoke(unittest.TestCase):
         self.assertEqual(status, 201)
         self.assertTrue(ticket["ticket"])
         self.assertEqual(ticket["player_id"], me["id"])
-        self.assertLessEqual(ticket["expires_in"], 90)
+        self.assertGreaterEqual(ticket["expires_in"], 175)
+        self.assertLessEqual(ticket["expires_in"], 180)
 
         status, denied, _ = self.req(
             "POST",
