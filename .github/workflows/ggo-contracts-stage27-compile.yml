@@ -12,7 +12,7 @@ on:
       - '.github/workflows/ggo-contracts-stage27-compile.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   compile:
@@ -37,6 +37,7 @@ jobs:
           unzip -q "$SOURCE_ZIP" -d ga-build
 
       - name: Apply contracts through Stage 27
+        id: apply
         shell: bash
         run: |
           set -euo pipefail
@@ -50,6 +51,7 @@ jobs:
           grep -q 'creditBalance' "$root/GgoContractMapNetwork.java"
 
       - name: Bootstrap ForgeGradle wrapper
+        id: bootstrap
         shell: bash
         run: |
           set -euo pipefail
@@ -67,11 +69,13 @@ jobs:
           fi
 
       - name: Compile Forge Core
+        id: compile
         working-directory: ga-build
         shell: bash
         run: ./gradlew --no-daemon compileJava --stacktrace
 
       - name: Verify Stage 27 classes
+        id: verify
         shell: bash
         run: |
           set -euo pipefail
@@ -80,3 +84,37 @@ jobs:
           test -f "${root}/GgoContractMapNetwork\$Snapshot.class"
           test -f "${root}/GgoLootSpawnService\$SupplyMarker.class"
           test -f "${root}/GgoSupplyExtractionService\$ExtractionMarker.class"
+
+      - name: Publish exact CI receipt
+        if: always()
+        shell: bash
+        env:
+          APPLY_OUTCOME: ${{ steps.apply.outcome }}
+          BOOTSTRAP_OUTCOME: ${{ steps.bootstrap.outcome }}
+          COMPILE_OUTCOME: ${{ steps.compile.outcome }}
+          VERIFY_OUTCOME: ${{ steps.verify.outcome }}
+        run: |
+          set -euo pipefail
+          result=success
+          for value in "$APPLY_OUTCOME" "$BOOTSTRAP_OUTCOME" "$COMPILE_OUTCOME" "$VERIFY_OUTCOME"; do
+            [ "$value" = success ] || result=failure
+          done
+          mkdir -p ci-results
+          printf '%s\n' \
+            "workflow=${{ github.workflow }}" \
+            "run_id=${{ github.run_id }}" \
+            "run_attempt=${{ github.run_attempt }}" \
+            "run_url=https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            "source_sha=${{ github.sha }}" \
+            "apply=$APPLY_OUTCOME" \
+            "bootstrap=$BOOTSTRAP_OUTCOME" \
+            "compile=$COMPILE_OUTCOME" \
+            "verify=$VERIFY_OUTCOME" \
+            "result=$result" > ci-results/stage27-server.txt
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add ci-results/stage27-server.txt
+          git commit -m "ci: record stage27 server run ${{ github.run_id }}" || exit 0
+          git fetch origin "$GITHUB_REF_NAME"
+          git rebase "origin/$GITHUB_REF_NAME"
+          git push origin "HEAD:$GITHUB_REF_NAME"
