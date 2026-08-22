@@ -51,8 +51,18 @@ public final class GgoDeathRecapHooks {
         LastHit last=LAST_HIT.remove(victim.getUUID());
         float finalDamage=0f;
         if(last!=null&&(last.attackerId==null||last.attackerId.equals(attackerId))&&last.source.equals(source.getMsgId()))finalDamage=last.damage;
-        String sector=sector(victim.getBlockX(),victim.getBlockZ());
-        GgoDeathRecapNetwork.send(victim,new GgoDeathRecapNetwork.Snapshot(killer,weapon,source.getMsgId(),sector,distance,finalDamage,killerHealth,killerMax,runtime.serverTick()));
+        long tick=runtime.serverTick();String sector=sector(victim.getBlockX(),victim.getBlockZ());
+        GgoDeathRecapNetwork.send(victim,new GgoDeathRecapNetwork.Snapshot(killer,weapon,source.getMsgId(),sector,distance,finalDamage,killerHealth,killerMax,tick));
+
+        var server=victim.getServer();
+        if(server!=null){
+            var feed=new GgoDeathRecapNetwork.KillFeed(killer,victim.getGameProfile().getName(),weapon,distance,tick);
+            for(ServerPlayer viewer:server.getPlayerList().getPlayers()){
+                if(!runtime.auth().isAuthenticated(viewer))continue;
+                if(!viewer.level().dimension().equals(victim.level().dimension()))continue;
+                GgoDeathRecapNetwork.sendKillFeed(viewer,feed);
+            }
+        }
     }
 
     private static String sector(int x,int z){int sx=Math.floorDiv(x,256),sz=Math.floorDiv(z,256);char col=(char)('A'+Math.floorMod(sx,26));return col+"-"+Math.abs(sz);}
