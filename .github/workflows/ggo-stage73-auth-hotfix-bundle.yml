@@ -1,0 +1,231 @@
+name: GGO Stage 73 Auth Hotfix Bundle
+
+on:
+  workflow_run:
+    workflows: ["GunGloryOnline Launcher Packages"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  assemble:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'launcher/bootstrap-v0.1')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Resolve launcher package run
+        id: source
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_RUN_ID: ${{ github.event.workflow_run.id }}
+          EVENT_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = workflow_run ]; then
+            run_id="$EVENT_RUN_ID"
+            head_sha="$EVENT_HEAD_SHA"
+          else
+            row="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ggo-launcher-packages.yml --branch launcher/bootstrap-v0.1 --status success --limit 1 --json databaseId,headSha --jq '.[0] | [.databaseId,.headSha] | @tsv')"
+            test -n "$row"
+            IFS=$'\t' read -r run_id head_sha <<<"$row"
+          fi
+          test -n "$run_id" && test -n "$head_sha"
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+          echo "Using launcher package run $run_id @ $head_sha"
+
+      - name: Checkout exact successful hotfix source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.source.outputs.head_sha }}
+          fetch-depth: 0
+
+      - name: Download fresh Windows launcher packages
+        uses: actions/download-artifact@v4
+        with:
+          name: GunGloryOnline-Launcher-Windows
+          path: fresh/windows
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.source.outputs.run_id }}
+
+      - name: Download fresh Linux launcher packages
+        uses: actions/download-artifact@v4
+        with:
+          name: GunGloryOnline-Launcher-Linux
+          path: fresh/linux
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.source.outputs.run_id }}
+
+      - name: Download exact Stage 70 runtime baseline
+        uses: actions/download-artifact@v4
+        with:
+          name: GunGloryOnline-Closed-Beta-Baseline-2026-08-22
+          path: stage70-artifact
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: 32567000478
+
+      - name: Assemble corrected Closed Beta bundle
+        id: bundle
+        run: |
+          set -euo pipefail
+          BASELINE_ZIP="stage70-artifact/GunGloryOnline-Closed-Beta-Baseline-2026-08-22.zip"
+          test -f "$BASELINE_ZIP"
+          echo 'f71ec514ae9df25cd85d20f0ebbfde768024ac5bb781cae983811225204b8687  stage70-artifact/GunGloryOnline-Closed-Beta-Baseline-2026-08-22.zip' | sha256sum -c -
+
+          rm -rf stage70 corrected
+          mkdir -p stage70 corrected/{launcher/windows,launcher/linux,web,game-server/mods,game-server/infra,receipts}
+          unzip -q "$BASELINE_ZIP" -d stage70
+
+          # Fresh launcher binaries built from the same successful source SHA as this bundle.
+          cp fresh/windows/GunGloryOnline-Launcher-Windows.exe corrected/launcher/windows/
+          cp fresh/windows/GunGloryOnline-Launcher-Windows.msi corrected/launcher/windows/
+          cp fresh/windows/GunGloryOnline-Launcher-Windows-Portable.zip corrected/launcher/windows/
+          cp fresh/linux/GunGloryOnline-Launcher-Linux.AppImage corrected/launcher/linux/
+          cp fresh/linux/GunGloryOnline-Launcher-Ubuntu-Debian.deb corrected/launcher/linux/
+          cp fresh/linux/GunGloryOnline-Launcher-Fedora-RHEL.rpm corrected/launcher/linux/
+
+          # Current production website/auth/nginx and one-command recovery scripts.
+          cp -a site corrected/web/site
+          mkdir -p corrected/web/services
+          cp -a services/ggo-auth corrected/web/services/ggo-auth
+
+          # Runtime remains the immutable Stage68/69 + official RP baseline.
+          cp stage70/final/runtime/server/mods/gungloryonline-core-runtime-v1-stage68.jar corrected/game-server/mods/
+          cp stage70/final/runtime/client/mods/gungloryonline-core-runtime-v1-stage68.jar corrected/web/site/content/files/v40/
+          cp stage70/final/runtime/client/mods/gungloryonline-ui-runtime-v1-stage69.jar corrected/web/site/content/files/v40/
+          cp stage70/final/runtime/client/resourcepacks/GunGloryOnline-Official.zip corrected/web/site/content/files/v40/
+          cp infra/vds/game-server/run.sh corrected/game-server/infra/run.sh
+
+          chmod +x corrected/web/site/install-site.sh corrected/web/site/verify-production.sh corrected/web/site/recover-production.sh corrected/web/services/ggo-auth/install.sh corrected/game-server/infra/run.sh
+
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          root=Path('corrected/web/site')
+          manifest=json.loads((root/'content/manifests/beta.json').read_text(encoding='utf-8'))
+          rows={x['path']:x for x in manifest['files']}
+          wanted={
+            'mods/gungloryonline-core-runtime-v1-stage68.jar':'gungloryonline-core-runtime-v1-stage68.jar',
+            'mods/gungloryonline-ui-runtime-v1-stage69.jar':'gungloryonline-ui-runtime-v1-stage69.jar',
+            'resourcepacks/GunGloryOnline-Official.zip':'GunGloryOnline-Official.zip',
+          }
+          for path,name in wanted.items():
+              row=rows[path]
+              f=root/'content/files/v40'/name
+              raw=f.read_bytes()
+              assert len(raw)==row['size'], (path,len(raw),row['size'])
+              assert hashlib.sha256(raw).hexdigest()==row['sha256'], path
+              assert row['required'] is True and row['side']=='client', row
+          assert 'resourcepacks/GunGloryOnline-ResourcePack-1.20.1-v5-swittie-social.zip' not in rows
+          print('manifest runtime contract: PASS')
+          PY
+
+          # Static contract gates for the exact production fixes requested for this hotfix.
+          bash -n corrected/web/site/install-site.sh
+          bash -n corrected/web/site/verify-production.sh
+          bash -n corrected/web/site/recover-production.sh
+          grep -q 'Disabling duplicate nginx vhost' corrected/web/site/install-site.sh
+          grep -q 'proxy_pass http://127.0.0.1:8787' corrected/web/site/nginx/ggo.conf
+          grep -q '/api/v1/auth/register' corrected/web/site/install-site.sh
+          grep -q '/api/v1/auth/login' corrected/web/site/install-site.sh
+          grep -q 'SIGN IN / CREATE ACCOUNT' launcher/src/AccountHub.tsx
+          grep -q 'OFFLINE TRAINING FALLBACK' launcher/src/AccountHub.tsx
+          grep -q 'returnAfterAuth' corrected/web/site/account/account.js
+          grep -q "approve.*===.*'1'" corrected/web/site/account/device.html
+          grep -q '24842' corrected/web/site/recover-production.sh
+
+          cat > corrected/DEPLOY-AND-VERIFY.md <<'EOF'
+          # GunGloryOnline Stage 73 — Auth/Account hotfix bundle
+
+          This bundle contains no VDS credentials and does not modify `main`.
+
+          ## 1. Deploy website + auth routing without deleting the auth database
+
+          Copy the extracted bundle to the Ubuntu VDS and run from the bundle root:
+
+          ```bash
+          sudo ./web/site/recover-production.sh
+          ```
+
+          The recovery script backs up `/var/lib/ggo-auth/auth.db`, disables duplicate enabled nginx vhosts for `ggo.kvicloud.ru`, installs the canonical HTTPS config, verifies `/api/v1/health`, register/login POST routing, configures the official game server endpoint on TCP 24842, and then runs the production verifier.
+
+          Never delete `/var/lib/ggo-auth/auth.db`.
+
+          ## 2. Expected public green state
+
+          - `https://ggo.kvicloud.ru/` serves the portal.
+          - `GET https://ggo.kvicloud.ru/api/v1/health` returns JSON from `ggo-auth`.
+          - Empty JSON POST to register returns validation `400`, never `405`.
+          - Empty JSON POST to login returns auth `401`, never `405`.
+          - `play.kvicloud.ru` resolves to `2.26.100.125`.
+          - `play.kvicloud.ru:24842` accepts TCP.
+
+          ## 3. Final manual end-to-end acceptance
+
+          Install the launcher from `launcher/`, choose `SIGN IN / CREATE ACCOUNT`, register/login in the official GGO Account UI, allow the browser device flow to return to the launcher, install/sync the runtime, press PLAY ONLINE, and verify the one-shot ticket is ACKed by the server and the VERIFYING overlay disappears before gameplay unlocks.
+          EOF
+
+          cp .ci/public/32570294198.txt corrected/receipts/public-before-hotfix-32570294198.txt || true
+          printf 'launcher_package_run=%s\nsource_sha=%s\n' '${{ steps.source.outputs.run_id }}' '${{ steps.source.outputs.head_sha }}' > corrected/receipts/source.txt
+
+          (cd corrected && find . -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt)
+          zip -qr GunGloryOnline-Stage73-Auth-Hotfix-Bundle-2026-08-22.zip corrected
+          unzip -tq GunGloryOnline-Stage73-Auth-Hotfix-Bundle-2026-08-22.zip
+          sha256sum GunGloryOnline-Stage73-Auth-Hotfix-Bundle-2026-08-22.zip > GunGloryOnline-Stage73-Auth-Hotfix-Bundle-2026-08-22.zip.sha256
+          echo "bytes=$(stat -c%s GunGloryOnline-Stage73-Auth-Hotfix-Bundle-2026-08-22.zip)" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(cut -d' ' -f1 GunGloryOnline-Stage73-Auth-Hotfix-Bundle-2026-08-22.zip.sha256)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload corrected hotfix bundle
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-Stage73-Auth-Hotfix-Bundle-2026-08-22
+          path: |
+            GunGloryOnline-Stage73-Auth-Hotfix-Bundle-2026-08-22.zip
+            GunGloryOnline-Stage73-Auth-Hotfix-Bundle-2026-08-22.zip.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+      - name: Publish immutable Stage 73 receipt
+        if: always()
+        env:
+          BUNDLE: ${{ steps.bundle.outcome }}
+          UPLOAD: ${{ steps.upload.outcome }}
+        run: |
+          set -euo pipefail
+          result=success
+          [ "$BUNDLE" = success ] || result=failure
+          [ "$UPLOAD" = success ] || result=failure
+          mkdir -p .ci/deploy
+          receipt=".ci/deploy/${GITHUB_RUN_ID}-stage73.txt"
+          cat > "$receipt" <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_id=${GITHUB_RUN_ID}
+          run_attempt=${GITHUB_RUN_ATTEMPT}
+          run_url=https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          source_sha=${{ steps.source.outputs.head_sha }}
+          launcher_package_run=${{ steps.source.outputs.run_id }}
+          stage70_runtime_run=32567000478
+          bundle=$BUNDLE
+          upload=$UPLOAD
+          bundle_bytes=${{ steps.bundle.outputs.bytes }}
+          bundle_sha256=${{ steps.bundle.outputs.sha256 }}
+          result=$result
+          EOF
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add "$receipt"
+          git commit -m "ci: record Stage 73 auth hotfix bundle ${GITHUB_RUN_ID}" || exit 0
+          git fetch origin launcher/bootstrap-v0.1
+          git rebase origin/launcher/bootstrap-v0.1
+          git push origin HEAD:launcher/bootstrap-v0.1
