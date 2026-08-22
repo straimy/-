@@ -1,0 +1,12 @@
+workflow=GGO Stage 74 Launcher Update Bundle
+run_id=32596514466
+run_url=https://github.com/straimy/-/actions/runs/32596514466
+stage74_source_sha=fc9cd4b6f231d8677a2e9bd4719d9c9e1a726dcd
+launcher_source_sha=e9d50e90f598d855b241155813a799ac942f6828
+launcher_package_run=32579349541
+launcher_version=
+bundle=failure
+upload=skipped
+bundle_bytes=
+bundle_sha256=
+result=failure
