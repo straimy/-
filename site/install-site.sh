@@ -41,15 +41,24 @@ fi
 if [ -f "$GGO_SITE_AVAILABLE" ]; then
   cp -a "$GGO_SITE_AVAILABLE" "$BACKUP_DIR/ggo.conf.previous"
 fi
+# The launcher update manifest is generated from signed/verified CI packages on the VDS.
+# Preserve it when portal content is refreshed so an unrelated site deploy cannot disable updates.
+if [ -d "$WEB_ROOT/content/launcher" ]; then
+  cp -a "$WEB_ROOT/content/launcher" "$BACKUP_DIR/launcher-channel"
+fi
 
 install -d -m 0755 "$WEB_ROOT"
-# Keep downloads/content already present on VDS while replacing portal code and configs.
-for item in index.html styles.css portal.css install-launcher.sh account regions legal support content; do
+for item in index.html styles.css portal.css install-launcher.sh publish-launcher-update.sh account regions legal support content; do
   if [ -e "$SITE_SRC/$item" ]; then
     rm -rf "$WEB_ROOT/$item"
     cp -a "$SITE_SRC/$item" "$WEB_ROOT/$item"
   fi
 done
+if [ -d "$BACKUP_DIR/launcher-channel" ]; then
+  install -d -m 0755 "$WEB_ROOT/content"
+  rm -rf "$WEB_ROOT/content/launcher"
+  cp -a "$BACKUP_DIR/launcher-channel" "$WEB_ROOT/content/launcher"
+fi
 if [ -d "$SITE_SRC/downloads" ]; then
   install -d -m 0755 "$WEB_ROOT/downloads"
   cp -a "$SITE_SRC/downloads/." "$WEB_ROOT/downloads/"
@@ -57,6 +66,12 @@ fi
 chown -R www-data:www-data "$WEB_ROOT"
 find "$WEB_ROOT" -type d -exec chmod 0755 {} +
 find "$WEB_ROOT" -type f -exec chmod 0644 {} +
+if [ -f "$WEB_ROOT/install-launcher.sh" ]; then
+  chmod 0755 "$WEB_ROOT/install-launcher.sh"
+fi
+if [ -f "$WEB_ROOT/publish-launcher-update.sh" ]; then
+  chmod 0755 "$WEB_ROOT/publish-launcher-update.sh"
+fi
 
 chmod +x "$AUTH_SRC/install.sh"
 "$AUTH_SRC/install.sh"
@@ -79,7 +94,6 @@ for enabled in /etc/nginx/sites-enabled/*; do
 done
 shopt -u nullglob
 
-# There must now be exactly one enabled config containing the production hostname.
 mapfile -t ggo_enabled < <(grep -El "^[[:space:]]*server_name[[:space:]][^;]*${GGO_HOST//./\.}([^[:alnum:]_.-]|;|$)" /etc/nginx/sites-enabled/* 2>/dev/null || true)
 if [ "${#ggo_enabled[@]}" -ne 1 ] || [ "${ggo_enabled[0]}" != "$GGO_SITE_ENABLED" ]; then
   printf 'Expected one canonical GGO vhost, got: %s\n' "${ggo_enabled[*]:-none}" >&2
@@ -108,8 +122,6 @@ assert p.get('ok') is True and p.get('service') == 'ggo-auth', p
 print('nginx HTTPS auth health: PASS', p)
 PY
 
-# Route-only POST probes use invalid empty payloads. They prove nginx reaches the
-# auth service without creating users or modifying the existing auth database.
 register_code="$(curl "${curl_local[@]}" -o /tmp/ggo-register-probe.json -w '%{http_code}' -H 'Content-Type: application/json' --data '{}' "https://${GGO_HOST}/api/v1/auth/register")"
 [ "$register_code" = 400 ] || { cat /tmp/ggo-register-probe.json >&2; echo "register route returned $register_code (expected 400, never 405)" >&2; exit 7; }
 login_code="$(curl "${curl_local[@]}" -o /tmp/ggo-login-probe.json -w '%{http_code}' -H 'Content-Type: application/json' --data '{}' "https://${GGO_HOST}/api/v1/auth/login")"
