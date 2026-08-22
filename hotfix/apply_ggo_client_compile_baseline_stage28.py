@@ -1,5 +1,6 @@
 from pathlib import Path
 
+# Canonical accumulated client baseline repair used by the Stage 27 compile gate.
 ROOT = Path("ga-build") if Path("ga-build").exists() else Path(".")
 SHELL = ROOT / "client-ui/src/main/java/arena/client/shell"
 UI = ROOT / "client-ui/src/main/java/arena/client/ui"
