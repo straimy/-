@@ -80,6 +80,26 @@ while IFS=$'\t' read -r key url expected_sha; do
   fi
 done <"$VERIFY_DIR/packages.tsv"
 
+# A launcher update must never publish a manifest whose required game payload was
+# removed by the website refresh. Validate every required v40 URL before GREEN.
+curl --fail --silent --show-error "https://ggo.kvicloud.ru/content/manifests/beta.json" >"$VERIFY_DIR/game-manifest.json"
+VERIFY_DIR="$VERIFY_DIR" python3 - <<'PY'
+import json, os
+p=json.load(open(os.path.join(os.environ['VERIFY_DIR'],'game-manifest.json'),encoding='utf-8'))
+with open(os.path.join(os.environ['VERIFY_DIR'],'game-urls.txt'),'w',encoding='utf-8') as h:
+    for item in p.get('files', []):
+        if item.get('required', False):
+            h.write(item['url'] + '\n')
+PY
+while IFS= read -r url; do
+  [ -n "$url" ] || continue
+  curl --fail --location --silent --show-error --head "$url" >/dev/null || {
+    echo "Required GGO client payload is unavailable: $url" >&2
+    exit 6
+  }
+done <"$VERIFY_DIR/game-urls.txt"
+echo "Required GGO client payload: PASS"
+
 curl --fail --silent --show-error "https://ggo.kvicloud.ru/api/v1/health" >"$VERIFY_DIR/auth-health.json"
 python3 - "$VERIFY_DIR/auth-health.json" <<'PY'
 import json, sys
