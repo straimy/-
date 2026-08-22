@@ -76,7 +76,8 @@ inventory=r'''    private void renderInventory(GuiGraphics g, Minecraft mc) {
             if(bag)g.renderOutline(x,y,30,30,0xFFE0A64A);
         }
         g.drawString(this.font,"SUPPLIES  "+supplies+"   MEDICAL  "+meds+"   RECOVERY BAGS  "+bags,x0,fieldY+78,0xFF718093,false);
-        g.drawString(this.font,"LMB select / move inside section     RMB drop     H hold medical wheel",x0,Math.min(bottom-28,fieldY+104),0xFF667384,false);
+        String medicalKey=GgoKeyMappings.MEDICAL_WHEEL.getTranslatedKeyMessage().getString().toUpperCase(java.util.Locale.ROOT);
+        g.drawString(this.font,"LMB select / move inside section     RMB drop     "+medicalKey+" hold medical wheel",x0,Math.min(bottom-28,fieldY+104),0xFF667384,false);
         g.drawString(this.font,"Crafting, recipe book and Minecraft armor inventory are not exposed.",x0,Math.min(bottom-14,fieldY+118),0xFF566273,false);
     }
 
@@ -101,7 +102,7 @@ inventory=r'''    private void renderInventory(GuiGraphics g, Minecraft mc) {
     }
 '''
 s=s[:start]+inventory+s[end:]
-for required in ["EQUIPMENT","BACKPACK / FIELD LOOT","PROTECTED GEAR","DROP ON KIA","RECOVERY BAGS","H hold medical wheel","AUTO-SORT AMMO"]:
+for required in ["EQUIPMENT","BACKPACK / FIELD LOOT","PROTECTED GEAR","DROP ON KIA","RECOVERY BAGS","GgoKeyMappings.MEDICAL_WHEEL","AUTO-SORT AMMO"]:
     if required not in s: raise SystemExit(f"stage50 inventory UX missing: {required}")
 SCREEN.write_text(s,encoding="utf-8")
 print("Applied GGO Stage 50 equipment/field inventory UX")
