@@ -1,221 +1,271 @@
 # GunGloryOnline handoff — 2026-08-22
 
-This is the authoritative recovery point for continuing GunGloryOnline from another ChatGPT account/chat.
+Authoritative recovery point for continuing GunGloryOnline from another ChatGPT account/chat.
 
 ## Repository safety
 
 - Repository: `straimy/-`
 - **NEVER write to `main`.**
-- Working branches only:
+- Work only on:
   - server: `server/runtime-hardening-v1`
   - client: `client/runtime-migration-v1`
   - launcher/site/auth: `launcher/bootstrap-v0.1`
-- Exact CI receipt files are the source of truth. Do not infer green from a commit status, a workflow name, or memory.
+- Exact CI receipt files are the source of truth. Never infer green from memory or a generic commit status.
 
 ## Product direction
 
-GunGloryOnline should present as a standalone tactical shooter/service game. Minecraft 1.20.1 + Forge 47.4.10 + Java 17 are only the hidden **Runtime v1** engine.
+GunGloryOnline should present as a standalone tactical shooter/service game. Minecraft 1.20.1 + Forge 47.4.10 + Java 17 are hidden **Runtime v1** only.
 
-Do not destabilize registries/runtime merely to delete engine internals. Instead, fence or replace player-facing Minecraft/Forge behavior, UI and assets.
-
-Primary controls:
-
-- `E` — GGO equipment/backpack inventory.
-- `M` — Activities.
-- `N` — Full Map.
-- hold `TAB` — squad/match overlay.
-- MMB — tactical ping.
-- `H` by default — rebindable medical radial.
-- no physical compass menu.
-- only three combat belt slots are player-facing.
-
-## Official entry/auth architecture
-
-Official online entry is launcher-authoritative:
-
-1. Launcher authenticates a GGO Account session.
-2. Immediately before Java launch it creates a one-shot `official-online` game ticket.
-3. Ticket is passed only to the child Java process as `GGO_GAME_TICKET`; it is not placed in React state, CLI preview, logs, or persistent launcher state.
-4. Client forwards it through the Core launch-ticket channel.
-5. Server consumes the ticket with `GGO_SERVER_KEY` and binds the GGO identity.
-6. Pre-auth gameplay is quarantined.
-7. Server returns a boolean verification ACK.
-8. Client keeps `VERIFYING GGO ACCOUNT` over gameplay until the ACK completes.
-
-Current unused ticket TTL: **180 seconds**. Ticket remains one-shot/replay protected.
-Current launch-ticket network protocol: **2**.
-Official route: `play.kvicloud.ru:24842`.
-
-## Exact current verified milestones
-
-### Entry/runtime integration
-
-Stage 62 — full entry stack integration:
-- run `32555227197`, successful attempt 2.
-- server/client/launcher/auth/assets/package/dedicated Forge smoke all success.
-
-Stage 63 — Recovery Bag visual identity:
-- run `32561512306`.
-- Core, official RP, package and dedicated Forge smoke success.
-- recovery bag uses CustomModelData `720049` and a GGO model/texture.
-
-Stage 64 — RP slim planner:
-- run `32561643315`.
-- planner is fail-closed/non-destructive.
-- **No production RP pruning was performed** because a real authored-world palette is still required.
-
-Stage 65 — first-party UI packet actions:
-- run `32562061250`.
-- server/client builds, packet contract, package and dedicated smoke success.
-- medicine/inventory first-party actions no longer rely on free-form `/ggomed` / `/ggoinv` client commands.
-- channel: `gunnerarena:ggo_ui_action`.
-
-Stage 66 — production surface fence:
-- run `32562512801`.
-- client build and surface contract success.
-- debug/FPS/item/effect/score/boss/disc engine surfaces are fenced.
-- chat/subtitles are intentionally preserved.
-- loading transition lifecycle is not replaced, only covered/presented by GGO where safe.
-
-Stage 67 — GGO chat shell:
-- run `32562603117`.
-- client build/chat contract success.
-- `T`/slash chat receives GGO chrome while vanilla `ChatScreen` remains the hidden transport/history/signing engine.
-- messages and command suggestions are preserved.
-
-Stage 68 — cumulative Release Candidate integration:
-- run `32562750807`.
-- server SHA `f126fd689a2bc26c5eb03477f77ca0f027b39480`.
-- client SHA `80dbe934cc2b97edd8c3289323d8e0ba65964581`.
-- launcher SHA `d16351d5749d1cb2129664ca35d5edc37892a177`.
-- server build, client build, official RP, launcher/auth/platform contract, canonical assets, package and dedicated server smoke = success.
-- launch-ticket protocol = `2`.
-
-Stage 69 — player-facing engine-brand fence:
-- run `32566750907`.
-- client SHA `8a0feb2ae8dc3e38db086b93392bf40540b9d158`.
-- client build = success.
-- player-facing brand contract = success.
-- GGO UI has no visible Minecraft/Forge/Mojang brand copy; hidden Java identifiers/imports are allowed.
-
-### Launcher packages
-
-Package matrix:
-- workflow `GunGloryOnline Launcher Packages`
-- run `32562889069`
-- source `9a358d46051fd823e31e18259d2da20af7e5490c`
-- build/auth/website all success.
-- artifacts:
-  - Windows: EXE, MSI, Portable ZIP.
-  - Linux: AppImage, DEB, RPM.
-  - website artifact.
-
-Dedicated Windows verify:
-- run `32562815120`
-- source `f5a487cba395247b546b5f3566f27a031c598b1b`
-- install/icons/frontend/rust fmt/rust check/runtime tests/package/verify = success.
-
-Dedicated Linux verify:
-- run `32561828672`
-- source `b8b680a11669025f33319ebb7b26252610ca2625`
-- deps/install/icons/frontend/rust fmt/rust check/runtime tests/package/verify = success.
-
-The cumulative Stage 68 launcher check also proved there were no launcher-directory changes invalidating the verified Linux source.
-
-## Current player-facing runtime state
-
-Already replaced/fenced:
-
-- vanilla title/front-end flow;
-- vanilla hotbar/hearts/armor/hunger/xp/air presentation;
-- vanilla death screen;
-- standard player inventory/crafting presentation for normal players;
-- advancements route;
-- vanilla TAB player list;
-- default crosshair;
-- major debug/score/boss/effect/item-name production overlays;
-- physical compass menu;
-- internal medicine/inventory slash-command transport;
-- vanilla chat input chrome (transport engine remains hidden);
-- recovery bag vanilla appearance.
+Player-facing controls:
+- `E` — GGO equipment/backpack inventory
+- `M` — Activities
+- `N` — Full Map
+- hold `TAB` — squad/match overlay
+- MMB — tactical ping
+- `H` default — rebindable medical radial
+- no physical compass menu
+- three player-facing combat belt slots
 
 Social-hub players remain visible and safe. Do not globally hide players.
 
-## Recovery bag contract
+## Official entry/auth architecture
 
-- Protected combat slots / protected ammo / armor remain with owner according to the runtime rule.
-- FIELD items become one owner-bound sealed recovery bag.
-- Another player may carry the sealed bag but cannot reclaim its contents.
-- Only the owner reclaims it.
-- Partial reclaim leaves the remaining contents in the same bag.
-- Auction/return-market expansion remains deferred.
+Launcher-authoritative path:
+1. launcher authenticates GGO Account session;
+2. immediately before Java launch it creates a one-shot `official-online` ticket;
+3. ticket is passed only to child Java as `GGO_GAME_TICKET`;
+4. client forwards ticket through Core launch-ticket channel;
+5. server consumes ticket with `GGO_SERVER_KEY` and binds GGO identity;
+6. pre-auth gameplay is quarantined;
+7. server sends boolean verification ACK;
+8. client keeps `VERIFYING GGO ACCOUNT` over gameplay until ACK.
+
+Current contract:
+- unused game-ticket TTL: **180 seconds**
+- replay/race protected, one-shot
+- launch-ticket network protocol: **2**
+- official route: `play.kvicloud.ru:24842`
+- auth base: `https://ggo.kvicloud.ru/api/v1`
+
+Fresh standalone auth proof:
+- receipt `.ci/auth/32567151493.txt`
+- run `32567151493`
+- source `971463f8ab6842349b46da901b6894d3ee786aa1`
+- syntax/smoke/ticket-contract/deploy = success
+- TTL 180, replay protected, race tested
+- result = success
+
+## Exact verified runtime milestones
+
+- Stage 62 entry-stack integration: run `32555227197`, successful attempt 2; server/client/launcher/auth/assets/package/dedicated smoke success.
+- Stage 63 Recovery Bag visual: run `32561512306`; CustomModelData `720049`, GGO model/texture, dedicated smoke success.
+- Stage 64 RP slim planner: run `32561643315`; fail-closed/non-destructive; no real prune without authored-map palette.
+- Stage 65 first-party UI packets: run `32562061250`; server/client/packet/package/dedicated smoke success; channel `gunnerarena:ggo_ui_action`; no normal-player `/ggomed`/`/ggoinv` transport.
+- Stage 66 production-surface fence: run `32562512801`; debug/FPS/item/effect/score/boss/disc engine surfaces fenced; chat/subtitles preserved.
+- Stage 67 GGO chat shell: run `32562603117`; GGO chat chrome, hidden vanilla ChatScreen remains only transport/history/signing engine.
+- Stage 68 cumulative release-candidate: run `32562750807`; server SHA `f126fd689a2bc26c5eb03477f77ca0f027b39480`, client SHA `80dbe934cc2b97edd8c3289323d8e0ba65964581`, launcher SHA `d16351d5749d1cb2129664ca35d5edc37892a177`; server/client/RP/launcher-auth/assets/package/dedicated smoke all success.
+- Stage 69 player-facing engine-brand fence: run `32566750907`; client SHA `8a0feb2ae8dc3e38db086b93392bf40540b9d158`; client build + brand contract success; no visible Minecraft/Forge/Mojang brand copy in GGO UI.
+
+## Stage 70 — transferable Closed Beta baseline — GREEN
+
+Receipt: `ci-results/stage70-closed-beta-baseline.txt`
+
+Use the **final second run**:
+- workflow `GGO Runtime Stage 70 Closed Beta Baseline`
+- run `32567000478`
+- server head `f75fe309629cc4b1dfd19581708c68f7d54ddd99`
+- client head `d92616f90b5d09e8bb2204f83b0169f3efaeaf04`
+- launcher head `a46e79514b3e3b135759ec5ef2f7b7e665df7b1f`
+- Stage 68 runtime run `32562750807`
+- Stage 69 UI run `32566750907`
+- launcher package run `32562889069`
+- Windows verify run `32562815120`
+- Linux verify run `32561828672`
+- prerequisite receipts/bundle/upload = success
+- ZIP bytes `147768867`
+- ZIP SHA256 `f71ec514ae9df25cd85d20f0ebbfde768024ac5bb781cae983811225204b8687`
+- result = success
+
+Artifact: `GunGloryOnline-Closed-Beta-Baseline-2026-08-22`.
+
+It contains:
+- matching server/client runtime;
+- Stage 69 brand-clean UI;
+- `GunGloryOnline-Official.zip`;
+- Windows EXE/MSI/portable ZIP;
+- Linux AppImage/DEB/RPM;
+- website artifact;
+- source snapshots of all three working branches;
+- receipts, docs, checksums and new-chat prompt.
+
+Exact GGO-owned beta client files:
+- Core `gungloryonline-core-runtime-v1-stage68.jar`, SHA256 `a4c8e4707566319f5be00ca1e422f7281c455299e228e4d2ab9bcdb51795f5dc`, size `433242`
+- UI `gungloryonline-ui-runtime-v1-stage69.jar`, SHA256 `c40ab7eac425fc247801c16b91c98887c12e1be2c943b17bdba257c176340a04`, size `191206`
+- RP `GunGloryOnline-Official.zip`, SHA256 `962296934ff311e20ebc40fb437832c6dbf38114d3247b0dea5a819d9ae0594e`, size `11663399`
+
+## Launcher package proofs
+
+Last exact-green package matrix before current manifest refresh:
+- `.ci/launcher/32562889069.txt`
+- source `9a358d46051fd823e31e18259d2da20af7e5490c`
+- Windows/Linux build, auth and website success.
+
+Dedicated Windows verify:
+- `.ci/windows/32562815120.txt`
+- source `f5a487cba395247b546b5f3566f27a031c598b1b`
+- install/icons/frontend/rust fmt/rust check/runtime tests/package/verify success.
+
+Dedicated Linux verify:
+- `.ci/linux/32561828672.txt`
+- source `b8b680a11669025f33319ebb7b26252610ca2625`
+- deps/install/icons/frontend/rust fmt/rust check/runtime tests/package/verify success.
+
+A new package matrix was triggered after switching the repo beta manifest to Stage68/69 + canonical RP. Before calling that new package run green, read its new `.ci/launcher/<run>.txt` receipt.
 
 ## Resource pack state
 
 Official launcher-managed filename: `GunGloryOnline-Official.zip`.
 
-The historical RP overrides a large amount of vanilla content. **Do not blindly delete those overrides** because doing so can reveal vanilla fallback assets.
+Do **not** blindly delete the historical vanilla overrides: missing overrides can reveal vanilla fallback assets.
 
-Correct remaining RP workflow:
+Remaining safe workflow:
+1. run actual authored beta world/map;
+2. export real `ggo-map-palette.txt`;
+3. run Stage 64 planner;
+4. review candidate removals;
+5. only then create/verify a slim production RP.
 
-1. Run the actual authored beta world/map.
-2. Export real `ggo-map-palette.txt` telemetry.
-3. Run Stage 64 planner against that palette.
-4. Review candidate removals.
-5. Only then generate/verify a slim production RP.
+## Production beta manifest in repository
 
-This is intentionally deferred rather than faked by CI.
+`launcher/bootstrap-v0.1:site/content/manifests/beta.json` has now been switched to the Closed Beta GGO-owned files:
+- Stage68 Core
+- Stage69 UI
+- canonical `resourcepacks/GunGloryOnline-Official.zip`
 
-## Stage 70 — transferable Closed Beta bundle
+Other third-party dependency entries are preserved.
 
-Workflow: `.github/workflows/ggo-runtime-stage70-closed-beta-baseline.yml`.
+The launcher package workflow contract was updated to require these new names and reject the old Swittie RP.
 
-It is intended to produce one downloadable transfer package containing:
+## Public/live reachability — NOT green yet
 
-- exact-green Stage 68 runtime Core + official RP;
-- exact-green Stage 69 brand-clean UI replacing the Stage 68 UI jar;
-- Windows launcher EXE/MSI/Portable ZIP;
-- Linux AppImage/DEB/RPM;
-- website artifact;
-- source snapshots of the three working branches;
-- handoff/control/OST docs;
-- immutable prerequisite receipts;
-- checksums and a new-chat prompt.
+Latest corrected public probe:
+- receipt `.ci/public/32567346737.txt`
+- workflow `GGO Public Beta Reachability`
+- run `32567346737`
+- source `b686c2742ca2b4f2973973fc519db527008c9e4b`
 
-Before claiming this bundle is ready, read `ci-results/stage70-closed-beta-baseline.txt` and require `result=success`.
+Results:
+- website HTTPS = success
+- auth health HTTPS = failure
+- beta manifest HTTPS = failure
+- `play.kvicloud.ru` DNS = failure
+- official hostname TCP = failure
+- origin `2.26.100.125:24842` TCP = failure
+- overall = failure
+
+Exact diagnosis from the run logs:
+- `https://ggo.kvicloud.ru/` is live.
+- `/api/v1/health` currently does not return the expected GGO auth JSON; live VDS appears to have an old nginx/auth deployment.
+- `/content/manifests/beta.json` is reachable but the live copy is stale and still listed old Core/UI and `GunGloryOnline-ResourcePack-1.20.1-v5-swittie-social.zip` at probe time.
+- `play.kvicloud.ru` does not resolve.
+- `2.26.100.125:24842` returns connection refused, so the game server is not listening there at probe time.
+
+Do not represent the public online path as ready until a later public reachability receipt is fully green.
+
+## Stage 72 — VDS deployment payload — GREEN
+
+Receipt `.ci/deploy/32567496437.txt` on launcher branch:
+- workflow `GGO Stage 72 VDS Deploy Payload`
+- run `32567496437`
+- source `ba9d230ab6f1f75dc4c16a8013cb14ed8aebb82f`
+- baseline Stage70 run `32567000478`
+- auth receipt run `32567151493`
+- public pre-deploy probe run `32567346737`
+- payload = success
+- upload = success
+- bytes `122401864`
+- SHA256 `4265f34b5ef75fb237de715c4def83b384509004eae7ae73f3c6a0b1889ffa7d`
+- result = success
+
+Artifact: `GunGloryOnline-Stage72-VDS-Deploy-Payload-2026-08-22`.
+
+It contains:
+- current site + nginx + auth service source;
+- Windows/Linux launcher packages under web downloads;
+- Stage68 Core + Stage69 UI + canonical RP under content files;
+- server Stage68 Core;
+- exact receipts/checksums;
+- deployment instructions.
+
+Deployment requirements that remain outside GitHub CI:
+1. back up `/var/lib/ggo-auth/auth.db` on VDS;
+2. deploy current `site/install-site.sh` payload so nginx `/api/v1/` proxies to auth service;
+3. create/verify DNS A record `play` -> `2.26.100.125`;
+4. start/repair Forge 1.20.1 / 47.4.10 server listening on TCP `24842` with current Core;
+5. provide server-side `GGO_SERVER_KEY` and `GGO_AUTH_API_URL=https://ggo.kvicloud.ru/api/v1` without exposing secrets to client/repo;
+6. rerun `GGO Public Beta Reachability` until every check is success;
+7. then perform a real clean-machine launcher -> account -> install/update -> game -> server -> verification ACK -> gameplay session.
+
+There is currently no proven authorized SSH/DNS connector/workflow for changing the real VDS/DNS automatically. Do not claim deployment occurred unless actual access is added and verified.
+
+## Current player-facing runtime state
+
+Already replaced/fenced:
+- vanilla title/front-end flow
+- vanilla hotbar/hearts/armor/hunger/xp/air presentation
+- vanilla death screen
+- standard player inventory/crafting presentation for normal players
+- advancements route
+- vanilla TAB player list
+- default crosshair
+- major debug/score/boss/effect/item-name production overlays
+- physical compass menu
+- internal medicine/inventory slash-command transport
+- vanilla chat input chrome (hidden transport remains)
+- recovery bag vanilla appearance
+
+## Recovery bag contract
+
+- protected combat/ammo/armor stays according to the runtime rule;
+- FIELD items become one owner-bound sealed recovery bag;
+- another player may carry but cannot reclaim it;
+- only owner reclaims;
+- partial reclaim leaves the rest in the same bag;
+- auction/return-market remains deferred.
 
 ## What remains after the transferable beta baseline
 
-These are the high-value remaining tasks for the next account/chat; do not redo already-green stages:
+Do not redo green Stages 62–72.
 
-1. Real clean-machine interactive path: launcher -> GGO account -> update/install -> Java start -> server join -> quarantine -> verification ACK -> frontend -> gameplay. CI proves components/build contracts but cannot replace all real GPU/client/user-environment testing.
-2. Deploy/verify the chosen public website + manifest/VDS path and confirm downloads resolve to the intended beta artifacts.
-3. Run the authored map and export real palette telemetry; then perform RP slimming safely.
-4. World/map visual pass and remaining player-facing asset cleanup discovered during actual play.
-5. Multiplayer soak, reconnect/race/edge cases, balance and content completion.
-6. Matchmaking/social UX/content beyond the current baseline where needed.
-7. Performance profiling and clean-machine Windows/Linux QA.
-8. Final signing/update/recovery strategy and release-candidate/public-v1 polish.
-9. Replace website placeholder captures with real gameplay screenshots after the visual pass.
+Priority order:
+1. deploy Stage72 payload + fix `play` DNS + bring server listener online;
+2. rerun public reachability until fully green;
+3. real clean-machine graphical launcher/auth/install/join/ACK/gameplay test;
+4. authored-map run + real palette telemetry + safe RP slimming;
+5. world/map visual pass and remaining player-facing asset cleanup found in play;
+6. multiplayer soak/reconnect/race/edge QA, balance and content completion;
+7. matchmaking/social UX/content polish;
+8. performance profiling and Windows/Linux clean-machine QA;
+9. signing/update/recovery strategy and public-v1 polish;
+10. replace website placeholder captures with real gameplay screenshots.
 
 ## New ChatGPT account setup
 
 Minimum:
-
 - connect/authorize the **same GitHub account/repository** so the new assistant can access `straimy/-` and the three working branches.
 
-Usually nothing else needs to be pasted into chat. Repository/CI secrets should remain in GitHub. Never paste server keys, SSH private keys, passwords or auth secrets into the handoff.
+Keep secrets in GitHub/VDS. Never paste server keys, SSH private keys, passwords, tokens or auth DB into chat.
 
-If final deployment later requires a direct external VDS/hosting connection not represented in GitHub Actions, configure that connection separately on the new account.
+If the new account is also expected to perform live VDS/DNS changes, connect the relevant hosting/DNS provider or an authorized SSH/deployment mechanism separately. GitHub access alone is sufficient to continue code/build work but not to mutate the currently unconnected live infrastructure.
 
-Keep the final Stage 70 ZIP locally as an additional disaster-recovery snapshot even though GitHub remains the main source of truth.
+Keep the Stage70 Closed Beta ZIP and Stage72 VDS Deploy ZIP locally as disaster-recovery snapshots.
 
 ## Prompt for the new chat
 
-> Continue development of GunGloryOnline from GitHub repo `straimy/-`. First read `docs/GGO-HANDOFF-2026-08-22.md` on branch `client/runtime-migration-v1`, then read the latest exact receipts, especially `ci-results/stage70-closed-beta-baseline.txt` if it exists. NEVER write to `main`. Work only on `server/runtime-hardening-v1`, `client/runtime-migration-v1`, and `launcher/bootstrap-v0.1`. Minecraft 1.20.1 + Forge 47.4.10 + Java 17 are hidden Runtime v1; keep removing player-facing engine behavior without destabilizing the runtime. Do not repeat already-green Stages 62–69. Stage 68 is the cumulative release-candidate runtime and Stage 69 is the brand-clean UI. Continue with real clean-machine launcher/auth/server testing, public deployment verification, real-map palette telemetry + safe RP slimming, map/content/balance/multiplayer QA, signing/update/recovery and final release polish. Exact receipt files are the source of truth. When I say `далее`, do actual GitHub work autonomously and keep responses compact in Russian.
+> Continue GunGloryOnline from GitHub repo `straimy/-`. First read `docs/GGO-HANDOFF-2026-08-22.md` on `client/runtime-migration-v1`, then read `ci-results/stage70-closed-beta-baseline.txt`, `.ci/deploy/32567496437.txt`, `.ci/auth/32567151493.txt`, and the latest `.ci/public/*.txt` / `.ci/launcher/*.txt` on `launcher/bootstrap-v0.1`. NEVER write to `main`. Work only on `server/runtime-hardening-v1`, `client/runtime-migration-v1`, and `launcher/bootstrap-v0.1`. Minecraft 1.20.1 + Forge 47.4.10 + Java 17 are hidden Runtime v1. Do not repeat green Stages 62–72. The transferable Closed Beta is already built; next priority is deploy Stage72 to the live VDS, configure `play.kvicloud.ru -> 2.26.100.125`, bring the game server up on `24842`, rerun public reachability until green, then do a real clean-machine launcher -> auth -> update -> join -> verification ACK -> gameplay test. After that continue real-map palette/RP slimming, map/content/balance/multiplayer QA, signing/update/recovery and final polish. Exact receipt files are the source of truth. When I say `далее`, do actual GitHub work autonomously, keep responses compact in Russian, and do not touch `main`.
 
 ## Practical status
 
-The project is now at a **transferable closed-beta / release-candidate technical baseline**, not a finished public 1.0.
+The project has reached the intended **transferable Closed Beta / release-candidate technical baseline**.
 
-Do not represent CI-only validation as proof that a human has completed a full clean-machine graphical play session. Keep that distinction explicit.
+The code/build/package side is ready enough to hand off. The live public online path is still blocked by deployment/DNS/server-listener work and must not be called ready until the public reachability gate is green and a real human clean-machine play session succeeds.
