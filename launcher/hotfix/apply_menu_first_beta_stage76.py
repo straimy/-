@@ -22,7 +22,7 @@ rust = rust.replace(
 )
 rust = rust.replace(
     "use std::{path::PathBuf, time::Instant};",
-    "use std::{path::PathBuf, time::{Instant, SystemTime, UNIX_EPOCH}};",
+    "use std::{\n    path::PathBuf,\n    time::{Instant, SystemTime, UNIX_EPOCH},\n};",
 )
 
 start = rust.find("#[tauri::command]\nasync fn preview_minecraft_launch(")
@@ -49,7 +49,10 @@ new_env = '''    let expires_at = SystemTime::now()
         .saturating_add(ticket.expires_in as u64);
     let child_environment = vec![
         ("GGO_GAME_TICKET".to_string(), ticket.ticket),
-        ("GGO_GAME_TICKET_EXPIRES_AT".to_string(), expires_at.to_string()),
+        (
+            "GGO_GAME_TICKET_EXPIRES_AT".to_string(),
+            expires_at.to_string(),
+        ),
     ];'''
 if old_env not in rust:
     raise SystemExit("ticket environment block not found")
