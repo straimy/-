@@ -9,6 +9,7 @@ on:
       - '.github/workflows/ggo-launcher-stage76-menu-first.yml'
       - 'launcher/hotfix/apply_menu_first_beta_stage76.py'
       - 'launcher/src/App.tsx'
+      - 'launcher/src/AccountHub.tsx'
       - 'launcher/src-tauri/src/lib.rs'
       - 'launcher/package.json'
       - 'launcher/src-tauri/Cargo.toml'
