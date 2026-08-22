@@ -95,7 +95,6 @@ public final class GgoFrontEndScreen extends Screen {
         int centerW = Math.max(220, rightX - centerX - 22);
         int panelBottom = height - Math.max(34, height / 20);
 
-        // Account / progression column.
         g.fill(margin, top + 58, margin + leftW, panelBottom, 0xD90B0E13);
         g.fill(margin, top + 58, margin + 3, panelBottom, 0xFF9A2532);
         g.drawString(font, "GGO ACCOUNT", margin + 18, top + 78, 0xFF8C96A6, false);
@@ -107,9 +106,8 @@ public final class GgoFrontEndScreen extends Screen {
         g.fill(margin + 18, top + 201, margin + 92, top + 205, 0xFF9A2532);
         g.drawString(font, "WARDROBE", margin + 18, top + 234, 0xFF8C96A6, false);
         g.drawString(font, "GGO appearance active", margin + 18, top + 255, 0xFFC2CAD5, false);
-        g.drawString(font, "No Minecraft skin dependency", margin + 18, top + 276, 0xFF697587, false);
+        g.drawString(font, "Account-owned operator appearance", margin + 18, top + 276, 0xFF697587, false);
 
-        // Center operator stage. Kept renderer-safe for beta; character renderer can replace this silhouette later.
         g.fill(centerX, top + 58, centerX + centerW, panelBottom, 0x8C090B0F);
         int bodyCx = centerX + centerW / 2;
         int bodyTop = top + 104;
@@ -122,7 +120,6 @@ public final class GgoFrontEndScreen extends Screen {
         g.fill(bodyCx + 8, bodyBottom, bodyCx + 40, panelBottom - 16, 0xFF11161C);
         g.drawCenteredString(font, Component.literal("OPERATOR"), bodyCx, panelBottom - 34, 0xFF6F7B8D);
 
-        // Activity column.
         g.fill(rightX, top + 58, width - margin, panelBottom, 0xD90B0E13);
         g.fill(rightX, top + 58, rightX + 3, panelBottom, 0xFF9A2532);
         g.drawString(font, "ACTIVITIES", rightX + 20, top + 78, 0xFFF0F3F6, false);
@@ -137,7 +134,6 @@ public final class GgoFrontEndScreen extends Screen {
             g.drawString(font, "Secure session  •  " + GgoLaunchTicketClient.menuSecondsRemaining() + "s", rightX + 20, top + 222, 0xFF9B6B72, false);
         }
 
-        // Brand header.
         g.drawString(font, "GUN GLORY ONLINE", margin, top, 0xFFF3F5F7, false);
         g.drawString(font, "GGO CLIENT  •  BETA", margin, top + 22, 0xFFB74350, false);
         g.drawString(font, "ACCOUNT  /  OPERATOR  /  ACTIVITIES", width - margin - 215, top + 8, 0xFF697587, false);
