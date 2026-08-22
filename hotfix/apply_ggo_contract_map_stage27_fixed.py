@@ -2,6 +2,7 @@ from pathlib import Path
 
 # Execute the Stage 27 patch with a structural HUD insertion instead of relying
 # on one exact null-guard string after the earlier UI stages have rewritten it.
+# This wrapper is the canonical Stage 27 client entrypoint used by the compile gate.
 source_path = Path("hotfix/apply_ggo_contract_map_stage27.py")
 source = source_path.read_text(encoding="utf-8")
 
