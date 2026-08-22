@@ -16,10 +16,8 @@ pub const UI_ARCHIVE_PATH: &str = "client/mods/gungloryonline-ui-0.9.7-v40.jar";
 pub const CORE_FILE_NAME: &str = "gungloryonline-core-0.9.7-v40-server-hardening1.jar";
 pub const UI_FILE_NAME: &str = "gungloryonline-ui-0.9.7-v40.jar";
 
-pub const CORE_SHA256: &str =
-    "e6521e2bb37e1d46b30a8fbc2e31fad29ff9bca9be0163ffb8018ecb5ae9f624";
-pub const UI_SHA256: &str =
-    "41b506852bae157bcd75c9577dba8b498924f902089e5d54254e49df62c7fae0";
+pub const CORE_SHA256: &str = "e6521e2bb37e1d46b30a8fbc2e31fad29ff9bca9be0163ffb8018ecb5ae9f624";
+pub const UI_SHA256: &str = "41b506852bae157bcd75c9577dba8b498924f902089e5d54254e49df62c7fae0";
 
 pub const CORE_SIZE: u64 = 590_957;
 pub const UI_SIZE: u64 = 109_961;
@@ -100,8 +98,7 @@ pub fn install_local(
 pub fn is_installed(install_dir: &Path) -> Result<bool, LocalInstallError> {
     let core = install_dir.join("mods").join(CORE_FILE_NAME);
     let ui = install_dir.join("mods").join(UI_FILE_NAME);
-    Ok(valid_existing(&core, CORE_SIZE, CORE_SHA256)?
-        && valid_existing(&ui, UI_SIZE, UI_SHA256)?)
+    Ok(valid_existing(&core, CORE_SIZE, CORE_SHA256)? && valid_existing(&ui, UI_SIZE, UI_SHA256)?)
 }
 
 fn require_file(path: &Path) -> Result<(), LocalInstallError> {
@@ -168,9 +165,9 @@ fn install_archive_entry(
         });
     }
 
-    let parent = target.parent().ok_or_else(|| {
-        LocalInstallError::InvalidSource(target.to_string_lossy().into_owned())
-    })?;
+    let parent = target
+        .parent()
+        .ok_or_else(|| LocalInstallError::InvalidSource(target.to_string_lossy().into_owned()))?;
     fs::create_dir_all(parent)?;
     let temp = temp_path(target);
     let mut output = File::create(&temp)?;

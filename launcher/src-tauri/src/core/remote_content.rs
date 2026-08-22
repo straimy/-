@@ -54,10 +54,15 @@ pub struct LocalizedText {
     pub uk: String,
 }
 
-pub async fn fetch_servers(client: &Client, url: &str) -> Result<ServerCatalog, RemoteContentError> {
+pub async fn fetch_servers(
+    client: &Client,
+    url: &str,
+) -> Result<ServerCatalog, RemoteContentError> {
     let catalog = fetch_json::<ServerCatalog>(client, url).await?;
     if catalog.schema_version != 1 {
-        return Err(RemoteContentError::UnsupportedSchema(catalog.schema_version));
+        return Err(RemoteContentError::UnsupportedSchema(
+            catalog.schema_version,
+        ));
     }
     Ok(catalog)
 }

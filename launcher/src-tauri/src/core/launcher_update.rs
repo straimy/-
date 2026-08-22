@@ -58,7 +58,11 @@ async fn find_update(app: &AppHandle) -> Result<Option<tauri_plugin_updater::Upd
 
 pub async fn check(app: &AppHandle) -> Result<LauncherUpdateStatus, String> {
     let configured = configuration()?.is_some();
-    let update = if configured { find_update(app).await? } else { None };
+    let update = if configured {
+        find_update(app).await?
+    } else {
+        None
+    };
     Ok(LauncherUpdateStatus {
         configured,
         available: update.is_some(),

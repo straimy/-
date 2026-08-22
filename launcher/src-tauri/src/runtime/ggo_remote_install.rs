@@ -43,7 +43,8 @@ mod tests {
 
     #[test]
     fn finalizer_does_not_modify_resource_pack_preferences() {
-        let root = std::env::temp_dir().join(format!("ggo-remote-finalize-{}", uuid::Uuid::new_v4()));
+        let root =
+            std::env::temp_dir().join(format!("ggo-remote-finalize-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(root.join("mods")).unwrap();
         std::fs::write(root.join("options.txt"), "resourcePacks:[]\n").unwrap();
         finalize_remote_install(&root).unwrap();

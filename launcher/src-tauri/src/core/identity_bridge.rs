@@ -50,9 +50,11 @@ pub fn write(
     let target = install_dir.join(FILE_NAME);
     let temp = install_dir.join(format!("{FILE_NAME}.tmp"));
     fs::write(&temp, bytes).map_err(|error| error.to_string())?;
-    fs::rename(&temp, &target).or_else(|_| {
-        let _ = fs::remove_file(&target);
-        fs::rename(&temp, &target)
-    }).map_err(|error| error.to_string())?;
+    fs::rename(&temp, &target)
+        .or_else(|_| {
+            let _ = fs::remove_file(&target);
+            fs::rename(&temp, &target)
+        })
+        .map_err(|error| error.to_string())?;
     Ok(())
 }

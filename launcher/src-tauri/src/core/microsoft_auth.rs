@@ -18,7 +18,8 @@ const AUTHORIZE_URL: &str = "https://login.microsoftonline.com/consumers/oauth2/
 const TOKEN_URL: &str = "https://login.microsoftonline.com/consumers/oauth2/v2.0/token";
 const XBOX_USER_AUTH_URL: &str = "https://user.auth.xboxlive.com/user/authenticate";
 const XSTS_AUTH_URL: &str = "https://xsts.auth.xboxlive.com/xsts/authorize";
-const MINECRAFT_LOGIN_URL: &str = "https://api.minecraftservices.com/authentication/login_with_xbox";
+const MINECRAFT_LOGIN_URL: &str =
+    "https://api.minecraftservices.com/authentication/login_with_xbox";
 const MINECRAFT_PROFILE_URL: &str = "https://api.minecraftservices.com/minecraft/profile";
 const SCOPE: &str = "XboxLive.signin XboxLive.offline_access";
 
@@ -326,7 +327,12 @@ async fn exchange_for_minecraft(
         .xui
         .first()
         .map(|claim| claim.uhs.clone())
-        .or_else(|| xbox.display_claims.xui.first().map(|claim| claim.uhs.clone()))
+        .or_else(|| {
+            xbox.display_claims
+                .xui
+                .first()
+                .map(|claim| claim.uhs.clone())
+        })
         .ok_or_else(|| MicrosoftAuthError::Xsts("missing user hash".to_string()))?;
 
     let minecraft_response = http

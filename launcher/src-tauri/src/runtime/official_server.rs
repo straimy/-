@@ -26,7 +26,9 @@ pub fn ensure_official_server(install_dir: &Path) -> Result<bool, String> {
 
     let Value::List(entries) = servers else {
         *servers = Value::List(Vec::new());
-        let Value::List(entries) = servers else { unreachable!() };
+        let Value::List(entries) = servers else {
+            unreachable!()
+        };
         insert_or_update(entries);
         return write_root(&path, &root).map(|_| true);
     };
@@ -49,9 +51,13 @@ fn insert_or_update(entries: &mut Vec<Value>) -> bool {
     let mut changed = false;
 
     for (index, entry) in entries.iter_mut().enumerate() {
-        let Value::Compound(server) = entry else { continue };
+        let Value::Compound(server) = entry else {
+            continue;
+        };
         let ip_matches = matches!(server.get("ip"), Some(Value::String(ip)) if ip.eq_ignore_ascii_case(SERVER_ADDRESS));
-        if !ip_matches { continue; }
+        if !ip_matches {
+            continue;
+        }
 
         found_index = Some(index);
         if !matches!(server.get("name"), Some(Value::String(name)) if name == SERVER_NAME) {
@@ -104,8 +110,16 @@ mod tests {
     fn inserts_official_server_first() {
         let mut entries = Vec::new();
         assert!(insert_or_update(&mut entries));
-        let Value::Compound(server) = &entries[0] else { panic!("expected compound") };
-        assert_eq!(server.get("name"), Some(&Value::String("GunGloryOnline".into())));
-        assert_eq!(server.get("ip"), Some(&Value::String("play.kvicloud.ru:24842".into())));
+        let Value::Compound(server) = &entries[0] else {
+            panic!("expected compound")
+        };
+        assert_eq!(
+            server.get("name"),
+            Some(&Value::String("GunGloryOnline".into()))
+        );
+        assert_eq!(
+            server.get("ip"),
+            Some(&Value::String("play.kvicloud.ru:24842".into()))
+        );
     }
 }

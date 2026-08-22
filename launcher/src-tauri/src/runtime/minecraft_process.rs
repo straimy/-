@@ -48,11 +48,7 @@ pub fn launch_with_natives_environment(
     let vanilla: Value = serde_json::from_slice(&fs::read(vanilla_path)?)?;
 
     let natives_dir = install_dir.join("natives").join(&forge_id);
-    minecraft_natives::prepare_natives(
-        install_dir,
-        &[&vanilla, &forge],
-        &natives_dir,
-    )?;
+    minecraft_natives::prepare_natives(install_dir, &[&vanilla, &forge], &natives_dir)?;
 
     let previous = env::var("JDK_JAVA_OPTIONS").ok().unwrap_or_default();
     let mut combined = previous;
@@ -82,7 +78,10 @@ mod tests {
 
     #[test]
     fn forge_compat_opens_java_lang_invoke() {
-        assert_eq!(FORGE_JAVA_COMPAT, "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED");
+        assert_eq!(
+            FORGE_JAVA_COMPAT,
+            "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED"
+        );
     }
 
     #[test]

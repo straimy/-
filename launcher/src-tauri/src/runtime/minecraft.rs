@@ -2,8 +2,7 @@ use super::GameRuntime;
 use serde::Serialize;
 use std::{
     collections::HashSet,
-    env,
-    fs,
+    env, fs,
     path::{Path, PathBuf},
     process::Command,
 };
@@ -129,12 +128,16 @@ pub fn forge_required_artifacts(install_dir: &Path) -> Vec<PathBuf> {
             .join("libraries")
             .join("net/minecraft/client")
             .join(format!("{MINECRAFT_VERSION}-{MCP_VERSION}"))
-            .join(format!("client-{MINECRAFT_VERSION}-{MCP_VERSION}-extra.jar")),
+            .join(format!(
+                "client-{MINECRAFT_VERSION}-{MCP_VERSION}-extra.jar"
+            )),
         install_dir
             .join("libraries")
             .join("net/minecraftforge/forge")
             .join(format!("{MINECRAFT_VERSION}-{FORGE_VERSION}"))
-            .join(format!("forge-{MINECRAFT_VERSION}-{FORGE_VERSION}-client.jar")),
+            .join(format!(
+                "forge-{MINECRAFT_VERSION}-{FORGE_VERSION}-client.jar"
+            )),
     ]
 }
 
@@ -200,7 +203,11 @@ pub fn prepare_launch(install_dir: &Path, custom_java: Option<&str>) -> LaunchPr
 }
 
 fn java_binary() -> &'static str {
-    if cfg!(windows) { "java.exe" } else { "java" }
+    if cfg!(windows) {
+        "java.exe"
+    } else {
+        "java"
+    }
 }
 
 fn java_from_home(home: PathBuf) -> PathBuf {
@@ -215,10 +222,7 @@ fn normalize_java_candidate(path: PathBuf) -> PathBuf {
     }
 }
 
-fn push_windows_java_candidates(
-    candidates: &mut Vec<JavaCandidate>,
-    seen: &mut HashSet<String>,
-) {
+fn push_windows_java_candidates(candidates: &mut Vec<JavaCandidate>, seen: &mut HashSet<String>) {
     let mut vendor_roots = Vec::new();
     if let Some(program_files) = env::var_os("ProgramFiles") {
         let root = PathBuf::from(program_files);
@@ -313,7 +317,10 @@ mod tests {
 
     #[test]
     fn parses_java_17() {
-        assert_eq!(parse_java_major("openjdk version \"17.0.12\" 2024-07-16"), Some(17));
+        assert_eq!(
+            parse_java_major("openjdk version \"17.0.12\" 2024-07-16"),
+            Some(17)
+        );
     }
 
     #[test]
@@ -336,8 +343,14 @@ mod tests {
     fn tracks_forge_processor_outputs() {
         let files = forge_required_artifacts(Path::new("/tmp/ggo"));
         assert_eq!(files.len(), 3);
-        assert!(files[0].to_string_lossy().ends_with("client-1.20.1-20230612.114412-srg.jar"));
-        assert!(files[1].to_string_lossy().ends_with("client-1.20.1-20230612.114412-extra.jar"));
-        assert!(files[2].to_string_lossy().ends_with("forge-1.20.1-47.4.10-client.jar"));
+        assert!(files[0]
+            .to_string_lossy()
+            .ends_with("client-1.20.1-20230612.114412-srg.jar"));
+        assert!(files[1]
+            .to_string_lossy()
+            .ends_with("client-1.20.1-20230612.114412-extra.jar"));
+        assert!(files[2]
+            .to_string_lossy()
+            .ends_with("forge-1.20.1-47.4.10-client.jar"));
     }
 }

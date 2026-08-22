@@ -8,7 +8,7 @@ use core::{
     identity_bridge,
     launcher_update::{self, LauncherUpdateStatus},
     microsoft_auth::{
-        self, MinecraftProfile, MicrosoftLoginResult, MicrosoftSession, MicrosoftSessionStore,
+        self, MicrosoftLoginResult, MicrosoftSession, MicrosoftSessionStore, MinecraftProfile,
     },
     remote_content::{self, NewsFeed, ServerCatalog},
     updater::{self, SyncReport, UpdatePlan},
@@ -267,13 +267,8 @@ async fn launch_minecraft(
             "microsoft",
         )?;
     }
-    minecraft_process::launch_with_natives(
-        &root,
-        custom_java.as_deref(),
-        &session,
-        &options,
-    )
-    .map_err(|error| error.to_string())
+    minecraft_process::launch_with_natives(&root, custom_java.as_deref(), &session, &options)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -309,13 +304,8 @@ async fn launch_training(
     options.connect_server = false;
     options.launch_mode = "training".to_string();
     let local_session = local_session(runtime_name, runtime_id);
-    minecraft_process::launch_with_natives(
-        &root,
-        custom_java.as_deref(),
-        &local_session,
-        &options,
-    )
-    .map_err(|error| error.to_string())
+    minecraft_process::launch_with_natives(&root, custom_java.as_deref(), &local_session, &options)
+        .map_err(|error| error.to_string())
 }
 
 fn stable_local_profile_id(display_name: &str) -> String {
@@ -376,18 +366,17 @@ async fn launch_game(
     // minecraft_launch, so an untrusted UI catalog cannot redirect the credential elsewhere.
     let api_url = BootstrapInfo::current().account_api_url;
     let http = updater::client().map_err(|error| error.to_string())?;
-    let ticket = ggo_auth::issue_game_ticket(
-        &http,
-        &api_url,
-        "official-online",
-        ggo_store.inner(),
-    )
-    .await?;
+    let ticket =
+        ggo_auth::issue_game_ticket(&http, &api_url, "official-online", ggo_store.inner()).await?;
     if ticket.player_id != ggo.profile.id {
-        return Err("GGO launcher session changed while preparing the game. Sign in again.".to_string());
+        return Err(
+            "GGO launcher session changed while preparing the game. Sign in again.".to_string(),
+        );
     }
     if ticket.expires_in < 15 {
-        return Err("GGO launcher session ticket lifetime is too short. Try PLAY ONLINE again.".to_string());
+        return Err(
+            "GGO launcher session ticket lifetime is too short. Try PLAY ONLINE again.".to_string(),
+        );
     }
     let child_environment = vec![("GGO_GAME_TICKET".to_string(), ticket.ticket)];
     minecraft_process::launch_with_natives_environment(
@@ -452,7 +441,9 @@ async fn ggo_login(
             ggo_auth::login_password(&http, &api_url, username, password, store.inner()).await
         }
         (None, None) => ggo_auth::login(&http, &api_url, store.inner()).await,
-        _ => Err("Provide both GGO username and password, or neither for browser login".to_string()),
+        _ => {
+            Err("Provide both GGO username and password, or neither for browser login".to_string())
+        }
     }
 }
 
@@ -462,10 +453,7 @@ async fn ggo_auth_status(store: State<'_, GgoSessionStore>) -> Result<GgoAuthSta
 }
 
 #[tauri::command]
-async fn ggo_logout(
-    store: State<'_, GgoSessionStore>,
-    api_url: String,
-) -> Result<(), String> {
+async fn ggo_logout(store: State<'_, GgoSessionStore>, api_url: String) -> Result<(), String> {
     let http = updater::client().map_err(|error| error.to_string())?;
     ggo_auth::logout(&http, &api_url, store.inner()).await
 }

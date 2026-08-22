@@ -36,7 +36,11 @@ pub enum UpdateError {
     #[error("invalid SHA256 for {0}")]
     InvalidSha256(String),
     #[error("download size mismatch for {path}: expected {expected}, got {actual}")]
-    SizeMismatch { path: String, expected: u64, actual: u64 },
+    SizeMismatch {
+        path: String,
+        expected: u64,
+        actual: u64,
+    },
     #[error("download checksum mismatch for {path}")]
     ChecksumMismatch { path: String },
     #[error("failed to replace {path}: {message}")]
@@ -85,11 +89,17 @@ pub fn client() -> Result<Client, UpdateError> {
     Ok(Client::builder()
         .connect_timeout(Duration::from_secs(15))
         .timeout(Duration::from_secs(300))
-        .user_agent(concat!("GunGloryOnline-Launcher/", env!("CARGO_PKG_VERSION")))
+        .user_agent(concat!(
+            "GunGloryOnline-Launcher/",
+            env!("CARGO_PKG_VERSION")
+        ))
         .build()?)
 }
 
-pub async fn fetch_manifest(client: &Client, manifest_url: &str) -> Result<GameManifest, UpdateError> {
+pub async fn fetch_manifest(
+    client: &Client,
+    manifest_url: &str,
+) -> Result<GameManifest, UpdateError> {
     let url = validate_remote_url(manifest_url)?;
     let manifest = client
         .get(url)
@@ -102,13 +112,20 @@ pub async fn fetch_manifest(client: &Client, manifest_url: &str) -> Result<GameM
     Ok(manifest)
 }
 
-pub async fn build_plan(manifest: &GameManifest, install_dir: &Path) -> Result<UpdatePlan, UpdateError> {
+pub async fn build_plan(
+    manifest: &GameManifest,
+    install_dir: &Path,
+) -> Result<UpdatePlan, UpdateError> {
     fs::create_dir_all(install_dir).await?;
     let mut files = Vec::new();
     let mut total_bytes = 0_u64;
     let mut checked_files = 0_usize;
 
-    for entry in manifest.files.iter().filter(|f| f.required && matches!(f.side, FileSide::Client | FileSide::Both)) {
+    for entry in manifest
+        .files
+        .iter()
+        .filter(|f| f.required && matches!(f.side, FileSide::Client | FileSide::Both))
+    {
         checked_files += 1;
         let target = resolve_target(install_dir, &entry.path)?;
         let reason = match fs::metadata(&target).await {
@@ -158,7 +175,11 @@ pub async fn sync(
     app.emit(
         "ggo-update-progress",
         UpdateProgress {
-            stage: if repair { "repair-check-complete" } else { "check-complete" },
+            stage: if repair {
+                "repair-check-complete"
+            } else {
+                "check-complete"
+            },
             current_file: String::new(),
             downloaded_bytes: 0,
             total_bytes: plan.total_bytes,
@@ -181,7 +202,13 @@ pub async fn sync(
     let entries: Vec<ManifestFile> = plan
         .files
         .iter()
-        .filter_map(|planned| manifest.files.iter().find(|f| f.path == planned.path).cloned())
+        .filter_map(|planned| {
+            manifest
+                .files
+                .iter()
+                .find(|f| f.path == planned.path)
+                .cloned()
+        })
         .collect();
 
     stream::iter(entries.into_iter().map(|entry| {
@@ -229,7 +256,9 @@ async fn download_and_install(
 ) -> Result<(), UpdateError> {
     let url = validate_remote_url(&entry.url)?;
     let target = resolve_target(install_dir, &entry.path)?;
-    let parent = target.parent().ok_or_else(|| UpdateError::UnsafePath(entry.path.clone()))?;
+    let parent = target
+        .parent()
+        .ok_or_else(|| UpdateError::UnsafePath(entry.path.clone()))?;
     fs::create_dir_all(parent).await?;
 
     let file_name = target
@@ -250,7 +279,8 @@ async fn download_and_install(
             output.write_all(&chunk).await?;
             hasher.update(&chunk);
             file_bytes = file_bytes.saturating_add(chunk.len() as u64);
-            let aggregate = downloaded.fetch_add(chunk.len() as u64, Ordering::Relaxed) + chunk.len() as u64;
+            let aggregate =
+                downloaded.fetch_add(chunk.len() as u64, Ordering::Relaxed) + chunk.len() as u64;
             app.emit(
                 "ggo-update-progress",
                 UpdateProgress {
@@ -276,7 +306,9 @@ async fn download_and_install(
         }
         let actual_hash = hex::encode(hasher.finalize());
         if actual_hash != entry.sha256.to_ascii_lowercase() {
-            return Err(UpdateError::ChecksumMismatch { path: entry.path.clone() });
+            return Err(UpdateError::ChecksumMismatch {
+                path: entry.path.clone(),
+            });
         }
 
         replace_with_rollback(&part, &target, &entry.path).await
@@ -289,13 +321,20 @@ async fn download_and_install(
     result
 }
 
-async fn replace_with_rollback(part: &Path, target: &Path, manifest_path: &str) -> Result<(), UpdateError> {
+async fn replace_with_rollback(
+    part: &Path,
+    target: &Path,
+    manifest_path: &str,
+) -> Result<(), UpdateError> {
     if fs::metadata(target).await.is_err() {
         fs::rename(part, target).await?;
         return Ok(());
     }
 
-    let file_name = target.file_name().and_then(|v| v.to_str()).unwrap_or("file");
+    let file_name = target
+        .file_name()
+        .and_then(|v| v.to_str())
+        .unwrap_or("file");
     let backup = target.with_file_name(format!(".{file_name}.ggo-backup-{}", Uuid::new_v4()));
     fs::rename(target, &backup).await?;
     match fs::rename(part, target).await {

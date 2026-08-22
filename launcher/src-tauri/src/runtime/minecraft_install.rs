@@ -251,28 +251,28 @@ pub async fn install_runtime(
 
     let total_bytes = downloads.iter().map(|item| item.size).sum::<u64>();
     let downloaded = Arc::new(Mutex::new(0_u64));
-    emit(app, "minecraft", "Preparing Minecraft files", 0, total_bytes);
+    emit(
+        app,
+        "minecraft",
+        "Preparing Minecraft files",
+        0,
+        total_bytes,
+    );
 
     let root = install_dir.to_path_buf();
     let app_handle = app.clone();
     let client = http.clone();
-    stream::iter(downloads.into_iter().map(|item| {
-        let root = root.clone();
-        let app_handle = app_handle.clone();
-        let client = client.clone();
-        let downloaded = downloaded.clone();
-        async move {
-            ensure_download(
-                &app_handle,
-                &client,
-                &root,
-                item,
-                downloaded,
-                total_bytes,
-            )
-            .await
-        }
-    }))
+    stream::iter(
+        downloads.into_iter().map(|item| {
+            let root = root.clone();
+            let app_handle = app_handle.clone();
+            let client = client.clone();
+            let downloaded = downloaded.clone();
+            async move {
+                ensure_download(&app_handle, &client, &root, item, downloaded, total_bytes).await
+            }
+        }),
+    )
     .buffer_unordered(DOWNLOAD_CONCURRENCY)
     .collect::<Vec<Result<(), RuntimeInstallError>>>()
     .await
@@ -287,7 +287,9 @@ pub async fn install_runtime(
 
     let final_check = minecraft::check_runtime(install_dir, custom_java);
     if !final_check.ready {
-        return Err(RuntimeInstallError::Incomplete(final_check.missing.join(", ")));
+        return Err(RuntimeInstallError::Incomplete(
+            final_check.missing.join(", "),
+        ));
     }
     let downloaded_bytes = *downloaded.lock().await;
     emit(
@@ -360,13 +362,7 @@ async fn ensure_download(
 
     let mut aggregate = downloaded.lock().await;
     *aggregate = aggregate.saturating_add(bytes.len() as u64);
-    emit(
-        app,
-        "minecraft",
-        &item.label,
-        *aggregate,
-        total_bytes,
-    );
+    emit(app, "minecraft", &item.label, *aggregate, total_bytes);
     Ok(())
 }
 
@@ -380,9 +376,8 @@ async fn install_forge(
     let forge_dir = install_dir.join(".ggo").join("installers");
     fs::create_dir_all(&forge_dir).await?;
     let installer = forge_dir.join(format!("forge-{forge_coordinate}-installer.jar"));
-    let url = format!(
-        "{FORGE_MAVEN_BASE}/{forge_coordinate}/forge-{forge_coordinate}-installer.jar"
-    );
+    let url =
+        format!("{FORGE_MAVEN_BASE}/{forge_coordinate}/forge-{forge_coordinate}-installer.jar");
     let sha1_url = format!("{url}.sha1");
 
     emit(app, "forge", "Downloading Forge installer", 0, 0);
@@ -409,7 +404,13 @@ async fn install_forge(
         Err(_) => true,
     };
     if needs_installer {
-        let bytes = http.get(&url).send().await?.error_for_status()?.bytes().await?;
+        let bytes = http
+            .get(&url)
+            .send()
+            .await?
+            .error_for_status()?
+            .bytes()
+            .await?;
         verify_sha1_bytes(&bytes, &expected_sha1, "Forge installer")?;
         fs::write(&installer, bytes).await?;
     }
@@ -428,7 +429,13 @@ async fn install_forge(
         return Ok(());
     }
 
-    emit(app, "forge-repair", "Repairing incomplete Forge processor outputs", 0, 0);
+    emit(
+        app,
+        "forge-repair",
+        "Repairing incomplete Forge processor outputs",
+        0,
+        0,
+    );
     clean_incomplete_forge(install_dir).await?;
     run_forge_installer(app, install_dir, java_path, &installer, true).await?;
 
@@ -456,7 +463,11 @@ async fn run_forge_installer(
     emit(
         app,
         if repair { "forge-repair" } else { "forge" },
-        if repair { "Reinstalling Forge 47.4.10" } else { "Installing Forge 47.4.10" },
+        if repair {
+            "Reinstalling Forge 47.4.10"
+        } else {
+            "Installing Forge 47.4.10"
+        },
         0,
         0,
     );
@@ -506,11 +517,7 @@ async fn clean_incomplete_forge(install_dir: &Path) -> Result<(), RuntimeInstall
     Ok(())
 }
 
-fn verify_sha1_bytes(
-    bytes: &[u8],
-    expected: &str,
-    label: &str,
-) -> Result<(), RuntimeInstallError> {
+fn verify_sha1_bytes(bytes: &[u8], expected: &str, label: &str) -> Result<(), RuntimeInstallError> {
     if sha1_hex(bytes).eq_ignore_ascii_case(expected) {
         Ok(())
     } else {
@@ -611,6 +618,8 @@ mod tests {
 
     #[test]
     fn incomplete_directory_is_not_forge_ready() {
-        assert!(!forge_outputs_ready(Path::new("/definitely/not/a/ggo/runtime")));
+        assert!(!forge_outputs_ready(Path::new(
+            "/definitely/not/a/ggo/runtime"
+        )));
     }
 }

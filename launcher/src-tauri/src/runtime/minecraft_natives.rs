@@ -60,11 +60,12 @@ fn native_classifier(library: &Value) -> Option<String> {
     } else {
         "linux"
     };
-    let template = library
-        .get("natives")?
-        .get(os_key)?
-        .as_str()?;
-    let arch = if cfg!(target_pointer_width = "64") { "64" } else { "32" };
+    let template = library.get("natives")?.get(os_key)?.as_str()?;
+    let arch = if cfg!(target_pointer_width = "64") {
+        "64"
+    } else {
+        "32"
+    };
     Some(template.replace("${arch}", arch))
 }
 
