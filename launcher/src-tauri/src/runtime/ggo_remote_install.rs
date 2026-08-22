@@ -1,11 +1,12 @@
 use super::{
     ggo_local_install::{CORE_FILE_NAME, UI_FILE_NAME},
-    official_server,
+    official_resource_pack, official_server,
 };
 use std::{fs, io, path::Path};
 
 pub fn finalize_remote_install(install_dir: &Path) -> Result<(), io::Error> {
     remove_legacy_managed_jars(&install_dir.join("mods"))?;
+    official_resource_pack::ensure_official_resource_pack(install_dir)?;
     official_server::ensure_official_server(install_dir)
         .map_err(|error| io::Error::new(io::ErrorKind::Other, error))?;
     Ok(())
@@ -40,16 +41,27 @@ fn remove_legacy_managed_jars(mods_dir: &Path) -> Result<(), io::Error> {
 #[cfg(test)]
 mod tests {
     use super::finalize_remote_install;
+    use crate::runtime::official_resource_pack::OFFICIAL_PACK_FILE;
 
     #[test]
-    fn finalizer_does_not_modify_resource_pack_preferences() {
+    fn finalizer_enables_official_resource_pack_and_preserves_user_pack() {
         let root =
             std::env::temp_dir().join(format!("ggo-remote-finalize-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(root.join("mods")).unwrap();
-        std::fs::write(root.join("options.txt"), "resourcePacks:[]\n").unwrap();
+        std::fs::create_dir_all(root.join("resourcepacks")).unwrap();
+        std::fs::write(root.join("resourcepacks").join(OFFICIAL_PACK_FILE), b"rp").unwrap();
+        std::fs::write(
+            root.join("options.txt"),
+            "resourcePacks:[\"file/User.zip\"]\nincompatibleResourcePacks:[]\n",
+        )
+        .unwrap();
+
         finalize_remote_install(&root).unwrap();
+
         let options = std::fs::read_to_string(root.join("options.txt")).unwrap();
-        assert_eq!(options, "resourcePacks:[]\n");
+        assert!(options.contains(
+            "resourcePacks:[\"file/User.zip\",\"file/GunGloryOnline-Official.zip\"]"
+        ));
         assert!(root.join("servers.dat").is_file());
         let _ = std::fs::remove_dir_all(root);
     }
