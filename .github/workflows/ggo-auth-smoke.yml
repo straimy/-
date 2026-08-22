@@ -37,7 +37,7 @@ jobs:
           grep -q '/var/lib/ggo-auth/auth.db' services/ggo-auth/ggo-auth.service
           grep -q 'GGO auth health: PASS' services/ggo-auth/install.sh
 
-      - name: Publish exact auth receipt
+      - name: Publish immutable auth receipt
         if: always()
         env:
           SYNTAX_OUTCOME: ${{ steps.syntax.outcome }}
@@ -49,8 +49,9 @@ jobs:
           for value in "$SYNTAX_OUTCOME" "$SMOKE_OUTCOME" "$DEPLOY_OUTCOME"; do
             if [ "$value" != success ]; then result=failure; fi
           done
-          mkdir -p .ci
-          cat > .ci/ggo-auth-last-run.txt <<EOF
+          mkdir -p .ci/auth
+          receipt=".ci/auth/${GITHUB_RUN_ID}.txt"
+          cat > "$receipt" <<EOF
           workflow=${{ github.workflow }}
           run_id=${{ github.run_id }}
           run_attempt=${{ github.run_attempt }}
@@ -63,7 +64,7 @@ jobs:
           EOF
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add .ci/ggo-auth-last-run.txt
+          git add "$receipt"
           git commit -m 'ci: record auth smoke ${{ github.run_id }}' || exit 0
           git fetch origin '${{ github.ref_name }}'
           git rebase 'origin/${{ github.ref_name }}'
