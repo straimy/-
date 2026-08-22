@@ -11,7 +11,8 @@ text=DST.read_text(encoding="utf-8")
 for required in [
     "FIELD ITEMS 18..35","LivingDropsEvent","PlayerEvent.Clone","GgoRecoveryContents","ggo_keep_vanilla",
     "event.getDrops().clear()","RightClickItem","addFreshEntity(entity)","recoverOwnerContents","ONLY THE OWNER CAN OPEN IT",
-    "storeField","PARTIAL RECOVERY","FIELD INVENTORY FULL"
+    "storeField","PARTIAL RECOVERY","FIELD INVENTORY FULL",
+    "RECOVERY_BAG_MODEL=720049","putInt(\"CustomModelData\",RECOVERY_BAG_MODEL)"
 ]:
     if required not in text: raise SystemExit(f"stage49 recovery behavior missing: {required}")
 print("Applied GGO Stage 49 recovery bag")
@@ -20,3 +21,4 @@ print(" - field slots become one sealed owner-bound bag")
 print(" - loose Minecraft death piles are suppressed")
 print(" - bag spawn is independent of keepInventory")
 print(" - only the owner may reclaim contents; overflow remains sealed without loss")
+print(" - recovery bag visual contract uses CustomModelData 720049")
