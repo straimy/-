@@ -1,0 +1,233 @@
+name: GGO Runtime Stage 76 Menu First
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - client/runtime-migration-v1
+    paths:
+      - '.github/workflows/ggo-runtime-stage76-menu-first.yml'
+      - 'hotfix/GgoFrontEndScreen.java'
+      - 'hotfix/apply_ggo_launcher_authority_stage58.py'
+      - 'hotfix/GgoLaunchTicketClient.java'
+      - 'hotfix/apply_ggo_launch_ticket_stage55.py'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+      STAGE73_RUN: '32602394966'
+      CLEAN_RP_RUN: '32602317959'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: client/runtime-migration-v1
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Capture exact ref
+        id: refs
+        run: echo "client_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare Forge wrapper
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/ggo-mdk /tmp/ggo-mdk.zip
+          curl -fL --retry 3 -o /tmp/ggo-mdk.zip https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-mdk.zip
+          mkdir -p /tmp/ggo-mdk
+          unzip -q /tmp/ggo-mdk.zip 'gradlew' 'gradlew.bat' 'gradle/*' -d /tmp/ggo-mdk
+
+      - name: Build menu-first GGO UI
+        id: ui
+        run: |
+          set -euo pipefail
+          rm -rf ga-build stage76 && mkdir ga-build
+          unzip -q "$SOURCE_ZIP" -d ga-build
+          python3 hotfix/apply_ggo_ui_shell_stage1.py
+          python3 hotfix/apply_ggo_ui_shell_stage2.py
+          python3 hotfix/apply_ggo_ui_shell_stage3.py
+          python3 hotfix/apply_ggo_hud_stage4.py
+          python3 hotfix/apply_ggo_frontend_stage5.py
+          python3 hotfix/apply_ggo_settings_stage6.py
+          python3 hotfix/apply_ggo_identity_minimap_stage7.py
+          python3 hotfix/apply_ggo_weapon_navigation_stage8.py
+          python3 hotfix/apply_ggo_ping_stage9.py
+          python3 hotfix/apply_ggo_navigation_zoom_stage10.py
+          python3 hotfix/apply_ggo_squad_ping_stage11.py
+          python3 hotfix/apply_ggo_ping_wheel_stage12.py
+          python3 hotfix/apply_ggo_tab_squad_stage13.py
+          python3 hotfix/apply_ggo_objective_squad_stage15.py
+          python3 hotfix/apply_ggo_runtime_network_stage17.py
+          python3 hotfix/apply_ggo_jeg_telemetry_stage18.py
+          python3 hotfix/apply_ggo_squad_map_stage19.py
+          python3 hotfix/apply_ggo_server_hud_stage20.py
+          python3 hotfix/apply_ggo_br_hud_stage21.py
+          python3 hotfix/apply_ggo_contracts_stage23.py
+          python3 hotfix/apply_ggo_br_map_client_stage24.py
+          python3 hotfix/apply_ggo_contract_map_stage27_fixed.py
+          python3 hotfix/apply_ggo_contract_session_stage35.py
+          python3 hotfix/apply_ggo_contract_reward_ui_stage37.py
+          python3 hotfix/apply_ggo_client_compile_baseline_stage28.py
+          python3 hotfix/apply_ggo_deminecraft_client_stage40.py
+          python3 hotfix/apply_ggo_inventory_stage42.py
+          python3 hotfix/apply_ggo_input_fence_stage45.py
+          python3 hotfix/apply_ggo_combat_hud_stage47.py
+          python3 hotfix/apply_ggo_death_recap_stage48.py
+          python3 hotfix/apply_ggo_inventory_stage50.py
+          python3 hotfix/apply_ggo_launch_ticket_stage55.py
+          python3 hotfix/apply_ggo_entry_ux_stage57.py
+          python3 hotfix/apply_ggo_launcher_authority_stage58.py
+          python3 hotfix/apply_ggo_session_verification_stage61.py
+          python3 hotfix/apply_ggo_ui_packets_stage65.py
+          python3 hotfix/apply_ggo_surface_fence_stage66.py
+          python3 hotfix/apply_ggo_chat_shell_stage67.py
+          python3 hotfix/apply_ggo_brand_leak_cleanup_stage68.py
+
+          cp /tmp/ggo-mdk/gradlew ga-build/client-ui/gradlew
+          cp /tmp/ggo-mdk/gradlew.bat ga-build/client-ui/gradlew.bat
+          rm -rf ga-build/client-ui/gradle && cp -a /tmp/ggo-mdk/gradle ga-build/client-ui/gradle
+          chmod +x ga-build/client-ui/gradlew
+          (cd ga-build/client-ui && ./gradlew --no-daemon clean build --stacktrace)
+
+          UI="$(find ga-build/client-ui/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          test -n "$UI" && test -f "$UI"
+          mkdir -p stage76/client/mods stage76/client/resourcepacks stage76/server/mods
+          cp "$UI" stage76/client/mods/gungloryonline-ui-runtime-v1-stage76.jar
+          echo "ui_sha256=$(sha256sum "$UI" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Verify menu-first frontend contract
+        id: menu
+        run: |
+          set -euo pipefail
+          JAVA=ga-build/client-ui/src/main/java/arena/client/shell
+          FRONT="$JAVA/GgoFrontEndScreen.java"
+          HOOKS="$JAVA/GgoShellHooks.java"
+          TICKET="$JAVA/GgoLaunchTicketClient.java"
+          test -f "$FRONT" && test -f "$HOOKS" && test -f "$TICKET"
+          grep -q 'instanceof TitleScreen' "$HOOKS"
+          grep -q 'event.setNewScreen(new GgoFrontEndScreen())' "$HOOKS"
+          grep -q 'GGO CLIENT  •  BETA' "$FRONT"
+          grep -q 'CHOOSE ACTIVITY' "$FRONT"
+          grep -q 'PLAY ONLINE' "$FRONT"
+          grep -q 'TRAINING' "$FRONT"
+          grep -q 'GgoLaunchTicketClient.isOfficialLaunch()' "$FRONT"
+          grep -q 'ConnectScreen.startConnecting' "$FRONT"
+          grep -q 'ServerAddress.parseString(OFFICIAL_SERVER)' "$FRONT"
+          grep -q 'OFFICIAL_SERVER = "play.kvicloud.ru:24842"' "$FRONT"
+          grep -q 'new GgoSettingsScreen(this)' "$FRONT"
+          ! grep -q 'ServerListScreen' "$FRONT"
+          ! grep -q 'DirectJoinServerScreen' "$FRONT"
+          ! grep -q 'MultiplayerScreen' "$FRONT"
+          ! grep -q 'OptionsScreen' "$FRONT"
+          grep -q 'System.getenv("GGO_GAME_TICKET")' "$TICKET"
+          grep -q 'if (minecraft.player == null || minecraft.getConnection() == null) return;' "$TICKET"
+          grep -q 'ticket = null;' "$TICKET"
+          UI=stage76/client/mods/gungloryonline-ui-runtime-v1-stage76.jar
+          for c in GgoFrontEndScreen GgoSettingsScreen GgoLaunchTicketClient GgoSessionVerificationOverlay GgoShellScreen GgoChatScreen; do
+            jar tf "$UI" | grep -q "^arena/client/shell/$c.class$"
+          done
+
+      - name: Download Stage 73 hardened Core
+        uses: actions/download-artifact@v4
+        with:
+          name: GunGloryOnline-Core-Stage73-AuthTimeout
+          path: stage73-input
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: 32602394966
+
+      - name: Download clean official resource pack
+        uses: actions/download-artifact@v4
+        with:
+          name: GunGloryOnline-Runtime-Stage72-CustomFrontend
+          path: clean-rp-input
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: 32602317959
+
+      - name: Assemble Stage 76 beta runtime
+        id: assemble
+        run: |
+          set -euo pipefail
+          CLIENT_CORE="$(find stage73-input -type f -path '*/client/mods/*' -name '*core*.jar' | head -n1)"
+          SERVER_CORE="$(find stage73-input -type f -path '*/server/mods/*' -name '*core*.jar' | head -n1)"
+          RP="$(find clean-rp-input -type f -name 'GunGloryOnline-Official.zip' | head -n1)"
+          test -n "$CLIENT_CORE" && test -f "$CLIENT_CORE"
+          test -n "$SERVER_CORE" && test -f "$SERVER_CORE"
+          test -n "$RP" && test -f "$RP"
+          cmp "$CLIENT_CORE" "$SERVER_CORE"
+          cp "$CLIENT_CORE" stage76/client/mods/gungloryonline-core-runtime-v1-stage76.jar
+          cp "$SERVER_CORE" stage76/server/mods/gungloryonline-core-runtime-v1-stage76.jar
+          cp "$RP" stage76/client/resourcepacks/GunGloryOnline-Official.zip
+          cmp stage76/client/mods/gungloryonline-core-runtime-v1-stage76.jar stage76/server/mods/gungloryonline-core-runtime-v1-stage76.jar
+          if unzip -Z1 stage76/client/resourcepacks/GunGloryOnline-Official.zip | grep -q '^assets/minecraft/shaders/core/'; then
+            echo 'forbidden vanilla shader override survived Stage 76' >&2
+            exit 1
+          fi
+          jar tf stage76/client/mods/gungloryonline-core-runtime-v1-stage76.jar | grep -q 'arena/forge/GgoLaunchTicketNetwork.class'
+          jar tf stage76/client/mods/gungloryonline-core-runtime-v1-stage76.jar | grep -q 'arena/forge/GgoPreAuthQuarantine.class'
+          echo "core_sha256=$(sha256sum stage76/client/mods/gungloryonline-core-runtime-v1-stage76.jar | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "rp_sha256=$(sha256sum stage76/client/resourcepacks/GunGloryOnline-Official.zip | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        id: upload
+        if: success()
+        with:
+          name: GunGloryOnline-Runtime-Stage76-MenuFirst
+          path: stage76/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish Stage 76 receipt
+        if: always()
+        env:
+          UI_OUTCOME: ${{ steps.ui.outcome }}
+          MENU_OUTCOME: ${{ steps.menu.outcome }}
+          ASSEMBLE_OUTCOME: ${{ steps.assemble.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+        run: |
+          set -euo pipefail
+          result=success
+          for v in "$UI_OUTCOME" "$MENU_OUTCOME" "$ASSEMBLE_OUTCOME" "$UPLOAD_OUTCOME"; do
+            [ "$v" = success ] || result=failure
+          done
+          mkdir -p ci-results
+          cat > ci-results/stage76-menu-first.txt <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_id=${GITHUB_RUN_ID}
+          run_attempt=${GITHUB_RUN_ATTEMPT}
+          run_url=https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          client_sha=${{ steps.refs.outputs.client_sha }}
+          stage73_run=${STAGE73_RUN}
+          clean_rp_run=${CLEAN_RP_RUN}
+          ui_build=$UI_OUTCOME
+          menu_first_gates=$MENU_OUTCOME
+          assemble=$ASSEMBLE_OUTCOME
+          upload=$UPLOAD_OUTCOME
+          ui_sha256=${{ steps.ui.outputs.ui_sha256 }}
+          core_sha256=${{ steps.assemble.outputs.core_sha256 }}
+          resource_pack_sha256=${{ steps.assemble.outputs.rp_sha256 }}
+          title_screen_redirected=true
+          official_launch_lands_on_ggo_menu=true
+          online_selected_inside_ggo_client=true
+          server_browser_exposed=false
+          vanilla_options_from_frontend=false
+          result=$result
+          EOF
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ci-results/stage76-menu-first.txt
+          git commit -m "ci: record Stage 76 menu-first ${GITHUB_RUN_ID}" || exit 0
+          git fetch origin client/runtime-migration-v1
+          git rebase origin/client/runtime-migration-v1
+          git push origin HEAD:client/runtime-migration-v1
