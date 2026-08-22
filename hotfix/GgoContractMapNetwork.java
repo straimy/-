@@ -58,7 +58,7 @@ public final class GgoContractMapNetwork {
 
     private static void request0(Request message,Supplier<NetworkEvent.Context> context){
         ServerPlayer player=context.get().getSender();
-        if(player!=null)sendSnapshot(player);
+        if(player!=null&&GgoContractRequestGuard.allowMapSnapshot(player))sendSnapshot(player);
         context.get().setPacketHandled(true);
     }
 
