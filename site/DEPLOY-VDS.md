@@ -1,67 +1,92 @@
-# GunGloryOnline portal + account API deployment (Ubuntu 22.04)
+# GunGloryOnline Closed Beta deployment (Ubuntu 22.04/24.04)
 
 Production targets:
 
-- website: `https://ggo.kvicloud.ru`
-- game server: `2.26.100.125:24842`
+- website/account/content: `https://ggo.kvicloud.ru`
+- official game hostname: `play.kvicloud.ru:24842`
+- current origin: `2.26.100.125:24842`
 - web root: `/var/www/gungloryonline`
 - private account API: `127.0.0.1:8787`
 - account DB: `/var/lib/ggo-auth/auth.db`
+- game runtime: Minecraft 1.20.1 + Forge 47.4.10 + Java 17 (hidden Runtime v1)
 
 ## 1. DNS
 
-Create an A record:
+Required A records:
 
 ```text
 Type: A
 Name: ggo
 Content: 2.26.100.125
+
+Type: A
+Name: play
+Content: 2.26.100.125
 ```
 
-During initial certificate setup prefer DNS-only mode if your DNS provider has an HTTP proxy feature.
+The launcher is intentionally locked to `play.kvicloud.ru:24842`. Do not reintroduce the numeric IP into player-facing launcher code as a workaround for missing DNS.
 
-## 2. Install/update portal and account service
+During certificate setup prefer DNS-only mode if your DNS provider has an HTTP proxy feature. The game hostname must expose raw TCP 24842 rather than an HTTP-only proxy.
 
-The WEB-VDS package contains `site/` and `services/ggo-auth/`. From the extracted package root run:
+## 2. Back up account state before web/auth updates
+
+Do not overwrite or copy the live SQLite DB from a build artifact.
+
+Before changing the service, make a protected backup using SQLite backup tooling or while the service is stopped. Example:
 
 ```bash
-cd site
-chmod +x install-site.sh ../services/ggo-auth/install.sh
+systemctl stop ggo-auth
+cp -a /var/lib/ggo-auth/auth.db /var/lib/ggo-auth/auth.db.backup-$(date +%Y%m%d-%H%M%S)
+systemctl start ggo-auth
+```
+
+Protect backups like credentials.
+
+## 3. Install/update portal and account service
+
+The Stage72 VDS payload contains `web/site/` and `web/services/ggo-auth/`. From the extracted `payload/` directory run:
+
+```bash
+cd web/site
+chmod +x install-site.sh ../../web/services/ggo-auth/install.sh
 ./install-site.sh
 ```
 
 The installer:
 
-- installs nginx, Python 3, CA certificates and curl;
-- deploys the portal into `/var/www/gungloryonline`;
-- creates the locked-down `ggo-auth` system user;
-- installs the SQLite account service into `/opt/ggo-auth`;
-- keeps its database in `/var/lib/ggo-auth`;
-- binds the account service only to localhost;
+- installs nginx, Python 3, CA certificates and curl as needed;
+- deploys the portal/content into `/var/www/gungloryonline`;
+- creates/uses the locked-down `ggo-auth` system user;
+- installs the account service into `/opt/ggo-auth`;
+- preserves account data under `/var/lib/ggo-auth`;
+- binds auth only to localhost;
 - proxies `/api/v1/` through nginx;
 - applies login/registration rate limits;
-- validates nginx and both direct/proxied API health before reporting success.
+- validates nginx and direct/proxied health before reporting success.
 
-## 3. Verify HTTP before HTTPS
+## 4. Verify account API
 
 ```bash
 systemctl status ggo-auth --no-pager
 systemctl status nginx --no-pager
 curl http://127.0.0.1:8787/api/v1/health
 curl -H 'Host: ggo.kvicloud.ru' http://127.0.0.1/api/v1/health
+curl https://ggo.kvicloud.ru/api/v1/health
 ```
 
-Both health calls must return an object containing:
+Current health response must contain at least:
 
 ```json
-{"ok":true,"service":"ggo-auth","version":1}
+{"ok":true,"service":"ggo-auth","version":2,"game_tickets":true}
 ```
 
-## 4. Enable HTTPS — required for production accounts
+If the public HTTPS URL returns HTML instead of JSON, the deployed nginx/auth stack is stale or `/api/v1/` is falling through to the SPA root.
 
-Do not treat website login/device authorization as production-ready over raw HTTP. The account cookie is configured as `Secure` for the production domain and launcher browser-login opens the HTTPS URL.
+## 5. HTTPS
 
-After DNS resolves to this VDS:
+Production accounts require HTTPS. The account cookie is `Secure` for the production domain and launcher browser-login opens HTTPS.
+
+If certificate setup is not already complete:
 
 ```bash
 apt update
@@ -76,56 +101,121 @@ curl -I https://ggo.kvicloud.ru/
 curl https://ggo.kvicloud.ru/api/v1/health
 ```
 
-## 5. Account flow smoke
+## 6. Closed Beta content
+
+The current repository beta manifest is:
+
+`/content/manifests/beta.json`
+
+Current GGO-owned client entries are:
+
+- `mods/gungloryonline-core-runtime-v1-stage68.jar`
+- `mods/gungloryonline-ui-runtime-v1-stage69.jar`
+- `resourcepacks/GunGloryOnline-Official.zip`
+
+The Stage72 payload already places those exact files under `web/site/content/files/v40/` and verifies byte size + SHA256 against the manifest before artifact upload.
+
+After deployment:
+
+```bash
+curl https://ggo.kvicloud.ru/content/manifests/beta.json
+```
+
+Confirm it lists `GunGloryOnline-Official.zip` and does **not** list `GunGloryOnline-ResourcePack-1.20.1-v5-swittie-social.zip`.
+
+The manifest is fail-closed: every listed file must have the exact public URL, size and SHA256.
+
+## 7. Public launcher downloads
+
+Keep these paths available:
+
+- `/downloads/GunGloryOnline-Launcher-Windows.exe`
+- `/downloads/GunGloryOnline-Launcher-Windows.msi`
+- `/downloads/GunGloryOnline-Launcher-Windows-Portable.zip`
+- `/downloads/GunGloryOnline-Launcher-Linux.AppImage`
+- `/downloads/GunGloryOnline-Launcher-Ubuntu-Debian.deb`
+- `/downloads/GunGloryOnline-Launcher-Fedora-RHEL.rpm`
+
+Stage72 includes the verified Closed Beta launcher package set in `web/site/downloads/`.
+
+## 8. Game server
+
+The latest pre-deploy public probe found `2.26.100.125:24842` returning `Connection refused`. The server must be running and listening on TCP 24842 before the public route can be green.
+
+Stage72 contains the current server Core:
+
+`game-server/mods/gungloryonline-core-runtime-v1-stage68.jar`
+
+Install it into the existing Forge 1.20.1 / 47.4.10 server while preserving the server's other required mods, configs and authored world.
+
+Server environment must contain:
+
+```text
+GGO_AUTH_API_URL=https://ggo.kvicloud.ru/api/v1
+GGO_SERVER_KEY=<private server key>
+```
+
+Never place `GGO_SERVER_KEY` in the client, website, artifact, public manifest or chat.
+
+Verify listener/DNS from outside the VDS:
+
+```bash
+getent ahosts play.kvicloud.ru
+nc -vz play.kvicloud.ru 24842
+```
+
+## 9. Account flow smoke
 
 Open:
 
-```text
-https://ggo.kvicloud.ru/account/
-```
+`https://ggo.kvicloud.ru/account/`
 
-Create a temporary test user, sign out, then sign in again. In the launcher test both:
+Use a temporary test account and test:
 
-1. GGO username + password.
-2. `Sign in through website` device flow: launcher opens `/account/device.html`, website session approves it, launcher receives the GGO profile through PKCE.
+1. username/password login;
+2. website PKCE device flow;
+3. launcher one-shot game-ticket issuance;
+4. game joins official route;
+5. server consumes ticket and returns verification ACK;
+6. client leaves verification overlay and gameplay unlocks.
 
-Never paste a password, access token, refresh token or database file into support chats/logs.
+Never paste passwords, access/refresh/game tickets or DB contents into logs/support chat.
 
-## 6. Operational commands
+## 10. Required post-deploy gate
+
+Run GitHub Actions workflow `GGO Public Beta Reachability` after deployment.
+
+Do not call the public beta route ready until a new immutable `.ci/public/<run>.txt` says all of these are `success`:
+
+- website HTTPS
+- auth health HTTPS
+- beta manifest HTTPS
+- official hostname DNS
+- official hostname TCP
+- origin server TCP
+- overall result
+
+Latest known pre-deploy probe is run `32567346737` and is intentionally red for auth/manifest/DNS/server because the live infrastructure had not yet received Stage72.
+
+## Operational commands
 
 ```bash
 journalctl -u ggo-auth -n 100 --no-pager
 systemctl restart ggo-auth
 nginx -t && systemctl reload nginx
 ls -lh /var/lib/ggo-auth/auth.db
+ss -ltnp | grep 24842
 ```
-
-Back up the account database while the service is stopped or by using SQLite's backup mechanism. Protect backups like credentials.
-
-## 7. Launcher/content files
-
-Keep these public paths available:
-
-- `/downloads/GunGloryOnline-Launcher-Windows.exe`
-- `/downloads/GunGloryOnline-Launcher-Windows-Portable.zip`
-- `/downloads/GunGloryOnline-Launcher-Linux.AppImage`
-- `/downloads/GunGloryOnline-Launcher-Ubuntu-Debian.deb`
-- `/downloads/GunGloryOnline-Launcher-Fedora-RHEL.rpm`
-- `/downloads/GunGloryOnline-ClientPack-1.20.1-Forge47.4.10.zip`
-- `/content/manifests/beta.json`
-- `/content/api/servers.json`
-- `/content/api/news.json`
-- `/content/files/v40/...`
-
-The production game manifest remains fail-closed: every listed client file must have the correct URL, byte size and SHA256.
 
 ## Current security model
 
-- password derivation: scrypt + random per-user salt;
-- random access/refresh tokens; only SHA256 token hashes are stored server-side;
+- scrypt + random per-user salt for password derivation;
+- random access/refresh tokens; only SHA256 hashes stored server-side;
+- one-shot 180-second pre-consume game tickets, replay/race protected;
 - HttpOnly + SameSite=Lax website session cookie; Secure under production HTTPS;
 - launcher browser login uses PKCE device authorization;
 - auth service is localhost-only behind nginx;
-- nginx rate-limits password login and account registration.
+- nginx rate-limits password login and account registration;
+- server consumes tickets using private `GGO_SERVER_KEY`.
 
-Microsoft/Minecraft linking is intentionally not advertised as complete until server-side ownership verification is implemented; the API fails closed rather than pretending the link succeeded.
+Microsoft/Minecraft linking is intentionally not advertised as complete until server-side ownership verification exists; the API fails closed rather than pretending the link succeeded.
