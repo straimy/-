@@ -23,7 +23,7 @@ jobs:
             bundle: appimage,deb,rpm
             artifact: GunGloryOnline-Launcher-Linux
           - os: windows-2022
-            bundle: nsis
+            bundle: nsis,msi
             artifact: GunGloryOnline-Launcher-Windows
     runs-on: ${{ matrix.os }}
     defaults:
@@ -73,6 +73,9 @@ jobs:
           $installer = Get-ChildItem src-tauri/target/release/bundle/nsis/*.exe | Select-Object -First 1
           if (-not $installer) { throw 'NSIS package not found' }
           Copy-Item $installer.FullName dist-package/GunGloryOnline-Launcher-Windows.exe
+          $msi = Get-ChildItem src-tauri/target/release/bundle/msi/*.msi | Select-Object -First 1
+          if (-not $msi) { throw 'MSI package not found' }
+          Copy-Item $msi.FullName dist-package/GunGloryOnline-Launcher-Windows.msi
           $portable = Get-ChildItem src-tauri/target/release/*.exe | Where-Object { $_.Name -notmatch 'build|setup|installer' } | Sort-Object Length -Descending | Select-Object -First 1
           if (-not $portable) { throw 'Portable launcher executable not found' }
           Copy-Item $portable.FullName dist-package/GunGloryOnline-Launcher-Portable.exe
@@ -172,7 +175,9 @@ jobs:
           auth_status=${{ needs.auth.result }}
           website_status=${{ needs.website.result }}
           windows_artifact=GunGloryOnline-Launcher-Windows
+          windows_installers=GunGloryOnline-Launcher-Windows.exe,GunGloryOnline-Launcher-Windows.msi,GunGloryOnline-Launcher-Windows-Portable.zip
           linux_artifact=GunGloryOnline-Launcher-Linux
+          linux_installers=GunGloryOnline-Launcher-Linux.AppImage,GunGloryOnline-Launcher-Ubuntu-Debian.deb,GunGloryOnline-Launcher-Fedora-RHEL.rpm
           website_artifact=GunGloryOnline-Website
           EOF
           git config user.name github-actions[bot]
