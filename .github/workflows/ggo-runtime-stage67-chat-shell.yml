@@ -1,0 +1,147 @@
+name: GGO Runtime Stage 67 Chat Shell
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - client/runtime-migration-v1
+    paths:
+      - '.github/workflows/ggo-runtime-stage67-chat-shell.yml'
+      - 'hotfix/GgoChatScreen.java'
+      - 'hotfix/GgoChatShellHook.java'
+      - 'hotfix/apply_ggo_chat_shell_stage67.py'
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    env:
+      SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: client/runtime-migration-v1
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Capture exact ref
+        id: refs
+        run: echo "client_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare Forge wrapper
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/ggo-mdk /tmp/ggo-mdk.zip
+          curl -fL --retry 3 -o /tmp/ggo-mdk.zip https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-mdk.zip
+          mkdir -p /tmp/ggo-mdk
+          unzip -q /tmp/ggo-mdk.zip 'gradlew' 'gradlew.bat' 'gradle/*' -d /tmp/ggo-mdk
+
+      - name: Build client UI through Stage 67
+        id: client
+        run: |
+          set -euo pipefail
+          rm -rf ga-build && mkdir ga-build
+          unzip -q "$SOURCE_ZIP" -d ga-build
+          python3 hotfix/apply_ggo_ui_shell_stage1.py
+          python3 hotfix/apply_ggo_ui_shell_stage2.py
+          python3 hotfix/apply_ggo_ui_shell_stage3.py
+          python3 hotfix/apply_ggo_hud_stage4.py
+          python3 hotfix/apply_ggo_frontend_stage5.py
+          python3 hotfix/apply_ggo_settings_stage6.py
+          python3 hotfix/apply_ggo_identity_minimap_stage7.py
+          python3 hotfix/apply_ggo_weapon_navigation_stage8.py
+          python3 hotfix/apply_ggo_ping_stage9.py
+          python3 hotfix/apply_ggo_navigation_zoom_stage10.py
+          python3 hotfix/apply_ggo_squad_ping_stage11.py
+          python3 hotfix/apply_ggo_ping_wheel_stage12.py
+          python3 hotfix/apply_ggo_tab_squad_stage13.py
+          python3 hotfix/apply_ggo_objective_squad_stage15.py
+          python3 hotfix/apply_ggo_runtime_network_stage17.py
+          python3 hotfix/apply_ggo_jeg_telemetry_stage18.py
+          python3 hotfix/apply_ggo_squad_map_stage19.py
+          python3 hotfix/apply_ggo_server_hud_stage20.py
+          python3 hotfix/apply_ggo_br_hud_stage21.py
+          python3 hotfix/apply_ggo_contracts_stage23.py
+          python3 hotfix/apply_ggo_br_map_client_stage24.py
+          python3 hotfix/apply_ggo_contract_map_stage27_fixed.py
+          python3 hotfix/apply_ggo_contract_session_stage35.py
+          python3 hotfix/apply_ggo_contract_reward_ui_stage37.py
+          python3 hotfix/apply_ggo_client_compile_baseline_stage28.py
+          python3 hotfix/apply_ggo_deminecraft_client_stage40.py
+          python3 hotfix/apply_ggo_inventory_stage42.py
+          python3 hotfix/apply_ggo_input_fence_stage45.py
+          python3 hotfix/apply_ggo_combat_hud_stage47.py
+          python3 hotfix/apply_ggo_death_recap_stage48.py
+          python3 hotfix/apply_ggo_inventory_stage50.py
+          python3 hotfix/apply_ggo_launch_ticket_stage55.py
+          python3 hotfix/apply_ggo_entry_ux_stage57.py
+          python3 hotfix/apply_ggo_launcher_authority_stage58.py
+          python3 hotfix/apply_ggo_session_verification_stage61.py
+          python3 hotfix/apply_ggo_ui_packets_stage65.py
+          python3 hotfix/apply_ggo_surface_fence_stage66.py
+          python3 hotfix/apply_ggo_chat_shell_stage67.py
+          cp /tmp/ggo-mdk/gradlew ga-build/client-ui/gradlew
+          cp /tmp/ggo-mdk/gradlew.bat ga-build/client-ui/gradlew.bat
+          rm -rf ga-build/client-ui/gradle && cp -a /tmp/ggo-mdk/gradle ga-build/client-ui/gradle
+          chmod +x ga-build/client-ui/gradlew
+          (cd ga-build/client-ui && ./gradlew --no-daemon build --stacktrace)
+          UI="$(find ga-build/client-ui/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          test -n "$UI"
+          jar tf "$UI" | grep -q '^arena/client/shell/GgoChatScreen.class$'
+          jar tf "$UI" | grep -q '^arena/client/shell/GgoChatShellHook.class$'
+          jar tf "$UI" | grep -q '^arena/client/shell/GgoProductionSurfaceFence.class$'
+
+      - name: Verify chat transport is preserved
+        id: contract
+        run: |
+          set -euo pipefail
+          SCREEN=ga-build/client-ui/src/main/java/arena/client/shell/GgoChatScreen.java
+          HOOK=ga-build/client-ui/src/main/java/arena/client/shell/GgoChatShellHook.java
+          grep -q 'extends ChatScreen' "$SCREEN"
+          grep -q 'super.render(g, mouseX, mouseY, partialTick)' "$SCREEN"
+          grep -q 'this.input.render' "$SCREEN"
+          grep -q 'event.setNewScreen(new GgoChatScreen' "$HOOK"
+          grep -q 'ChatScreen.class.getDeclaredFields()' "$HOOK"
+          ! grep -q 'sendChat(' "$SCREEN" "$HOOK"
+          ! grep -q 'sendCommand(' "$SCREEN" "$HOOK"
+          ! grep -q 'VanillaGuiOverlay.CHAT_TEXT' ga-build/client-ui/src/main/java/arena/client/shell/GgoProductionSurfaceFence.java
+
+      - name: Publish exact Stage 67 receipt
+        if: always()
+        env:
+          CLIENT_OUTCOME: ${{ steps.client.outcome }}
+          CONTRACT_OUTCOME: ${{ steps.contract.outcome }}
+        run: |
+          set -euo pipefail
+          result=success
+          for value in "$CLIENT_OUTCOME" "$CONTRACT_OUTCOME"; do
+            if [ "$value" != success ]; then result=failure; fi
+          done
+          mkdir -p ci-results
+          cat > ci-results/stage67-chat-shell.txt <<EOF
+          workflow=${{ github.workflow }}
+          run_id=${GITHUB_RUN_ID}
+          run_attempt=${GITHUB_RUN_ATTEMPT}
+          run_url=https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          client_sha=${{ steps.refs.outputs.client_sha }}
+          baseline_stage65_run=32562061250
+          client_build=$CLIENT_OUTCOME
+          chat_contract=$CONTRACT_OUTCOME
+          transport_engine=ChatScreen
+          chat_messages_hidden=false
+          command_suggestions_preserved=true
+          result=$result
+          EOF
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ci-results/stage67-chat-shell.txt
+          git commit -m "ci: record Stage 67 chat shell ${GITHUB_RUN_ID}" || exit 0
+          git fetch origin client/runtime-migration-v1
+          git rebase origin/client/runtime-migration-v1
+          git push origin HEAD:client/runtime-migration-v1
