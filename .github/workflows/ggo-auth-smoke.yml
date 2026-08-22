@@ -1,0 +1,70 @@
+name: GGO Auth Smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - launcher/bootstrap-v0.1
+    paths:
+      - 'services/ggo-auth/**'
+      - '.github/workflows/ggo-auth-smoke.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  auth:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Python syntax gate
+        id: syntax
+        run: python3 -m py_compile services/ggo-auth/server.py services/ggo-auth/test_auth.py
+
+      - name: Account and game-ticket smoke
+        id: smoke
+        run: python3 services/ggo-auth/test_auth.py -v
+
+      - name: Validate deployment source
+        id: deploy
+        run: |
+          set -euo pipefail
+          test -f services/ggo-auth/ggo-auth.service
+          test -f services/ggo-auth/install.sh
+          grep -q '127.0.0.1' services/ggo-auth/ggo-auth.service
+          grep -q '/var/lib/ggo-auth/auth.db' services/ggo-auth/ggo-auth.service
+          grep -q 'GGO auth health: PASS' services/ggo-auth/install.sh
+
+      - name: Publish exact auth receipt
+        if: always()
+        env:
+          SYNTAX_OUTCOME: ${{ steps.syntax.outcome }}
+          SMOKE_OUTCOME: ${{ steps.smoke.outcome }}
+          DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
+        run: |
+          set -euo pipefail
+          result=success
+          for value in "$SYNTAX_OUTCOME" "$SMOKE_OUTCOME" "$DEPLOY_OUTCOME"; do
+            if [ "$value" != success ]; then result=failure; fi
+          done
+          mkdir -p .ci
+          cat > .ci/ggo-auth-last-run.txt <<EOF
+          workflow=${{ github.workflow }}
+          run_id=${{ github.run_id }}
+          run_attempt=${{ github.run_attempt }}
+          run_url=https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          source_sha=${{ github.sha }}
+          syntax=$SYNTAX_OUTCOME
+          smoke=$SMOKE_OUTCOME
+          deploy=$DEPLOY_OUTCOME
+          result=$result
+          EOF
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .ci/ggo-auth-last-run.txt
+          git commit -m 'ci: record auth smoke ${{ github.run_id }}' || exit 0
+          git fetch origin '${{ github.ref_name }}'
+          git rebase 'origin/${{ github.ref_name }}'
+          git push origin 'HEAD:${{ github.ref_name }}'
