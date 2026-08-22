@@ -33,7 +33,7 @@ impl BootstrapInfo {
             game_version: "v40",
             channel: "beta",
             runtime: "minecraft-forge",
-            server: "2.26.100.125:24842",
+            server: "play.kvicloud.ru:24842",
             content_base_url,
             manifest_url: content_base_url.map(|base| format!("{base}/manifests/beta.json")),
             servers_url: content_base_url.map(|base| format!("{base}/api/servers.json")),
