@@ -104,14 +104,19 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
+          import re
           java=Path('ga-build/client-ui/src/main/java/arena/client/shell')
+          strings=re.compile(r'"(?:\\.|[^"\\])*"')
+          calls=('Component.literal(', 'drawString(', 'drawCenteredString(', 'Button.builder(')
           bad=[]
           for path in java.glob('*.java'):
               for n,line in enumerate(path.read_text(encoding='utf-8').splitlines(),1):
-                  lower=line.lower()
-                  facing=any(x in line for x in ('Component.literal(', 'drawString(', 'drawCenteredString(', 'Button.builder('))
-                  if facing and any(word in lower for word in ('minecraft','forge','mojang')):
-                      bad.append(f'{path.name}:{n}:{line.strip()}')
+                  if not any(token in line for token in calls):
+                      continue
+                  for literal in strings.findall(line):
+                      value=literal[1:-1].lower()
+                      if any(word in value for word in ('minecraft','forge','mojang')):
+                          bad.append(f'{path.name}:{n}:{literal}')
           assert not bad, '\n'.join(bad)
           PY
           grep -q 'GGO client settings. Advanced runtime options stay hidden by default.' ga-build/client-ui/src/main/java/arena/client/shell/GgoSettingsScreen.java
