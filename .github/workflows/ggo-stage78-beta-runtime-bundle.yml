@@ -1,0 +1,266 @@
+name: GGO Stage 78 Beta Runtime Bundle
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - launcher/bootstrap-v0.1
+    paths:
+      - '.github/workflows/ggo-stage78-beta-runtime-bundle.yml'
+      - 'site/content/manifests/beta.json'
+      - 'launcher/src-tauri/src/runtime/ggo_remote_install.rs'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  bundle:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      STAGE77_RUN: '32604880362'
+      STAGE77_ARTIFACT: GunGloryOnline-Runtime-Stage77-Training
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+          fetch-depth: 0
+
+      - name: Capture launcher ref
+        id: refs
+        run: echo "launcher_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Download verified Stage 77 runtime
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.STAGE77_ARTIFACT }}
+          path: stage77-input
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.STAGE77_RUN }}
+
+      - name: Assemble Stage 78 beta payload and candidate manifest
+        id: assemble
+        shell: bash
+        run: |
+          set -euo pipefail
+          CORE_CLIENT="$(find stage77-input -type f -path '*/client/mods/*' -name '*core*stage77*.jar' | head -n1)"
+          CORE_SERVER="$(find stage77-input -type f -path '*/server/mods/*' -name '*core*stage77*.jar' | head -n1)"
+          UI="$(find stage77-input -type f -path '*/client/mods/*' -name '*ui*stage77*.jar' | head -n1)"
+          RP="$(find stage77-input -type f -path '*/client/resourcepacks/*' -name 'GunGloryOnline-Official.zip' | head -n1)"
+          for f in "$CORE_CLIENT" "$CORE_SERVER" "$UI" "$RP"; do test -n "$f" && test -f "$f"; done
+          cmp "$CORE_CLIENT" "$CORE_SERVER"
+
+          rm -rf stage78
+          mkdir -p stage78/web/site/content/files/v40 stage78/web/site/content/manifests stage78/server/mods
+          cp "$CORE_CLIENT" stage78/web/site/content/files/v40/gungloryonline-core-runtime-v1-stage77.jar
+          cp "$UI" stage78/web/site/content/files/v40/gungloryonline-ui-runtime-v1-stage77.jar
+          cp "$RP" stage78/web/site/content/files/v40/GunGloryOnline-Official.zip
+          cp "$CORE_SERVER" stage78/server/mods/gungloryonline-core-runtime-v1-stage77.jar
+
+          CORE=stage78/web/site/content/files/v40/gungloryonline-core-runtime-v1-stage77.jar
+          UIOUT=stage78/web/site/content/files/v40/gungloryonline-ui-runtime-v1-stage77.jar
+          RPOUT=stage78/web/site/content/files/v40/GunGloryOnline-Official.zip
+          CORE_SHA="$(sha256sum "$CORE" | awk '{print $1}')"
+          UI_SHA="$(sha256sum "$UIOUT" | awk '{print $1}')"
+          RP_SHA="$(sha256sum "$RPOUT" | awk '{print $1}')"
+          CORE_SIZE="$(stat -c%s "$CORE")"
+          UI_SIZE="$(stat -c%s "$UIOUT")"
+          RP_SIZE="$(stat -c%s "$RPOUT")"
+
+          CORE_SHA="$CORE_SHA" UI_SHA="$UI_SHA" RP_SHA="$RP_SHA" \
+          CORE_SIZE="$CORE_SIZE" UI_SIZE="$UI_SIZE" RP_SIZE="$RP_SIZE" \
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+
+          source = Path('site/content/manifests/beta.json')
+          data = json.loads(source.read_text(encoding='utf-8'))
+          files = []
+          for item in data['files']:
+              path = item['path']
+              if path.startswith('mods/gungloryonline-core-'):
+                  continue
+              if path.startswith('mods/gungloryonline-ui-'):
+                  continue
+              if path == 'resourcepacks/GunGloryOnline-Official.zip':
+                  continue
+              files.append(item)
+
+          base = 'https://ggo.kvicloud.ru/content/files/v40/'
+          files.extend([
+              {
+                  'path': 'mods/gungloryonline-core-runtime-v1-stage77.jar',
+                  'url': base + 'gungloryonline-core-runtime-v1-stage77.jar',
+                  'sha256': os.environ['CORE_SHA'],
+                  'size': int(os.environ['CORE_SIZE']),
+                  'required': True, 'side': 'client', 'version': 'stage77', 'kind': 'mod',
+              },
+              {
+                  'path': 'mods/gungloryonline-ui-runtime-v1-stage77.jar',
+                  'url': base + 'gungloryonline-ui-runtime-v1-stage77.jar',
+                  'sha256': os.environ['UI_SHA'],
+                  'size': int(os.environ['UI_SIZE']),
+                  'required': True, 'side': 'client', 'version': 'stage77', 'kind': 'mod',
+              },
+              {
+                  'path': 'resourcepacks/GunGloryOnline-Official.zip',
+                  'url': base + 'GunGloryOnline-Official.zip',
+                  'sha256': os.environ['RP_SHA'],
+                  'size': int(os.environ['RP_SIZE']),
+                  'required': True, 'side': 'client', 'version': 'stage77', 'kind': 'resourcepack',
+              },
+          ])
+          data['files'] = files
+          data['betaRuntimeStage'] = 77
+          data['betaRuntimeSourceRun'] = 32604880362
+          out = Path('stage78/web/site/content/manifests/beta.json')
+          out.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          PY
+
+          cp stage78/web/site/content/manifests/beta.json stage78/beta-stage77-candidate.json
+          echo "core_sha256=$CORE_SHA" >> "$GITHUB_OUTPUT"
+          echo "ui_sha256=$UI_SHA" >> "$GITHUB_OUTPUT"
+          echo "rp_sha256=$RP_SHA" >> "$GITHUB_OUTPUT"
+          echo "core_size=$CORE_SIZE" >> "$GITHUB_OUTPUT"
+          echo "ui_size=$UI_SIZE" >> "$GITHUB_OUTPUT"
+          echo "rp_size=$RP_SIZE" >> "$GITHUB_OUTPUT"
+
+      - name: Validate beta runtime contract
+        id: gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          CORE=stage78/web/site/content/files/v40/gungloryonline-core-runtime-v1-stage77.jar
+          SERVER=stage78/server/mods/gungloryonline-core-runtime-v1-stage77.jar
+          UI=stage78/web/site/content/files/v40/gungloryonline-ui-runtime-v1-stage77.jar
+          RP=stage78/web/site/content/files/v40/GunGloryOnline-Official.zip
+          MAN=stage78/web/site/content/manifests/beta.json
+          cmp "$CORE" "$SERVER"
+          python3 -m json.tool "$MAN" >/dev/null
+          grep -q 'gungloryonline-core-runtime-v1-stage77.jar' "$MAN"
+          grep -q 'gungloryonline-ui-runtime-v1-stage77.jar' "$MAN"
+          ! grep -q 'gungloryonline-core-runtime-v1-stage68.jar' "$MAN"
+          ! grep -q 'gungloryonline-ui-runtime-v1-stage69.jar' "$MAN"
+          unzip -p "$CORE" META-INF/mods.toml | grep -q 'modId="gunnerarena"'
+          jar tf "$UI" | grep -q '^arena/client/shell/GgoFrontEndScreen.class$'
+          jar tf "$UI" | grep -q '^arena/client/shell/GgoTrainingScreen.class$'
+          if unzip -Z1 "$RP" | grep -q '^assets/minecraft/shaders/core/'; then
+            echo 'forbidden vanilla shader override in beta resource pack' >&2
+            exit 1
+          fi
+          grep -q 'REMOTE_CORE_STAGE77' launcher/src-tauri/src/runtime/ggo_remote_install.rs
+          grep -q 'REMOTE_UI_STAGE77' launcher/src-tauri/src/runtime/ggo_remote_install.rs
+
+      - name: Add safe VDS deploy and rollback scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > stage78/deploy-stage78-vds.sh <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          [ "$(id -u)" -eq 0 ] || { echo 'Run as root on the GGO VDS'; exit 1; }
+          [ "$(hostname)" = 'vds.play2go.cloud' ] || { echo "Unexpected host: $(hostname)"; exit 1; }
+          ROOT="$(cd "$(dirname "$0")" && pwd)"
+          CORE="$ROOT/server/mods/gungloryonline-core-runtime-v1-stage77.jar"
+          UI="$ROOT/web/site/content/files/v40/gungloryonline-ui-runtime-v1-stage77.jar"
+          RP="$ROOT/web/site/content/files/v40/GunGloryOnline-Official.zip"
+          MAN="$ROOT/web/site/content/manifests/beta.json"
+          for f in "$CORE" "$UI" "$RP" "$MAN"; do [ -f "$f" ] || { echo "Missing $f"; exit 1; }; done
+          BACKUP="/root/ggo-stage78-backup-$(date +%Y%m%d-%H%M%S)"
+          mkdir -p "$BACKUP/root-mods" "$BACKUP/web-v40" "$BACKUP/manifests"
+          cp -a /root/mods/gungloryonline-core-runtime-v1-stage68.jar "$BACKUP/root-mods/" 2>/dev/null || true
+          cp -a /root/mods/gungloryonline-core-runtime-v1-stage77.jar "$BACKUP/root-mods/" 2>/dev/null || true
+          cp -a /var/www/gungloryonline/content/files/v40/gungloryonline-core-runtime-v1-stage68.jar "$BACKUP/web-v40/" 2>/dev/null || true
+          cp -a /var/www/gungloryonline/content/files/v40/gungloryonline-ui-runtime-v1-stage69.jar "$BACKUP/web-v40/" 2>/dev/null || true
+          cp -a /var/www/gungloryonline/content/files/v40/GunGloryOnline-Official.zip "$BACKUP/web-v40/" 2>/dev/null || true
+          cp -a /var/www/gungloryonline/content/manifests/beta.json "$BACKUP/manifests/" 2>/dev/null || true
+          echo "$BACKUP" > /root/.ggo-stage78-last-backup
+
+          systemctl stop ggo-game.service
+          rm -f /root/mods/gungloryonline-core-runtime-v1-stage68.jar /root/mods/gungloryonline-core-runtime-v1-stage77.jar
+          install -m 0644 "$CORE" /root/mods/gungloryonline-core-runtime-v1-stage77.jar
+          install -d -m 0755 /var/www/gungloryonline/content/files/v40 /var/www/gungloryonline/content/manifests
+          install -m 0644 "$ROOT/web/site/content/files/v40/gungloryonline-core-runtime-v1-stage77.jar" /var/www/gungloryonline/content/files/v40/gungloryonline-core-runtime-v1-stage77.jar
+          install -m 0644 "$UI" /var/www/gungloryonline/content/files/v40/gungloryonline-ui-runtime-v1-stage77.jar
+          install -m 0644 "$RP" /var/www/gungloryonline/content/files/v40/GunGloryOnline-Official.zip
+          install -m 0644 "$MAN" /var/www/gungloryonline/content/manifests/beta.json
+          systemctl start ggo-game.service
+          sleep 22
+          systemctl is-active --quiet ggo-game.service
+          journalctl -u ggo-game.service --since '30 seconds ago' --no-pager -l | grep -q 'Done ('
+          curl -fsS https://ggo.kvicloud.ru/content/manifests/beta.json | grep -q 'gungloryonline-core-runtime-v1-stage77.jar'
+          for name in gungloryonline-core-runtime-v1-stage77.jar gungloryonline-ui-runtime-v1-stage77.jar GunGloryOnline-Official.zip; do
+            curl -fsSI "https://ggo.kvicloud.ru/content/files/v40/$name" | grep -qE '^HTTP/.* 200'
+          done
+          echo "Stage 78 VDS deploy: GREEN"
+          echo "Backup: $BACKUP"
+          SH
+          chmod +x stage78/deploy-stage78-vds.sh
+
+          cat > stage78/rollback-stage78-vds.sh <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          [ "$(id -u)" -eq 0 ] || { echo 'Run as root on the GGO VDS'; exit 1; }
+          BACKUP="${1:-$(cat /root/.ggo-stage78-last-backup 2>/dev/null || true)}"
+          [ -n "$BACKUP" ] && [ -d "$BACKUP" ] || { echo 'Stage 78 backup not found'; exit 1; }
+          systemctl stop ggo-game.service
+          rm -f /root/mods/gungloryonline-core-runtime-v1-stage77.jar
+          cp -a "$BACKUP/root-mods/"*.jar /root/mods/ 2>/dev/null || true
+          cp -a "$BACKUP/web-v40/." /var/www/gungloryonline/content/files/v40/ 2>/dev/null || true
+          cp -a "$BACKUP/manifests/beta.json" /var/www/gungloryonline/content/manifests/beta.json
+          systemctl start ggo-game.service
+          sleep 20
+          systemctl is-active --quiet ggo-game.service
+          echo "Stage 78 rollback complete: $BACKUP"
+          SH
+          chmod +x stage78/rollback-stage78-vds.sh
+
+      - uses: actions/upload-artifact@v4
+        id: upload
+        with:
+          name: GunGloryOnline-Stage78-BetaRuntime-VDS
+          path: stage78/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish Stage 78 receipt
+        if: always()
+        env:
+          ASSEMBLE: ${{ steps.assemble.outcome }}
+          GATES: ${{ steps.gates.outcome }}
+          UPLOAD: ${{ steps.upload.outcome }}
+        run: |
+          set -euo pipefail
+          result=success
+          for v in "$ASSEMBLE" "$GATES" "$UPLOAD"; do [ "$v" = success ] || result=failure; done
+          mkdir -p .ci/runtime
+          cat > .ci/runtime/stage78-beta-runtime.txt <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_id=${GITHUB_RUN_ID}
+          run_url=https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          launcher_sha=${{ steps.refs.outputs.launcher_sha }}
+          stage77_run=${STAGE77_RUN}
+          assemble=$ASSEMBLE
+          gates=$GATES
+          upload=$UPLOAD
+          core_sha256=${{ steps.assemble.outputs.core_sha256 }}
+          ui_sha256=${{ steps.assemble.outputs.ui_sha256 }}
+          resource_pack_sha256=${{ steps.assemble.outputs.rp_sha256 }}
+          core_size=${{ steps.assemble.outputs.core_size }}
+          ui_size=${{ steps.assemble.outputs.ui_size }}
+          resource_pack_size=${{ steps.assemble.outputs.rp_size }}
+          client_server_core_identical=true
+          candidate_manifest_stage77=true
+          vds_deploy_has_backup=true
+          vds_rollback_included=true
+          result=$result
+          EOF
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .ci/runtime/stage78-beta-runtime.txt
+          git commit -m "ci: record Stage 78 beta runtime ${GITHUB_RUN_ID}" || exit 0
+          git fetch origin launcher/bootstrap-v0.1
+          git rebase origin/launcher/bootstrap-v0.1
+          git push origin HEAD:launcher/bootstrap-v0.1
