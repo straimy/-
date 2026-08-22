@@ -15,6 +15,7 @@ import java.lang.reflect.Method;
 @Mod.EventBusSubscriber(value = Dist.CLIENT, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class GgoLaunchTicketClient {
     private static String ticket = readTicket();
+    private static final boolean OFFICIAL_LAUNCH = ticket != null;
     private static boolean sent;
     private static int retryTicks;
 
@@ -23,7 +24,10 @@ public final class GgoLaunchTicketClient {
     @SubscribeEvent
     public static void tick(TickEvent.ClientTickEvent event) {
         if (event.phase != TickEvent.Phase.START || sent || ticket == null) return;
-        if (retryTicks > 0) { retryTicks--; return; }
+        if (retryTicks > 0) {
+            retryTicks--;
+            return;
+        }
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.player == null || minecraft.getConnection() == null) return;
         try {
@@ -36,6 +40,26 @@ public final class GgoLaunchTicketClient {
         } catch (ReflectiveOperationException | LinkageError ignored) {
             retryTicks = 20;
         }
+    }
+
+    /** True only for launcher-originated online sessions that still await the server bind acknowledgement. */
+    public static boolean verificationPending() {
+        if (!OFFICIAL_LAUNCH) return false;
+        try {
+            Class<?> network = Class.forName("arena.forge.GgoLaunchTicketNetwork");
+            Method expected = network.getMethod("isClientVerificationExpected");
+            Method complete = network.getMethod("isClientVerificationComplete");
+            boolean coreExpected = Boolean.TRUE.equals(expected.invoke(null));
+            boolean coreComplete = Boolean.TRUE.equals(complete.invoke(null));
+            return !coreComplete && (sent || coreExpected);
+        } catch (ReflectiveOperationException | LinkageError ignored) {
+            // Fail visually closed after the packet was sent; the server quarantine remains authoritative.
+            return sent;
+        }
+    }
+
+    public static boolean isOfficialLaunch() {
+        return OFFICIAL_LAUNCH;
     }
 
     private static String readTicket() {
