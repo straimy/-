@@ -1,0 +1,4 @@
+/tmp/ggo-probe/client-ui/src/main/java/arena/client/ui/ArenaNavigation.java:7:final class ArenaNavigation {
+/tmp/ggo-probe/client-ui/src/main/java/arena/client/ui/ArenaNavigation.java:8:    private ArenaNavigation() {}
+/tmp/ggo-probe/client-ui/src/main/java/arena/client/ui/AbstractArenaScreen.java:23:            ArenaNavigation.navigate(target);
+/tmp/ggo-probe/client-ui/src/main/java/arena/client/ui/AbstractArenaScreen.java:27:    protected final void installNavigation() { ArenaNavigation.install(this, route); }

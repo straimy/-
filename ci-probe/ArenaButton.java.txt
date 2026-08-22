@@ -1,0 +1,30 @@
+package arena.client.ui;
+
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.AbstractButton;
+import net.minecraft.network.chat.Component;
+
+final class ArenaButton extends AbstractButton {
+    private final OnPress onPress;
+
+    interface OnPress { void onPress(ArenaButton button); }
+
+    ArenaButton(UiLayout.Rect r, Component label, OnPress onPress) {
+        super(r.x(), r.y(), r.width(), r.height(), label);
+        this.onPress = onPress;
+    }
+
+    @Override public void onPress() { onPress.onPress(this); }
+
+    @Override
+    protected void renderWidget(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+        int bg = isHoveredOrFocused() ? UiTheme.BUTTON_HOVER : UiTheme.BUTTON;
+        g.fill(getX(), getY(), getX() + width, getY() + height, bg);
+        int edge = isHoveredOrFocused() ? UiTheme.ACCENT : UiTheme.PANEL_BORDER;
+        g.fill(getX(), getY(), getX() + 3, getY() + height, edge);
+        int text = active ? UiTheme.TEXT : UiTheme.MUTED;
+        g.drawCenteredString(Minecraft.getInstance().font, getMessage(), getX() + width / 2,
+            getY() + (height - 8) / 2, text);
+    }
+}
