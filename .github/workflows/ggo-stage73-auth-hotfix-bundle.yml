@@ -95,7 +95,7 @@ jobs:
 
           # Current production website/auth/nginx and one-command recovery scripts.
           cp -a site corrected/web/site
-          mkdir -p corrected/web/services
+          mkdir -p corrected/web/services corrected/web/site/content/files/v40
           cp -a services/ggo-auth corrected/web/services/ggo-auth
 
           # Runtime remains the immutable Stage68/69 + official RP baseline.
@@ -133,6 +133,7 @@ jobs:
           bash -n corrected/web/site/install-site.sh
           bash -n corrected/web/site/verify-production.sh
           bash -n corrected/web/site/recover-production.sh
+          bash -n corrected/game-server/infra/run.sh
           grep -q 'Disabling duplicate nginx vhost' corrected/web/site/install-site.sh
           grep -q 'proxy_pass http://127.0.0.1:8787' corrected/web/site/nginx/ggo.conf
           grep -q '/api/v1/auth/register' corrected/web/site/install-site.sh
@@ -142,6 +143,11 @@ jobs:
           grep -q 'returnAfterAuth' corrected/web/site/account/account.js
           grep -q "approve.*===.*'1'" corrected/web/site/account/device.html
           grep -q '24842' corrected/web/site/recover-production.sh
+          grep -q 'GGO_SERVER_KEY' corrected/game-server/infra/run.sh
+          grep -q 'set_property online-mode false' corrected/game-server/infra/run.sh
+          grep -q 'set_property enforce-secure-profile false' corrected/game-server/infra/run.sh
+          grep -q 'set_property online-mode false' corrected/web/site/recover-production.sh
+          grep -q 'EnvironmentFile=/etc/ggo-game.env' corrected/web/site/recover-production.sh
 
           cat > corrected/DEPLOY-AND-VERIFY.md <<'EOF'
           # GunGloryOnline Stage 73 — Auth/Account hotfix bundle
@@ -156,7 +162,9 @@ jobs:
           sudo ./web/site/recover-production.sh
           ```
 
-          The recovery script backs up `/var/lib/ggo-auth/auth.db`, disables duplicate enabled nginx vhosts for `ggo.kvicloud.ru`, installs the canonical HTTPS config, verifies `/api/v1/health`, register/login POST routing, configures the official game server endpoint on TCP 24842, and then runs the production verifier.
+          The recovery script backs up `/var/lib/ggo-auth/auth.db`, disables duplicate enabled nginx vhosts for `ggo.kvicloud.ru`, installs the canonical HTTPS config, verifies `/api/v1/health`, register/login POST routing, installs the Stage68 server Core and hardened official run script when bundled, configures the GGO-only game environment, and starts the official Forge listener on TCP 24842.
+
+          The official listener intentionally uses `online-mode=false` and `enforce-secure-profile=false` because the launcher uses the GGO Account profile rather than a Microsoft session. Access is still fenced by `GGO_SERVER_KEY` plus the short-lived one-shot GGO ticket; the hardened server script refuses to start without the server key.
 
           Never delete `/var/lib/ggo-auth/auth.db`.
 
