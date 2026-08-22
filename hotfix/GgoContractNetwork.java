@@ -35,8 +35,18 @@ public final class GgoContractNetwork {
     public static void request(){CHANNEL.sendToServer(new Request());}
     public static void track(String id){CHANNEL.sendToServer(new Track(id==null?"":id));}
     public static void sync(ServerPlayer p){if(p!=null)sendSnapshot(p);}
-    private static void request0(Request m,Supplier<NetworkEvent.Context> c){ServerPlayer p=c.get().getSender();if(p!=null)sendSnapshot(p);c.get().setPacketHandled(true);}
-    private static void track0(Track m,Supplier<NetworkEvent.Context> c){ServerPlayer p=c.get().getSender();if(p!=null){GgoContractService.track(p,m.id());sendSnapshot(p);}c.get().setPacketHandled(true);}
+    private static void request0(Request m,Supplier<NetworkEvent.Context> c){
+        ServerPlayer p=c.get().getSender();
+        if(p!=null&&GgoContractRequestGuard.allowContractSnapshot(p))sendSnapshot(p);
+        c.get().setPacketHandled(true);
+    }
+    private static void track0(Track m,Supplier<NetworkEvent.Context> c){
+        ServerPlayer p=c.get().getSender();
+        if(p!=null&&GgoContractRequestGuard.allowTrack(p)){
+            if(!GgoContractService.track(p,m.id()))sendSnapshot(p);
+        }
+        c.get().setPacketHandled(true);
+    }
     private static void sendSnapshot(ServerPlayer p){
         List<Entry> entries=new ArrayList<>();
         for(var c:GgoContractService.list(p))entries.add(new Entry(c.id(),c.title(),c.description(),c.activity(),c.current(),c.target(),c.rewardCredits(),c.completed()));
