@@ -1,0 +1,52 @@
+name: GGO Launcher Network UI Migration
+
+on:
+  push:
+    branches:
+      - launcher/bootstrap-v0.1
+    paths:
+      - .github/workflows/ggo-launcher-network-ui-migration.yml
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+          fetch-depth: 0
+      - name: Make server catalog informational
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('launcher/src/App.tsx')
+          s=p.read_text(encoding='utf-8')
+          replacements={
+            'doubleClick:"Double-click a server to connect"':'doubleClick:"Network nodes are status-only. PLAY ONLINE always uses the trusted official route."',
+            'doubleClick:"Двойной клик по серверу — подключиться"':'doubleClick:"Узлы сети показывают статус. PLAY ONLINE всегда использует доверенный официальный маршрут."',
+            'doubleClick:"Подвійний клік по серверу — підключитися"':'doubleClick:"Вузли мережі показують статус. PLAY ONLINE завжди використовує довірений офіційний маршрут."',
+            ' onDoubleClick={()=>void launch(false,server)}':'',
+            '{selected&&<button className="play-button compact" onClick={()=>void launch(false,selected)}>{t.connect}</button>}':'<button className="play-button compact" disabled={busy||!gameInstalled||updateAvailable} onClick={()=>void launch(false)}>{t.play}</button>',
+          }
+          for old,new in replacements.items():
+              if old not in s:
+                  raise SystemExit(f'missing expected network UI fragment: {old}')
+              s=s.replace(old,new)
+          if 'onDoubleClick={()=>void launch(false,server)}' in s:
+              raise SystemExit('direct node launch remains')
+          p.write_text(s,encoding='utf-8')
+          PY
+          npm --prefix launcher install
+          npm --prefix launcher run build
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add launcher/src/App.tsx
+          git commit -m 'fix(launcher): make network catalog status-only'
+          git fetch origin launcher/bootstrap-v0.1
+          git rebase origin/launcher/bootstrap-v0.1
+          git push origin HEAD:launcher/bootstrap-v0.1
