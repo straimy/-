@@ -1,3 +1,4 @@
+use super::official_resource_pack;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::{
@@ -84,14 +85,21 @@ pub fn install_local(
         &mut skipped_files,
     )?;
 
-    write_local_state(install_dir)?;
+    let official_pack_present = install_dir
+        .join("resourcepacks")
+        .join(official_resource_pack::OFFICIAL_PACK_FILE)
+        .is_file();
+    if official_pack_present {
+        official_resource_pack::ensure_official_resource_pack(install_dir)?;
+    }
+    write_local_state(install_dir, official_pack_present)?;
 
     Ok(LocalInstallReport {
         version: GGO_VERSION,
         installed_files,
         skipped_files,
         removed_legacy_files,
-        resource_pack_enabled: false,
+        resource_pack_enabled: official_pack_present,
     })
 }
 
@@ -258,12 +266,12 @@ fn temp_path(target: &Path) -> PathBuf {
     target.with_file_name(format!(".{file_name}.ggo-part-{}", Uuid::new_v4()))
 }
 
-fn write_local_state(install_dir: &Path) -> Result<(), io::Error> {
+fn write_local_state(install_dir: &Path, official_pack_present: bool) -> Result<(), io::Error> {
     let state = serde_json::json!({
         "schema": 2,
         "source": "local-full-install",
         "gameVersion": GGO_VERSION,
-        "resourcePackDelivery": "server-prompt",
+        "resourcePackDelivery": if official_pack_present { "launcher-managed" } else { "not-bundled" },
         "files": [
             {"path": format!("mods/{CORE_FILE_NAME}"), "sha256": CORE_SHA256, "size": CORE_SIZE},
             {"path": format!("mods/{UI_FILE_NAME}"), "sha256": UI_SHA256, "size": UI_SIZE}
