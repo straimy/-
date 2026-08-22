@@ -6,6 +6,7 @@ on:
     branches:
       - server/runtime-hardening-v1
     paths:
+      - 'hotfix/ArenaBeltGuard.java'
       - 'hotfix/InventoryUtilityCommands.java'
       - 'hotfix/apply_ggo_inventory_stage42.py'
       - '.github/workflows/ggo-inventory-stage42-server-compile.yml'
@@ -25,13 +26,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-
       - name: Unpack Runtime v1 source
         run: |
           set -euo pipefail
           rm -rf ga-build && mkdir ga-build
           unzip -q "$SOURCE_ZIP" -d ga-build
-
       - name: Apply runtime through Stage 42
         id: apply
         run: |
@@ -56,9 +55,10 @@ jobs:
           grep -q 'Commands.literal("swap")' "$root/InventoryUtilityCommands.java"
           grep -q 'GgoSupplyExtractionService.isSupply(s)' "$root/InventoryUtilityCommands.java"
           grep -q 'runtime.auth().isAuthenticated(p)' "$root/InventoryUtilityCommands.java"
+          grep -q 'normalizeOffhand(p)' "$root/ArenaBeltGuard.java"
+          grep -q 'Extra weapons are field inventory' "$root/ArenaBeltGuard.java"
           grep -q 'LivingDropsEvent' "$root/GgoVanillaLootFence.java"
           grep -q 'BlockEvent.BreakEvent' "$root/GgoWorldRuntimeFence.java"
-
       - name: Bootstrap ForgeGradle wrapper
         id: bootstrap
         run: |
@@ -73,22 +73,20 @@ jobs:
             rm -rf ga-build/gradle && cp -a /tmp/forge-mdk/gradle ga-build/gradle
             chmod +x ga-build/gradlew
           fi
-
       - name: Compile Forge Core
         id: compile
         working-directory: ga-build
         run: ./gradlew --no-daemon compileJava --stacktrace
-
       - name: Verify Stage 42 classes
         id: verify
         run: |
           set -euo pipefail
           root=ga-build/build/classes/java/main/arena/forge
+          test -f "$root/ArenaBeltGuard.class"
           test -f "$root/InventoryUtilityCommands.class"
           test -f "$root/GgoVanillaLootFence.class"
           test -f "$root/GgoWorldRuntimeFence.class"
           test -f "$root/GgoPlayerPresencePolicy.class"
-
       - name: Publish exact CI receipt
         if: always()
         env:
@@ -99,9 +97,7 @@ jobs:
         run: |
           set -euo pipefail
           result=success
-          for value in "$APPLY_OUTCOME" "$BOOTSTRAP_OUTCOME" "$COMPILE_OUTCOME" "$VERIFY_OUTCOME"; do
-            [ "$value" = success ] || result=failure
-          done
+          for value in "$APPLY_OUTCOME" "$BOOTSTRAP_OUTCOME" "$COMPILE_OUTCOME" "$VERIFY_OUTCOME"; do [ "$value" = success ] || result=failure; done
           mkdir -p ci-results
           printf '%s\n' \
             "workflow=${{ github.workflow }}" \
