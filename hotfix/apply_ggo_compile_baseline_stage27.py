@@ -1,5 +1,4 @@
 from pathlib import Path
-import re
 
 ROOT = Path("ga-build") if Path("ga-build").exists() else Path(".")
 SRC = ROOT / "src/main/java"
@@ -11,47 +10,59 @@ if network.exists():
     text = text.replace("PacketDistributor.PLAYER.with(player)", "PacketDistributor.PLAYER.with(() -> player)")
     network.write_text(text, encoding="utf-8")
 
-# The archived baseline used an obsolete ActiveHazard accessor. Resolve the
-# actual record/component name from the extracted source instead of guessing.
-executor = SRC / "arena/forge/hazard/ForgeHazardExecutor.java"
-if not executor.exists():
-    raise SystemExit("Stage 27 baseline: ForgeHazardExecutor.java missing")
-executor_text = executor.read_text(encoding="utf-8")
-if "hazard.dimension()" in executor_text:
-    declarations = []
-    for path in SRC.rglob("*.java"):
-        candidate = path.read_text(encoding="utf-8", errors="replace")
-        if "ActiveHazard" in candidate and path != executor:
-            declarations.append((path, candidate))
+# The archived baseline accepts a dimension in HazardManager.spawn(), but drops
+# it before creating ActiveHazard while ForgeHazardExecutor expects dimension().
+# Preserve the original dimension end-to-end instead of forcing overworld.
+active_path = SRC / "arena/hazard/ActiveHazard.java"
+manager_path = SRC / "arena/hazard/HazardManager.java"
+executor_path = SRC / "arena/forge/hazard/ForgeHazardExecutor.java"
+for required in (active_path, manager_path, executor_path):
+    if not required.exists():
+        raise SystemExit(f"Stage 27 baseline: missing {required}")
 
-    accessor = None
-    preferred = ("dimensionId", "dimensionKey", "levelKey", "level", "world", "dimension")
-    for _, candidate in declarations:
-        record = re.search(r"record\s+ActiveHazard\s*\((.*?)\)\s*\{", candidate, re.S)
-        if record:
-            component_names = re.findall(r"\b([A-Za-z_$][A-Za-z0-9_$]*)\s*(?:,|$)", record.group(1).replace("\n", " "))
-            for name in preferred:
-                if name in component_names and name != "dimension":
-                    accessor = name
-                    break
-        if accessor:
-            break
-        for name in preferred:
-            if name != "dimension" and re.search(r"\b" + re.escape(name) + r"\s*\(\s*\)", candidate):
-                accessor = name
-                break
-        if accessor:
-            break
+active = active_path.read_text(encoding="utf-8")
+if "public String dimension()" not in active:
+    field_anchor = "    private final UUID id;\n"
+    if field_anchor not in active:
+        raise SystemExit("Stage 27 baseline: ActiveHazard id field anchor missing")
+    active = active.replace(field_anchor, field_anchor + "    private final String dimension;\n", 1)
 
-    if accessor is None:
-        snippets = []
-        for path, candidate in declarations:
-            pos = candidate.find("ActiveHazard")
-            snippets.append(f"--- {path}\n{candidate[max(0,pos-250):pos+900]}")
-        raise SystemExit("Stage 27 baseline: unresolved ActiveHazard dimension accessor\n" + "\n".join(snippets))
+    first_ctor = "    public ActiveHazard(HazardSpec spec, long createdTick) {\n        this(UUID.randomUUID(), spec, createdTick, createdTick + spec.lifetimeTicks());\n    }\n"
+    first_replacement = "    public ActiveHazard(String dimension, HazardSpec spec, long createdTick) {\n        this(UUID.randomUUID(), dimension, spec, createdTick, createdTick + spec.lifetimeTicks());\n    }\n"
+    if first_ctor not in active:
+        raise SystemExit("Stage 27 baseline: ActiveHazard primary constructor anchor missing")
+    active = active.replace(first_ctor, first_replacement, 1)
 
-    executor_text = executor_text.replace("hazard.dimension()", f"hazard.{accessor}()")
-    executor.write_text(executor_text, encoding="utf-8")
-    print(f"Stage 27 baseline: ActiveHazard accessor -> {accessor}()")
+    second_ctor = "    public ActiveHazard(UUID id, HazardSpec spec, long createdTick, long expiresTick) {\n        this.id = id;\n        this.spec = spec;\n"
+    second_replacement = "    public ActiveHazard(UUID id, String dimension, HazardSpec spec, long createdTick, long expiresTick) {\n        this.id = id;\n        this.dimension = dimension;\n        this.spec = spec;\n"
+    if second_ctor not in active:
+        raise SystemExit("Stage 27 baseline: ActiveHazard full constructor anchor missing")
+    active = active.replace(second_ctor, second_replacement, 1)
+
+    accessor_anchor = "    public UUID id() { return id; }\n"
+    if accessor_anchor not in active:
+        raise SystemExit("Stage 27 baseline: ActiveHazard accessor anchor missing")
+    active = active.replace(accessor_anchor, accessor_anchor + "    public String dimension() { return dimension; }\n", 1)
+    active_path.write_text(active, encoding="utf-8")
+
+manager = manager_path.read_text(encoding="utf-8")
+old_spawn = "new ActiveHazard(spec, nowTick)"
+new_spawn = "new ActiveHazard(dimension, spec, nowTick)"
+if old_spawn in manager:
+    manager = manager.replace(old_spawn, new_spawn)
+elif new_spawn not in manager:
+    raise SystemExit("Stage 27 baseline: HazardManager spawn constructor anchor missing")
+manager_path.write_text(manager, encoding="utf-8")
+
+# Fail early if another main-source call still targets one of the removed constructors.
+remaining = []
+for path in SRC.rglob("*.java"):
+    text = path.read_text(encoding="utf-8", errors="replace")
+    if path != active_path and "new ActiveHazard(spec," in text:
+        remaining.append(str(path))
+if remaining:
+    raise SystemExit("Stage 27 baseline: stale ActiveHazard constructors in " + ", ".join(remaining))
 
 print("GGO Stage 27 compile baseline applied")
+print(" - PacketDistributor uses Supplier<ServerPlayer>")
+print(" - ActiveHazard preserves its source dimension")
