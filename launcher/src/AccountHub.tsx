@@ -39,46 +39,43 @@ type Props = {
 
 const text = {
   en: {
-    eyebrow:"GGO IDENTITY",title:"Your GGO Account",subtitle:"One identity for progression, inventory, rank, cosmetics and every official GGO world.",
-    online:"OFFICIAL ONLINE",onlineBody:"A GGO Account is required for official online play. Sign in safely through the GGO website.",
-    training:"TRAINING PROFILE",trainingBody:"Local-only profile for Training. No rank, cloud inventory or online progression.",
-    loginWeb:"SIGN IN THROUGH GGO WEBSITE",logout:"Sign out",current:"Current identity",nickname:"Training display name",skins:"Appearance source",ggoSkin:"GGO appearance",msSkin:"Linked legacy skin",defaultSkin:"GGO default",linked:"CONNECTED",notLinked:"SIGN IN REQUIRED",
-    websiteHint:"Registration, password entry and account recovery happen on the GGO website. The launcher receives a device session after you approve it.",
-    onlineLocked:"Official GGO Online is locked until a GGO Account is connected.",trainingUse:"USE LOCAL TRAINING PROFILE",local:"LOCAL ONLY",security:"Official servers require a GGO session ticket and client handshake. A normal Minecraft/third-party client cannot join official GGO worlds just by knowing the address."
+    eyebrow:"GGO IDENTITY",title:"Your GGO Account",subtitle:"One account for official online play, progression, inventory, rank and cosmetics.",
+    online:"GGO ACCOUNT",onlineBody:"Sign in or create an account in the official GGO Account page. The launcher connects automatically after browser approval.",
+    loginWeb:"SIGN IN / CREATE ACCOUNT",logout:"Sign out",current:"Current identity",skins:"Appearance source",ggoSkin:"GGO appearance",msSkin:"Linked legacy skin",defaultSkin:"GGO default",linked:"CONNECTED",notLinked:"SIGN IN REQUIRED",
+    websiteHint:"Account creation and password entry stay on the official GGO Account page. After approval, this launcher receives the session automatically.",
+    onlineLocked:"Official Online requires a connected GGO Account.",trainingTitle:"OFFLINE TRAINING FALLBACK",trainingBody:"Training can still run without an online account. This local name never becomes a second online identity.",nickname:"Offline training name",trainingUse:"USE OFFLINE TRAINING",local:"OFFLINE",security:"PLAY ONLINE creates a short one-shot GGO ticket. The server verifies it before gameplay is unlocked."
   },
   ru: {
-    eyebrow:"GGO IDENTITY",title:"Твой GGO аккаунт",subtitle:"Один аккаунт для прогресса, инвентаря, ранга, косметики и всех официальных миров GGO.",
-    online:"ОФИЦИАЛЬНЫЙ ОНЛАЙН",onlineBody:"Для официальной онлайн-игры нужен GGO аккаунт. Вход выполняется безопасно через сайт GGO.",
-    training:"ПРОФИЛЬ ТРЕНИРОВКИ",trainingBody:"Только локальный профиль для Training. Без ранга, облачного инвентаря и онлайн-прогресса.",
-    loginWeb:"ВОЙТИ ЧЕРЕЗ САЙТ GGO",logout:"Выйти",current:"Текущая личность",nickname:"Ник для тренировки",skins:"Внешний вид",ggoSkin:"GGO внешний вид",msSkin:"Привязанный старый скин",defaultSkin:"Стандартный GGO",linked:"ПОДКЛЮЧЕН",notLinked:"НУЖЕН ВХОД",
-    websiteHint:"Регистрация, пароль и восстановление аккаунта происходят на сайте GGO. Лаунчер получает сессию только после твоего подтверждения устройства.",
-    onlineLocked:"Официальный GGO Online заблокирован, пока не подключён GGO аккаунт.",trainingUse:"ИСПОЛЬЗОВАТЬ ЛОКАЛЬНЫЙ ПРОФИЛЬ",local:"ТОЛЬКО ЛОКАЛЬНО",security:"Официальные серверы требуют GGO session ticket и клиентский handshake. Обычного Minecraft/стороннего лаунчера и знания адреса сервера недостаточно."
+    eyebrow:"GGO IDENTITY",title:"Твой GGO аккаунт",subtitle:"Один аккаунт для официальной онлайн-игры, прогресса, инвентаря, ранга и косметики.",
+    online:"GGO ACCOUNT",onlineBody:"Войди или создай аккаунт на официальной странице GGO Account. После подтверждения браузера лаунчер подключится автоматически.",
+    loginWeb:"ВОЙТИ / СОЗДАТЬ АККАУНТ",logout:"Выйти",current:"Текущий аккаунт",skins:"Внешний вид",ggoSkin:"GGO внешний вид",msSkin:"Привязанный старый скин",defaultSkin:"Стандартный GGO",linked:"ПОДКЛЮЧЕН",notLinked:"НУЖЕН ВХОД",
+    websiteHint:"Регистрация и ввод пароля происходят только в официальном GGO Account UI. После подтверждения лаунчер сам получает сессию.",
+    onlineLocked:"Для PLAY ONLINE нужен подключённый GGO Account.",trainingTitle:"OFFLINE TRAINING FALLBACK",trainingBody:"Тренировка может работать без онлайн-аккаунта. Локальный ник не является второй системой аккаунтов и не используется в Official Online.",nickname:"Ник для офлайн-тренировки",trainingUse:"ИСПОЛЬЗОВАТЬ OFFLINE TRAINING",local:"OFFLINE",security:"PLAY ONLINE создаёт короткий одноразовый GGO ticket. Сервер проверяет его до разблокировки геймплея."
   },
   uk: {
-    eyebrow:"GGO IDENTITY",title:"Твій GGO акаунт",subtitle:"Один акаунт для прогресу, інвентарю, рангу, косметики та всіх офіційних світів GGO.",
-    online:"ОФІЦІЙНИЙ ОНЛАЙН",onlineBody:"Для офіційної онлайн-гри потрібен GGO акаунт. Вхід виконується через сайт GGO.",
-    training:"ПРОФІЛЬ ТРЕНУВАННЯ",trainingBody:"Лише локальний профіль для Training. Без рангу, хмарного інвентарю та онлайн-прогресу.",
-    loginWeb:"УВІЙТИ ЧЕРЕЗ САЙТ GGO",logout:"Вийти",current:"Поточна особа",nickname:"Ім'я для тренування",skins:"Зовнішній вигляд",ggoSkin:"GGO вигляд",msSkin:"Прив'язаний старий скін",defaultSkin:"Стандартний GGO",linked:"ПІДКЛЮЧЕНО",notLinked:"ПОТРІБЕН ВХІД",
-    websiteHint:"Реєстрація, пароль і відновлення акаунта відбуваються на сайті GGO. Лаунчер отримує сесію лише після підтвердження пристрою.",
-    onlineLocked:"Офіційний GGO Online заблоковано, доки не підключено GGO акаунт.",trainingUse:"ВИКОРИСТАТИ ЛОКАЛЬНИЙ ПРОФІЛЬ",local:"ЛИШЕ ЛОКАЛЬНО",security:"Офіційні сервери вимагають GGO session ticket і клієнтський handshake. Звичайного Minecraft/стороннього лаунчера та адреси сервера недостатньо."
+    eyebrow:"GGO IDENTITY",title:"Твій GGO акаунт",subtitle:"Один акаунт для офіційної онлайн-гри, прогресу, інвентарю, рангу та косметики.",
+    online:"GGO ACCOUNT",onlineBody:"Увійди або створи акаунт на офіційній сторінці GGO Account. Після підтвердження в браузері лаунчер підключиться автоматично.",
+    loginWeb:"УВІЙТИ / СТВОРИТИ АКАУНТ",logout:"Вийти",current:"Поточний акаунт",skins:"Зовнішній вигляд",ggoSkin:"GGO вигляд",msSkin:"Прив'язаний старий скін",defaultSkin:"Стандартний GGO",linked:"ПІДКЛЮЧЕНО",notLinked:"ПОТРІБЕН ВХІД",
+    websiteHint:"Реєстрація та пароль залишаються лише в офіційному GGO Account UI. Після підтвердження лаунчер сам отримує сесію.",
+    onlineLocked:"Для PLAY ONLINE потрібен підключений GGO Account.",trainingTitle:"OFFLINE TRAINING FALLBACK",trainingBody:"Тренування може працювати без онлайн-акаунта. Локальне ім'я не є другою системою акаунтів і не використовується в Official Online.",nickname:"Ім'я для офлайн-тренування",trainingUse:"ВИКОРИСТАТИ OFFLINE TRAINING",local:"OFFLINE",security:"PLAY ONLINE створює короткий одноразовий GGO ticket. Сервер перевіряє його до розблокування геймплею."
   }
 } as const;
 
 export default function AccountHub(props: Props) {
   const t=text[props.lang];
   const microsoftConnected=props.microsoft.authenticated&&Boolean(props.microsoft.minecraftProfile);
-  const [localTraining,setLocalTraining]=useState(!props.ggoAccount.connected);
+  const [offlineTraining,setOfflineTraining]=useState(!props.ggoAccount.connected);
   const profileLabel=useMemo(()=>props.ggoAccount.connected?(props.ggoAccount.displayName||"GGO Player"):(props.nickname||"Training Player"),[props.ggoAccount,props.nickname]);
 
   function applyGgoStatus(value:GgoAuthStatus){
     if(!value.authenticated||!value.profile){
       props.setGgoAccount(current=>({...current,connected:false,playerId:null,displayName:null,skinSource:current.skinSource==="ggo"?"default":current.skinSource}));
-      setLocalTraining(true);
+      setOfflineTraining(true);
       return;
     }
     props.setGgoAccount({connected:true,playerId:value.profile.id,displayName:value.profile.displayName,skinSource:value.profile.skinSource});
     props.setNickname(value.profile.displayName);
-    setLocalTraining(false);
+    setOfflineTraining(false);
   }
 
   async function ggoBrowserLogin(){
@@ -86,7 +83,7 @@ export default function AccountHub(props: Props) {
     try{
       const status=await invoke<GgoAuthStatus>("ggo_login",{apiUrl:props.apiUrl,username:null,password:null});
       applyGgoStatus(status);
-      props.setStatus(status.authenticated?"GGO account connected ✓":"GGO login was not completed");
+      props.setStatus(status.authenticated?"GGO Account connected ✓":"GGO sign-in was not completed");
     }catch(error){props.setStatus(String(error));}
     finally{props.setBusy(false);}
   }
@@ -109,9 +106,9 @@ export default function AccountHub(props: Props) {
     }else props.setGgoAccount(current=>({...current,skinSource:source}));
   }
 
-  function useTrainingProfile(){
-    setLocalTraining(true);
-    props.setStatus(`Training profile · ${props.nickname.trim()||"Training Player"}`);
+  function useOfflineTraining(){
+    setOfflineTraining(true);
+    props.setStatus(`Offline Training · ${props.nickname.trim()||"Training Player"}`);
   }
 
   return <section className="page accountsPage">
@@ -119,12 +116,11 @@ export default function AccountHub(props: Props) {
     <div className="accountLayout">
       <div className="accountProviders">
         <div className="providerCard selected"><div className="providerIcon ggoMark">G</div><div><strong>{t.online}</strong><p>{t.onlineBody}</p></div><span className={props.ggoAccount.connected?"providerState on":"providerState"}>{props.ggoAccount.connected?t.linked:t.notLinked}</span></div>
-        <button className={localTraining&&!props.ggoAccount.connected?"providerCard selected":"providerCard"} onClick={useTrainingProfile}><div className="providerIcon guestMark">↯</div><div><strong>{t.training}</strong><p>{t.trainingBody}</p></div><span className="providerState">{t.local}</span></button>
         <div className="providerCard"><div className="providerIcon guestMark">✓</div><div><strong>GGO SESSION SECURITY</strong><p>{t.security}</p></div><span className="providerState on">ONLINE</span></div>
       </div>
       <aside className="accountPanel">
         {props.ggoAccount.connected?<div className="accountActionBlock"><div className="linkedIdentity"><b>GGO</b><div><strong>{props.ggoAccount.displayName}</strong><span>{props.ggoAccount.playerId}</span></div></div><button className="accountSecondary" disabled={props.busy} onClick={()=>void ggoLogout()}>{t.logout}</button></div>:<div className="accountActionBlock"><button className="accountPrimary" disabled={props.busy} onClick={()=>void ggoBrowserLogin()}>{t.loginWeb}</button><p>{t.websiteHint}</p><p>{t.onlineLocked}</p></div>}
-        {!props.ggoAccount.connected&&<div className="accountActionBlock"><small>{t.nickname}</small><input className="accountName" value={props.nickname} maxLength={16} onChange={e=>props.setNickname(e.target.value)} placeholder="Training Player"/><button className="accountSecondary" disabled={props.busy} onClick={useTrainingProfile}>{t.trainingUse}</button></div>}
+        {!props.ggoAccount.connected&&<div className="accountActionBlock"><small>{t.trainingTitle}</small><p>{t.trainingBody}</p><small>{t.nickname}</small><input className="accountName" value={props.nickname} maxLength={16} onChange={e=>props.setNickname(e.target.value)} placeholder="Training Player"/><button className="accountSecondary" disabled={props.busy||offlineTraining} onClick={useOfflineTraining}>{offlineTraining?t.local:t.trainingUse}</button></div>}
         <div className="skinBlock"><small>{t.skins}</small><div className="skinChoices"><button className={props.ggoAccount.skinSource==="ggo"?"active":""} disabled={!props.ggoAccount.connected||props.busy} onClick={()=>void setSkinSource("ggo")}><b>G</b><span>{t.ggoSkin}</span></button><button className={props.ggoAccount.skinSource==="microsoft"?"active":""} disabled={!microsoftConnected||props.busy} onClick={()=>void setSkinSource("microsoft")}><b>↗</b><span>{t.msSkin}</span></button><button className={props.ggoAccount.skinSource==="default"?"active":""} disabled={props.busy} onClick={()=>void setSkinSource("default")}><b>◎</b><span>{t.defaultSkin}</span></button></div></div>
       </aside>
     </div>
