@@ -50,6 +50,12 @@ jobs:
         run: npm run tauri icon src-tauri/icons/icon.png
       - name: Frontend type/build gate
         run: npm run build
+      - name: Rust format gate
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+      - name: Rust compile gate
+        run: cargo check --manifest-path src-tauri/Cargo.toml
+      - name: Runtime unit tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
       - name: Build Tauri package
         run: npm run tauri build -- --bundles ${{ matrix.bundle }}
       - name: Normalize Linux packages
@@ -62,25 +68,34 @@ jobs:
           deb=$(find src-tauri/target/release/bundle/deb -maxdepth 1 -type f -name '*.deb' | head -n1)
           rpm_pkg=$(find src-tauri/target/release/bundle/rpm -maxdepth 1 -type f -name '*.rpm' | head -n1)
           test -n "$appimage" && test -n "$deb" && test -n "$rpm_pkg"
+          test "$(stat -c%s "$appimage")" -gt 1048576
+          test "$(stat -c%s "$deb")" -gt 1048576
+          test "$(stat -c%s "$rpm_pkg")" -gt 1048576
           cp "$appimage" dist-package/GunGloryOnline-Launcher-Linux.AppImage
           cp "$deb" dist-package/GunGloryOnline-Launcher-Ubuntu-Debian.deb
           cp "$rpm_pkg" dist-package/GunGloryOnline-Launcher-Fedora-RHEL.rpm
+          sha256sum dist-package/*
       - name: Normalize Windows packages
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           New-Item -ItemType Directory -Force dist-package | Out-Null
           $installer = Get-ChildItem src-tauri/target/release/bundle/nsis/*.exe | Select-Object -First 1
           if (-not $installer) { throw 'NSIS package not found' }
-          Copy-Item $installer.FullName dist-package/GunGloryOnline-Launcher-Windows.exe
           $msi = Get-ChildItem src-tauri/target/release/bundle/msi/*.msi | Select-Object -First 1
           if (-not $msi) { throw 'MSI package not found' }
-          Copy-Item $msi.FullName dist-package/GunGloryOnline-Launcher-Windows.msi
           $portable = Get-ChildItem src-tauri/target/release/*.exe | Where-Object { $_.Name -notmatch 'build|setup|installer' } | Sort-Object Length -Descending | Select-Object -First 1
           if (-not $portable) { throw 'Portable launcher executable not found' }
+          if ($installer.Length -lt 1MB) { throw 'NSIS package is unexpectedly small' }
+          if ($msi.Length -lt 1MB) { throw 'MSI package is unexpectedly small' }
+          if ($portable.Length -lt 1MB) { throw 'Portable launcher is unexpectedly small' }
+          Copy-Item $installer.FullName dist-package/GunGloryOnline-Launcher-Windows.exe
+          Copy-Item $msi.FullName dist-package/GunGloryOnline-Launcher-Windows.msi
           Copy-Item $portable.FullName dist-package/GunGloryOnline-Launcher-Portable.exe
           Compress-Archive -Path dist-package/GunGloryOnline-Launcher-Portable.exe -DestinationPath dist-package/GunGloryOnline-Launcher-Windows-Portable.zip -Force
           Remove-Item dist-package/GunGloryOnline-Launcher-Portable.exe
+          Get-FileHash dist-package/* -Algorithm SHA256 | Format-Table -AutoSize
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
@@ -96,9 +111,11 @@ jobs:
         run: python3 -m py_compile services/ggo-auth/server.py services/ggo-auth/test_auth.py
       - name: GGO account API smoke
         run: python3 services/ggo-auth/test_auth.py -v
-      - name: Validate systemd source
+      - name: Validate current ticket contract and systemd source
         run: |
           set -euo pipefail
+          grep -q 'GAME_TICKET_TTL = 3 \* 60' services/ggo-auth/server.py
+          grep -q 'assertGreaterEqual(ticket\["expires_in"\], 175)' services/ggo-auth/test_auth.py
           test -f services/ggo-auth/ggo-auth.service
           test -f services/ggo-auth/install.sh
           grep -q '127.0.0.1' services/ggo-auth/ggo-auth.service
@@ -167,11 +184,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          result=success
+          for value in '${{ needs.build.result }}' '${{ needs.auth.result }}' '${{ needs.website.result }}'; do
+            [ "$value" = success ] || result=failure
+          done
           mkdir -p .ci/launcher
           receipt=".ci/launcher/${GITHUB_RUN_ID}.txt"
           cat > "$receipt" <<EOF
+          workflow=${GITHUB_WORKFLOW}
           run_id=${GITHUB_RUN_ID}
           run_attempt=${GITHUB_RUN_ATTEMPT}
+          run_url=https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
           head_sha=${GITHUB_SHA}
           build_status=${{ needs.build.result }}
           auth_status=${{ needs.auth.result }}
@@ -181,6 +204,7 @@ jobs:
           linux_artifact=GunGloryOnline-Launcher-Linux
           linux_installers=GunGloryOnline-Launcher-Linux.AppImage,GunGloryOnline-Launcher-Ubuntu-Debian.deb,GunGloryOnline-Launcher-Fedora-RHEL.rpm
           website_artifact=GunGloryOnline-Website
+          result=$result
           EOF
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
