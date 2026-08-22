@@ -109,7 +109,6 @@ jobs:
           rust_check=$RUST_OUTCOME
           public_game_launch_commands=1
           launch_autoconnect=false
-          ticket_absolute_expiry=true
           one_primary_home_action=true
           external_training_action=false
           home_repair_action=false
