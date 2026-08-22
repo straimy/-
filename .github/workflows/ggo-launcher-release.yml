@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Release version (for example 0.2.2)
+        description: Release version (for example 0.2.4)
         required: true
         type: string
 
@@ -36,8 +36,10 @@ jobs:
       run:
         working-directory: launcher
     steps:
-      - name: Checkout
+      - name: Checkout launcher branch
         uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
 
       - name: Require production configuration
         shell: bash
@@ -68,6 +70,26 @@ jobs:
       - name: Install frontend dependencies
         run: npm install
 
+      - name: Apply menu-first beta launcher contract
+        run: python3 hotfix/apply_menu_first_beta_stage76.py
+
+      - name: Verify signed release launch surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          R=src-tauri/src/lib.rs
+          A=src/App.tsx
+          grep -q 'async fn launch_game(' "$R"
+          grep -q 'options.connect_server = false;' "$R"
+          grep -q 'GGO_GAME_TICKET_EXPIRES_AT' "$R"
+          ! grep -q 'async fn preview_minecraft_launch(' "$R"
+          ! grep -q 'async fn launch_minecraft(' "$R"
+          ! grep -q '            launch_training,' "$R"
+          grep -q 'async function launch(){' "$A"
+          grep -q '?t.install:updateAvailable?t.updateGame:t.play' "$A"
+          ! grep -q 'onClick={()=>void launch(true)}' "$A"
+          ! grep -q 'className="repair-link"' "$A"
+
       - name: Prepare signed updater build
         shell: bash
         run: |
@@ -88,6 +110,15 @@ jobs:
           config.setdefault("bundle", {})["createUpdaterArtifacts"] = True
           config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
           PY
+
+      - name: Frontend build gate
+        run: npm run build
+
+      - name: Rust compile and unit-test gate
+        shell: bash
+        run: |
+          cargo check --manifest-path src-tauri/Cargo.toml
+          cargo test --manifest-path src-tauri/Cargo.toml
 
       - name: Generate Windows icon
         if: runner.os == 'Windows'
