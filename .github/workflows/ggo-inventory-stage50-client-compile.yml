@@ -9,6 +9,7 @@ on:
       - 'hotfix/GgoCombatInputFence.java'
       - 'hotfix/GgoCombatHud.java'
       - 'hotfix/GgoDeathRecapState.java'
+      - 'hotfix/GgoKillFeedState.java'
       - 'hotfix/GgoDeathRecapAdapter.java'
       - 'hotfix/GgoDeathRecapBootstrap.java'
       - 'hotfix/GgoRespawnScreen.java'
@@ -79,8 +80,11 @@ jobs:
           grep -q 'DROP ON KIA' "$root/GgoShellScreen.java"
           grep -q 'GLFW_KEY_H' "$root/GgoCombatHud.java"
           grep -q 'ggomed use' "$root/GgoCombatHud.java"
+          grep -q 'renderKillFeed' "$root/GgoCombatHud.java"
           grep -q 'COMBAT REPORT' "$root/GgoRespawnScreen.java"
           grep -q 'GgoDeathRecapAdapter.install()' "$root/GgoDeathRecapBootstrap.java"
+          grep -q 'setKillFeedConsumer' "$root/GgoDeathRecapAdapter.java"
+          grep -q 'TTL_MS=8000L' "$root/GgoKillFeedState.java"
           grep -q 'MouseScrollingEvent' "$root/GgoCombatInputFence.java"
           grep -q 'Math.floorMod(current+direction,3)' "$root/GgoCombatInputFence.java"
       - name: Bootstrap ForgeGradle wrapper
@@ -104,7 +108,7 @@ jobs:
         run: |
           set -euo pipefail
           root=ga-build/client-ui/build/classes/java/main/arena/client/shell
-          for c in GgoCombatHud GgoCombatInputFence GgoRespawnScreen GgoVanillaRuntimeFence GgoDeathRecapState GgoDeathRecapAdapter GgoDeathRecapBootstrap GgoShellScreen; do test -f "$root/$c.class"; done
+          for c in GgoCombatHud GgoCombatInputFence GgoRespawnScreen GgoVanillaRuntimeFence GgoDeathRecapState GgoKillFeedState GgoDeathRecapAdapter GgoDeathRecapBootstrap GgoShellScreen; do test -f "$root/$c.class"; done
       - name: Publish exact CI receipt
         if: always()
         env:
