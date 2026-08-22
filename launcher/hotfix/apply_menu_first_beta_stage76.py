@@ -1,0 +1,103 @@
+#!/usr/bin/env python3
+from pathlib import Path
+
+ROOT = Path("launcher")
+RUST = ROOT / "src-tauri/src/lib.rs"
+APP = ROOT / "src/App.tsx"
+
+if not RUST.is_file() or not APP.is_file():
+    raise SystemExit("launcher sources missing")
+
+rust = RUST.read_text(encoding="utf-8")
+app = APP.read_text(encoding="utf-8")
+
+# Remove public vanilla/Microsoft launch escape hatches. All player launches must flow through launch_game.
+rust = rust.replace(
+    "    minecraft_launch::{self, LaunchCommandPreview, LaunchOptions, LaunchResult},\n",
+    "    minecraft_launch::{LaunchOptions, LaunchResult},\n",
+)
+
+start = rust.find("#[tauri::command]\nasync fn preview_minecraft_launch(")
+end = rust.find("#[tauri::command]\nasync fn launch_training(")
+if start == -1 or end == -1 or end <= start:
+    raise SystemExit("legacy launch command block not found")
+rust = rust[:start] + rust[end:]
+rust = rust.replace("#[tauri::command]\nasync fn launch_training(", "async fn launch_training(", 1)
+
+# launch_game is the only public game-start command. The official launch boots into the GGO menu first;
+# the already-created short-lived ticket is held by the child until PLAY ONLINE connects.
+rust = rust.replace("    _microsoft_store: State<'_, MicrosoftSessionStore>,\n", "", 1)
+rust = rust.replace("    _server_address: Option<String>,\n", "", 1)
+rust = rust.replace(
+    "    options.connect_server = true;\n    options.launch_mode = \"online\".to_string();",
+    "    options.connect_server = false;\n    options.launch_mode = \"online\".to_string();",
+    1,
+)
+for entry in [
+    "            preview_minecraft_launch,\n",
+    "            launch_minecraft,\n",
+    "            launch_training,\n",
+]:
+    rust = rust.replace(entry, "")
+
+# One primary launcher action: INSTALL / UPDATE / PLAY. Mode choice happens in the GGO client.
+for old, new in [
+    ('play:"PLAY ONLINE"', 'play:"PLAY"'),
+    ('play:"ИГРАТЬ ОНЛАЙН"', 'play:"ИГРАТЬ"'),
+    ('play:"ГРАТИ ОНЛАЙН"', 'play:"ГРАТИ"'),
+]:
+    app = app.replace(old, new)
+
+old_launch = '''async function launch(training=false,server?:RemoteServer){if(!installDir){setStatus("Choose a GGO data folder");return;}if(!gameInstalled){setStatus(t.notInstalled);return;}setBusy(true);try{const runtimeCheck=await ensureRuntime();const profile=auth.minecraftProfile;const display=ggoAccount.connected?(ggoAccount.displayName||nickname.trim()||"GGOPlayer"):(profile?.name||nickname.trim()||"GGOPlayer");const provider=ggoAccount.connected?"ggo":profile?"microsoft":"guest";await invoke("write_identity_bridge",{installDir,ggoPlayerId:ggoAccount.connected?ggoAccount.playerId:null,displayName:display,skinSource:ggoAccount.skinSource,provider});const extraJvmArgs=extraJvmText.split(/\\r?\\n/).map(v=>v.trim()).filter(Boolean);const opts:LaunchOptions={ramMb,minRamMb:Math.min(minRamMb,ramMb),extraJvmArgs,width:resolution[0],height:resolution[1],fullscreen};const target=training?null:(server??selected??FALLBACK_SERVER);const launchProfile: MinecraftProfile = profile??{id:"guest",name:display};const result=await invoke<LaunchResult>("launch_game",{installDir,customJava:javaPath||runtimeCheck.java?.path||null,options:opts,serverAddress:target?.address||null,training,profile:launchProfile});setStatus(`Running · PID ${result.pid}`);}catch(error){setStatus(String(error));}finally{setBusy(false);}}'''
+new_launch = '''async function launch(){if(!installDir){setStatus("Choose a GGO data folder");return;}if(!gameInstalled){setStatus(t.notInstalled);return;}if(!ggoAccount.connected){setStatus("GGO Account is required. Sign in first.");setPage("accounts");return;}setBusy(true);try{const runtimeCheck=await ensureRuntime();const profile=auth.minecraftProfile;const display=ggoAccount.displayName||nickname.trim()||"GGOPlayer";await invoke("write_identity_bridge",{installDir,ggoPlayerId:ggoAccount.playerId,displayName:display,skinSource:ggoAccount.skinSource,provider:"ggo"});const extraJvmArgs=extraJvmText.split(/\\r?\\n/).map(v=>v.trim()).filter(Boolean);const opts:LaunchOptions={ramMb,minRamMb:Math.min(minRamMb,ramMb),extraJvmArgs,width:resolution[0],height:resolution[1],fullscreen};const launchProfile:MinecraftProfile=profile??{id:"ggo",name:display};const result=await invoke<LaunchResult>("launch_game",{installDir,customJava:javaPath||runtimeCheck.java?.path||null,options:opts,training:false,profile:launchProfile});setStatus(`GGO Client · PID ${result.pid}`);}catch(error){setStatus(String(error));}finally{setBusy(false);}}'''
+if old_launch not in app:
+    raise SystemExit("launcher launch() block not found")
+app = app.replace(old_launch, new_launch, 1)
+
+old_home = '''<div className="home-actions"><button className="play-button" disabled={busy||!gameInstalled||updateAvailable} onClick={()=>void launch(false)}>{busy?t.preparing:t.play}</button><button className="training-button" disabled={busy||!gameInstalled} onClick={()=>void launch(true)}>{t.training}<small>{t.trainingHint}</small></button></div>'''
+new_home = '''<div className="home-actions"><button className="play-button" disabled={busy||checkingGame} onClick={()=>void ((!gameInstalled||updateAvailable)?installGame():launch())}>{busy?t.preparing:!gameInstalled?t.install:updateAvailable?t.updateGame:t.play}</button></div>'''
+if old_home not in app:
+    raise SystemExit("home action block not found")
+app = app.replace(old_home, new_home, 1)
+
+old_card_actions = '''{(!gameInstalled||updateAvailable)&&<button disabled={busy} onClick={()=>void installGame()}>{installLabel}</button>}{gameInstalled&&!updateAvailable&&<button className="repair-link" disabled={busy} onClick={()=>void repairGame()}>{t.repair}</button>}'''
+if old_card_actions not in app:
+    raise SystemExit("install-card action block not found")
+app = app.replace(old_card_actions, "", 1)
+
+old_server_play = '''<button className="play-button compact" disabled={busy||!gameInstalled||updateAvailable} onClick={()=>void launch(false)}>{t.play}</button>'''
+app = app.replace(old_server_play, "")
+
+RUST.write_text(rust, encoding="utf-8")
+APP.write_text(app, encoding="utf-8")
+
+# Fail closed if any public launch bypass or old split-action home UI survives.
+checks = {
+    "preview_minecraft_launch": False,
+    "async fn launch_minecraft(": False,
+    "            launch_training,": False,
+    "options.connect_server = true": False,
+    "serverAddress:target": False,
+    "onClick={()=>void launch(true)}": False,
+    "className=\"repair-link\"": False,
+}
+combined = rust + "\n" + app
+for token, expected in checks.items():
+    if (token in combined) != expected:
+        raise SystemExit(f"stage76 launcher hardening failed for token: {token}")
+
+for token in [
+    'async fn launch_game(',
+    'options.connect_server = false;',
+    '("GGO_GAME_TICKET".to_string(), ticket.ticket)',
+    'async function launch(){',
+    '?t.install:updateAvailable?t.updateGame:t.play',
+]:
+    if token not in combined:
+        raise SystemExit(f"stage76 launcher requirement missing: {token}")
+
+print("Applied GGO launcher Stage 76 menu-first beta hardening")
+print(" - one public game launch command")
+print(" - official launch boots to GGO client menu before network connect")
+print(" - launcher home has one INSTALL / UPDATE / PLAY primary action")
+print(" - Training and Repair removed from primary home surface")
