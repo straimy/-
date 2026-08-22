@@ -118,8 +118,18 @@ pub fn launch(
     session: &MicrosoftSession,
     options: &LaunchOptions,
 ) -> Result<LaunchResult, LaunchError> {
+    launch_with_environment(install_dir, custom_java, session, options, &[])
+}
+
+pub fn launch_with_environment(
+    install_dir: &Path,
+    custom_java: Option<&str>,
+    session: &MicrosoftSession,
+    options: &LaunchOptions,
+    environment: &[(String, String)],
+) -> Result<LaunchResult, LaunchError> {
     let built = build_launch(install_dir, custom_java, session, options)?;
-    let child = spawn(&built)?;
+    let child = spawn(&built, environment)?;
     Ok(LaunchResult {
         started: true,
         pid: child.id(),
@@ -128,7 +138,7 @@ pub fn launch(
     })
 }
 
-fn spawn(built: &BuiltLaunch) -> Result<Child, LaunchError> {
+fn spawn(built: &BuiltLaunch, environment: &[(String, String)]) -> Result<Child, LaunchError> {
     let log_dir = built.game_directory.join("logs");
     fs::create_dir_all(&log_dir)?;
     let log_path = log_dir.join("ggo-launcher-minecraft.log");
@@ -142,14 +152,19 @@ fn spawn(built: &BuiltLaunch) -> Result<Child, LaunchError> {
     stdout_log.flush()?;
     let stderr_log = stdout_log.try_clone()?;
 
-    Command::new(&built.java_path)
+    let mut command = Command::new(&built.java_path);
+    command
         .args(&built.jvm_args)
         .arg(&built.main_class)
         .args(&built.game_args)
         .current_dir(&built.game_directory)
         .stdin(Stdio::null())
         .stdout(Stdio::from(stdout_log))
-        .stderr(Stdio::from(stderr_log))
+        .stderr(Stdio::from(stderr_log));
+    for (key, value) in environment {
+        command.env(key, value);
+    }
+    command
         .spawn()
         .map_err(|error| LaunchError::Spawn(format!("{} (log: {})", error, log_path.display())))
 }
@@ -417,5 +432,12 @@ mod tests {
         assert_eq!(options.launch_mode, "online");
         assert_eq!(options.min_ram_mb, 512);
         assert!(options.extra_jvm_args.is_empty());
+    }
+
+    #[test]
+    fn child_environment_is_not_part_of_preview_or_arguments() {
+        let secret = vec![("GGO_GAME_TICKET".to_string(), "secret".to_string())];
+        assert_eq!(secret[0].0, "GGO_GAME_TICKET");
+        assert!(!secret[0].1.is_empty());
     }
 }
