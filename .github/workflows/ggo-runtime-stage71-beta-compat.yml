@@ -1,0 +1,205 @@
+name: GGO Runtime Stage 71 Beta Compatibility
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - client/runtime-migration-v1
+    paths:
+      - '.github/workflows/ggo-runtime-stage71-beta-compat.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+      UI69_RUN: '32566750907'
+    steps:
+      - name: Checkout client runtime
+        uses: actions/checkout@v4
+        with:
+          ref: client/runtime-migration-v1
+          path: client-src
+          fetch-depth: 0
+      - name: Checkout server runtime
+        uses: actions/checkout@v4
+        with:
+          ref: server/runtime-hardening-v1
+          path: server-src
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Capture refs
+        id: refs
+        run: |
+          echo "client_sha=$(git -C client-src rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "server_sha=$(git -C server-src rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare Forge wrapper
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 -o /tmp/ggo-mdk.zip https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-mdk.zip
+          rm -rf /tmp/ggo-mdk && mkdir -p /tmp/ggo-mdk
+          unzip -q /tmp/ggo-mdk.zip 'gradlew' 'gradlew.bat' 'gradle/*' -d /tmp/ggo-mdk
+
+      - name: Build Stage 71 Core
+        id: core
+        working-directory: server-src
+        run: |
+          set -euo pipefail
+          rm -rf ga-build && mkdir ga-build
+          unzip -q "$SOURCE_ZIP" -d ga-build
+          python3 hotfix/apply_ggo_contract_rewards_stage26.py
+          python3 hotfix/apply_ggo_contract_map_stage27.py
+          python3 hotfix/apply_ggo_contract_push_stage28.py
+          python3 hotfix/apply_ggo_contract_persistence_stage29.py
+          python3 hotfix/apply_ggo_contract_lifecycle_stage30.py
+          python3 hotfix/apply_ggo_contract_balance_stage31.py
+          python3 hotfix/apply_ggo_contract_eligibility_stage32.py
+          python3 hotfix/apply_ggo_supply_lifecycle_stage33.py
+          python3 hotfix/apply_ggo_extraction_runtime_stage34.py
+          python3 hotfix/apply_ggo_contract_network_guard_stage36.py
+          python3 hotfix/apply_ggo_contract_reward_order_stage37.py
+          python3 hotfix/apply_ggo_compile_baseline_stage27.py
+          python3 hotfix/apply_ggo_spawn_presence_stage38.py
+          python3 hotfix/apply_ggo_deminecraft_world_stage39.py
+          python3 hotfix/apply_ggo_deminecraft_loot_stage41.py
+          python3 hotfix/apply_ggo_inventory_stage42.py
+          python3 hotfix/apply_ggo_visible_content_stage43.py
+          python3 hotfix/apply_ggo_medicine_stage47.py
+          python3 hotfix/apply_ggo_death_recap_stage48.py
+          python3 hotfix/apply_ggo_recovery_bag_stage49.py
+          python3 hotfix/apply_ggo_map_integrity_stage51.py
+          python3 hotfix/apply_ggo_map_palette_stage54.py
+          python3 hotfix/apply_ggo_official_auth_stage55.py
+          python3 hotfix/apply_ggo_pre_auth_quarantine_stage59.py
+          python3 hotfix/apply_ggo_ui_packets_stage65.py
+          python3 hotfix/apply_ggo_ui_channel_ownership_stage71.py
+          grep -q 'FMLEnvironment.dist == Dist.DEDICATED_SERVER' ga-build/src/main/java/arena/forge/net/ArenaNetwork.java
+          grep -q 'FMLEnvironment.dist != Dist.DEDICATED_SERVER' ga-build/src/main/java/arena/forge/net/ArenaNetwork.java
+          grep -q 'private static final String PROTOCOL = "2"' ga-build/src/main/java/arena/forge/GgoLaunchTicketNetwork.java
+          cp /tmp/ggo-mdk/gradlew ga-build/gradlew
+          cp /tmp/ggo-mdk/gradlew.bat ga-build/gradlew.bat
+          rm -rf ga-build/gradle && cp -a /tmp/ggo-mdk/gradle ga-build/gradle
+          chmod +x ga-build/gradlew
+          (cd ga-build && ./gradlew --no-daemon build --stacktrace)
+          CORE="$(find ga-build/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          test -n "$CORE" && test -f "$CORE"
+          mkdir -p ../stage71/server/mods ../stage71/client/mods
+          cp "$CORE" ../stage71/server/mods/gungloryonline-core-runtime-v1-stage71.jar
+          cp "$CORE" ../stage71/client/mods/gungloryonline-core-runtime-v1-stage71.jar
+          echo "sha256=$(sha256sum "$CORE" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Reuse verified Stage 69 client UI
+        uses: actions/download-artifact@v4
+        with:
+          name: GunGloryOnline-UI-Stage69-BrandClean
+          path: ui69
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: 32566750907
+
+      - name: Install verified UI
+        id: ui
+        run: |
+          set -euo pipefail
+          UI="$(find ui69 -type f -name '*.jar' | head -n1)"
+          test -n "$UI" && test -f "$UI"
+          cp "$UI" stage71/client/mods/gungloryonline-ui-runtime-v1-stage71.jar
+          echo "sha256=$(sha256sum "$UI" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Build shader-safe official resource pack
+        id: rp
+        working-directory: client-src
+        run: |
+          set -euo pipefail
+          mkdir -p ../stage71/client/resourcepacks
+          python3 hotfix/build_ggo_recovery_bag_rp_stage63.py \
+            GunnerArena-ResourcePack-1.20.1-v1.zip \
+            /tmp/GunGloryOnline-Official-pre71.zip
+          rm -rf /tmp/ggo-rp71 && mkdir -p /tmp/ggo-rp71
+          unzip -q /tmp/GunGloryOnline-Official-pre71.zip -d /tmp/ggo-rp71
+          rm -rf /tmp/ggo-rp71/assets/minecraft/shaders/core
+          (cd /tmp/ggo-rp71 && zip -qr "$GITHUB_WORKSPACE/stage71/client/resourcepacks/GunGloryOnline-Official.zip" .)
+          OUT="$GITHUB_WORKSPACE/stage71/client/resourcepacks/GunGloryOnline-Official.zip"
+          unzip -tq "$OUT"
+          unzip -Z1 "$OUT" | grep -qx 'pack.mcmeta'
+          if unzip -Z1 "$OUT" | grep -q '^assets/minecraft/shaders/core/'; then
+            echo 'forbidden vanilla core shader override survived' >&2
+            exit 1
+          fi
+          echo "sha256=$(sha256sum "$OUT" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Verify Stage 71 beta gates
+        id: gates
+        run: |
+          set -euo pipefail
+          test -f stage71/server/mods/gungloryonline-core-runtime-v1-stage71.jar
+          test -f stage71/client/mods/gungloryonline-core-runtime-v1-stage71.jar
+          test -f stage71/client/mods/gungloryonline-ui-runtime-v1-stage71.jar
+          test -f stage71/client/resourcepacks/GunGloryOnline-Official.zip
+          cmp stage71/server/mods/gungloryonline-core-runtime-v1-stage71.jar stage71/client/mods/gungloryonline-core-runtime-v1-stage71.jar
+          unzip -p stage71/client/mods/gungloryonline-ui-runtime-v1-stage71.jar META-INF/mods.toml | grep -q 'gunnerarena_ui'
+          jar tf stage71/server/mods/gungloryonline-core-runtime-v1-stage71.jar | grep -q 'arena/forge/GgoLaunchTicketNetwork.class'
+          jar tf stage71/client/mods/gungloryonline-ui-runtime-v1-stage71.jar | grep -q 'arena/client/shell/GgoShellScreen.class'
+
+      - uses: actions/upload-artifact@v4
+        id: upload
+        if: success()
+        with:
+          name: GunGloryOnline-Runtime-Stage71-BetaCompat
+          path: stage71/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish Stage 71 receipt
+        if: always()
+        env:
+          CORE_OUTCOME: ${{ steps.core.outcome }}
+          UI_OUTCOME: ${{ steps.ui.outcome }}
+          RP_OUTCOME: ${{ steps.rp.outcome }}
+          GATES_OUTCOME: ${{ steps.gates.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+        working-directory: client-src
+        run: |
+          set -euo pipefail
+          result=success
+          for v in "$CORE_OUTCOME" "$UI_OUTCOME" "$RP_OUTCOME" "$GATES_OUTCOME" "$UPLOAD_OUTCOME"; do
+            [ "$v" = success ] || result=failure
+          done
+          mkdir -p ci-results
+          cat > ci-results/stage71-beta-compat.txt <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_id=${GITHUB_RUN_ID}
+          run_attempt=${GITHUB_RUN_ATTEMPT}
+          run_url=https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          client_sha=${{ steps.refs.outputs.client_sha }}
+          server_sha=${{ steps.refs.outputs.server_sha }}
+          ui69_run=${UI69_RUN}
+          core_build=$CORE_OUTCOME
+          ui_install=$UI_OUTCOME
+          resource_pack=$RP_OUTCOME
+          beta_gates=$GATES_OUTCOME
+          upload=$UPLOAD_OUTCOME
+          core_sha256=${{ steps.core.outputs.sha256 }}
+          ui_sha256=${{ steps.ui.outputs.sha256 }}
+          resource_pack_sha256=${{ steps.rp.outputs.sha256 }}
+          duplicate_gunnerarena_ui_channel_fixed=true
+          vanilla_core_shader_overrides=false
+          result=$result
+          EOF
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ci-results/stage71-beta-compat.txt
+          git commit -m "ci: record Stage 71 beta compatibility ${GITHUB_RUN_ID}" || exit 0
+          git fetch origin client/runtime-migration-v1
+          git rebase origin/client/runtime-migration-v1
+          git push origin HEAD:client/runtime-migration-v1
