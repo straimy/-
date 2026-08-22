@@ -1,0 +1,11 @@
+workflow=GGO Runtime Stage 64 RP Slim Planner
+run_id=32561643315
+run_attempt=1
+run_url=https://github.com/straimy/-/actions/runs/32561643315
+source_sha=b1d489d94e9d00772b415fbf3b9ea16422b409e6
+python_compile=success
+dependency_planner=success
+production_pack_readonly=success
+real_palette_applied=false
+destructive_write_available=false
+result=success
