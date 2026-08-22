@@ -1,6 +1,7 @@
 from pathlib import Path
 import shutil
 
+# Canonical Stage 32 entrypoint used by the full contracts compile gate.
 ROOT = Path("ga-build") if Path("ga-build").exists() else Path(".")
 TARGET = ROOT / "src/main/java/arena/forge"
 TARGET.mkdir(parents=True, exist_ok=True)
