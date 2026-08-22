@@ -16,6 +16,16 @@ pub fn launch_with_natives(
     session: &MicrosoftSession,
     options: &LaunchOptions,
 ) -> Result<LaunchResult, LaunchError> {
+    launch_with_natives_environment(install_dir, custom_java, session, options, &[])
+}
+
+pub fn launch_with_natives_environment(
+    install_dir: &Path,
+    custom_java: Option<&str>,
+    session: &MicrosoftSession,
+    options: &LaunchOptions,
+    environment: &[(String, String)],
+) -> Result<LaunchResult, LaunchError> {
     let runtime = check_runtime(install_dir, custom_java);
     if !runtime.ready {
         return Err(LaunchError::Runtime(runtime.missing.join(", ")));
@@ -44,24 +54,26 @@ pub fn launch_with_natives(
         &natives_dir,
     )?;
 
-    let previous = env::var("JDK_JAVA_OPTIONS").ok();
-    let mut combined = previous.clone().unwrap_or_default();
+    let previous = env::var("JDK_JAVA_OPTIONS").ok().unwrap_or_default();
+    let mut combined = previous;
     if !combined.contains(FORGE_JAVA_COMPAT) {
         if !combined.trim().is_empty() {
             combined.push(' ');
         }
         combined.push_str(FORGE_JAVA_COMPAT);
     }
-    env::set_var("JDK_JAVA_OPTIONS", &combined);
 
-    let result = minecraft_launch::launch(install_dir, custom_java, session, options);
+    let mut child_environment = environment.to_vec();
+    child_environment.retain(|(key, _)| key != "JDK_JAVA_OPTIONS");
+    child_environment.push(("JDK_JAVA_OPTIONS".to_string(), combined));
 
-    match previous {
-        Some(value) => env::set_var("JDK_JAVA_OPTIONS", value),
-        None => env::remove_var("JDK_JAVA_OPTIONS"),
-    }
-
-    result
+    minecraft_launch::launch_with_environment(
+        install_dir,
+        custom_java,
+        session,
+        options,
+        &child_environment,
+    )
 }
 
 #[cfg(test)]
@@ -71,5 +83,13 @@ mod tests {
     #[test]
     fn forge_compat_opens_java_lang_invoke() {
         assert_eq!(FORGE_JAVA_COMPAT, "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED");
+    }
+
+    #[test]
+    fn launcher_no_longer_mutates_process_environment_for_forge() {
+        let source = include_str!("minecraft_process.rs");
+        assert!(!source.contains("env::set_var"));
+        assert!(!source.contains("env::remove_var"));
+        assert!(source.contains("launch_with_natives_environment"));
     }
 }
