@@ -1,0 +1,233 @@
+name: GGO Runtime Stage 70 Closed Beta Baseline
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - client/runtime-migration-v1
+    paths:
+      - '.github/workflows/ggo-runtime-stage70-closed-beta-baseline.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  assemble:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout project history
+        uses: actions/checkout@v4
+        with:
+          ref: client/runtime-migration-v1
+          fetch-depth: 0
+
+      - name: Capture exact working refs
+        id: refs
+        run: |
+          set -euo pipefail
+          git fetch origin server/runtime-hardening-v1 launcher/bootstrap-v0.1
+          echo "client_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "server_sha=$(git rev-parse origin/server/runtime-hardening-v1)" >> "$GITHUB_OUTPUT"
+          echo "launcher_sha=$(git rev-parse origin/launcher/bootstrap-v0.1)" >> "$GITHUB_OUTPUT"
+
+      - name: Verify immutable prerequisite receipts
+        id: receipts
+        run: |
+          set -euo pipefail
+          grep -q '^run_id=32562750807$' ci-results/stage68-release-candidate.txt
+          grep -q '^result=success$' ci-results/stage68-release-candidate.txt
+          grep -q '^run_id=32566750907$' ci-results/stage69-brand-clean-ui.txt
+          grep -q '^result=success$' ci-results/stage69-brand-clean-ui.txt
+          git show origin/launcher/bootstrap-v0.1:.ci/launcher/32562889069.txt | grep -q '^result=success$'
+          git show origin/launcher/bootstrap-v0.1:.ci/linux/32561828672.txt | grep -q '^result=success$'
+          git show origin/launcher/bootstrap-v0.1:.ci/windows/32562815120.txt | grep -q '^result=success$'
+
+      - name: Download Stage 68 runtime
+        uses: actions/download-artifact@v4
+        with:
+          name: GunGloryOnline-Runtime-Stage68-ReleaseCandidate
+          path: inputs/runtime68
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: 32562750807
+
+      - name: Download Stage 69 brand-clean UI
+        uses: actions/download-artifact@v4
+        with:
+          name: GunGloryOnline-UI-Stage69-BrandClean
+          path: inputs/ui69
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: 32566750907
+
+      - name: Download Windows launcher package
+        uses: actions/download-artifact@v4
+        with:
+          name: GunGloryOnline-Launcher-Windows
+          path: inputs/windows
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: 32562889069
+
+      - name: Download Linux launcher package
+        uses: actions/download-artifact@v4
+        with:
+          name: GunGloryOnline-Launcher-Linux
+          path: inputs/linux
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: 32562889069
+
+      - name: Download website package
+        uses: actions/download-artifact@v4
+        with:
+          name: GunGloryOnline-Website
+          path: inputs/website
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: 32562889069
+
+      - name: Assemble closed beta bundle
+        id: bundle
+        env:
+          CLIENT_SHA: ${{ steps.refs.outputs.client_sha }}
+          SERVER_SHA: ${{ steps.refs.outputs.server_sha }}
+          LAUNCHER_SHA: ${{ steps.refs.outputs.launcher_sha }}
+        run: |
+          set -euo pipefail
+          rm -rf final
+          mkdir -p final/runtime final/launcher/windows final/launcher/linux final/website final/source final/docs final/receipts
+
+          cp -a inputs/runtime68/. final/runtime/
+          UI69="$(find inputs/ui69 -type f -name '*.jar' | head -n1)"
+          test -n "$UI69" && test -f "$UI69"
+          CLIENT_MODS="$(find final/runtime -type d -path '*/client/mods' | head -n1)"
+          test -n "$CLIENT_MODS"
+          find "$CLIENT_MODS" -maxdepth 1 -type f -name '*ui*stage68*.jar' -delete
+          cp "$UI69" "$CLIENT_MODS/gungloryonline-ui-runtime-v1-stage69.jar"
+
+          cp -a inputs/windows/. final/launcher/windows/
+          cp -a inputs/linux/. final/launcher/linux/
+          cp -a inputs/website/. final/website/
+
+          test -n "$(find final/launcher/windows -type f -name '*.exe' -print -quit)"
+          test -n "$(find final/launcher/windows -type f -name '*.msi' -print -quit)"
+          test -n "$(find final/launcher/windows -type f -name '*.zip' -print -quit)"
+          test -n "$(find final/launcher/linux -type f -name '*.AppImage' -print -quit)"
+          test -n "$(find final/launcher/linux -type f -name '*.deb' -print -quit)"
+          test -n "$(find final/launcher/linux -type f -name '*.rpm' -print -quit)"
+          test -n "$(find final/runtime -type f -name 'GunGloryOnline-Official.zip' -print -quit)"
+          test -n "$(find final/runtime -type f -name '*core*.jar' -print -quit)"
+          test -f "$CLIENT_MODS/gungloryonline-ui-runtime-v1-stage69.jar"
+
+          git archive --format=tar.gz -o final/source/client-runtime-migration-v1.tar.gz client/runtime-migration-v1
+          git archive --format=tar.gz -o final/source/server-runtime-hardening-v1.tar.gz origin/server/runtime-hardening-v1
+          git archive --format=tar.gz -o final/source/launcher-bootstrap-v0.1.tar.gz origin/launcher/bootstrap-v0.1
+
+          cp docs/GGO-HANDOFF-2026-08-22.md final/docs/
+          cp docs/GGO-CONTROLS.md final/docs/
+          cp docs/GGO-SOUNDTRACK-POOL.md final/docs/
+          cp ci-results/stage68-release-candidate.txt final/receipts/
+          cp ci-results/stage69-brand-clean-ui.txt final/receipts/
+          git show origin/launcher/bootstrap-v0.1:.ci/launcher/32562889069.txt > final/receipts/launcher-packages-32562889069.txt
+          git show origin/launcher/bootstrap-v0.1:.ci/linux/32561828672.txt > final/receipts/linux-verify-32561828672.txt
+          git show origin/launcher/bootstrap-v0.1:.ci/windows/32562815120.txt > final/receipts/windows-verify-32562815120.txt
+
+          cat > final/BETA-BASELINE.txt <<EOF
+          GUNGLORYONLINE CLOSED BETA BASELINE
+          DATE=2026-08-22
+          REPOSITORY=straimy/-
+          MAIN_BRANCH_MODIFIED=false
+          SERVER_BRANCH=server/runtime-hardening-v1
+          SERVER_HEAD=$SERVER_SHA
+          CLIENT_BRANCH=client/runtime-migration-v1
+          CLIENT_HEAD=$CLIENT_SHA
+          LAUNCHER_BRANCH=launcher/bootstrap-v0.1
+          LAUNCHER_HEAD=$LAUNCHER_SHA
+          RUNTIME_BASE_RUN=32562750807
+          BRAND_CLEAN_UI_RUN=32566750907
+          LAUNCHER_PACKAGE_RUN=32562889069
+          WINDOWS_VERIFY_RUN=32562815120
+          LINUX_VERIFY_RUN=32561828672
+          MINECRAFT_RUNTIME=1.20.1
+          FORGE_RUNTIME=47.4.10
+          JAVA_RUNTIME=17
+          OFFICIAL_SERVER=play.kvicloud.ru:24842
+          AUTH=GGO_ONE_SHOT_TICKET
+          UNUSED_TICKET_TTL_SECONDS=180
+          LAUNCH_TICKET_PROTOCOL=2
+          PRE_AUTH_GAMEPLAY=QUARANTINED
+          CLIENT_VERIFICATION=ACK_GATED
+          FIRST_PARTY_UI_ACTIONS=PACKET_ONLY
+          GGO_CHAT_SHELL=true
+          PLAYER_FACING_ENGINE_BRANDS=false
+          RESOURCE_PACK=GunGloryOnline-Official.zip
+          RESOURCE_PACK_SLIMMING=DEFERRED_UNTIL_REAL_MAP_PALETTE
+          EOF
+
+          cat > final/NEW-CHAT-PROMPT.txt <<'EOF'
+          Continue GunGloryOnline from GitHub repo straimy/-. First read docs/GGO-HANDOFF-2026-08-22.md on branch client/runtime-migration-v1 and the latest ci-results/stage70-closed-beta-baseline.txt. NEVER write to main. Work only on server/runtime-hardening-v1, client/runtime-migration-v1 and launcher/bootstrap-v0.1. Treat Minecraft 1.20.1 + Forge 47.4.10 as hidden Runtime v1 and keep removing player-facing engine behavior without destabilizing it. Exact CI receipts are the source of truth. The transferable Closed Beta baseline is built from Stage 68 runtime, Stage 69 brand-clean UI, launcher package run 32562889069, Windows verify 32562815120 and Linux verify 32561828672. Continue from real-map palette/RP slimming, clean-machine launcher->auth->server playtest, deployment/site verification, multiplayer soak/balance/content and release signing/polish. When I say “далее”, do actual GitHub work autonomously and do not touch main.
+          EOF
+
+          (cd final && find . -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt)
+          rm -f GunGloryOnline-Closed-Beta-Baseline-2026-08-22.zip
+          zip -qr GunGloryOnline-Closed-Beta-Baseline-2026-08-22.zip final
+          unzip -tq GunGloryOnline-Closed-Beta-Baseline-2026-08-22.zip
+          sha256sum GunGloryOnline-Closed-Beta-Baseline-2026-08-22.zip > GunGloryOnline-Closed-Beta-Baseline-2026-08-22.zip.sha256
+          echo "bytes=$(stat -c%s GunGloryOnline-Closed-Beta-Baseline-2026-08-22.zip)" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(cut -d' ' -f1 GunGloryOnline-Closed-Beta-Baseline-2026-08-22.zip.sha256)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload transferable closed beta
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-Closed-Beta-Baseline-2026-08-22
+          path: |
+            GunGloryOnline-Closed-Beta-Baseline-2026-08-22.zip
+            GunGloryOnline-Closed-Beta-Baseline-2026-08-22.zip.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+      - name: Publish exact Stage 70 receipt
+        if: always()
+        env:
+          RECEIPTS: ${{ steps.receipts.outcome }}
+          BUNDLE: ${{ steps.bundle.outcome }}
+          UPLOAD: ${{ steps.upload.outcome }}
+        run: |
+          set -euo pipefail
+          result=success
+          for value in "$RECEIPTS" "$BUNDLE" "$UPLOAD"; do
+            [ "$value" = success ] || result=failure
+          done
+          mkdir -p ci-results
+          cat > ci-results/stage70-closed-beta-baseline.txt <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_id=${GITHUB_RUN_ID}
+          run_attempt=${GITHUB_RUN_ATTEMPT}
+          run_url=https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          server_head=${{ steps.refs.outputs.server_sha }}
+          client_head=${{ steps.refs.outputs.client_sha }}
+          launcher_head=${{ steps.refs.outputs.launcher_sha }}
+          stage68_run=32562750807
+          stage69_run=32566750907
+          launcher_package_run=32562889069
+          windows_verify_run=32562815120
+          linux_verify_run=32561828672
+          prerequisite_receipts=$RECEIPTS
+          bundle=$BUNDLE
+          upload=$UPLOAD
+          bundle_bytes=${{ steps.bundle.outputs.bytes }}
+          bundle_sha256=${{ steps.bundle.outputs.sha256 }}
+          result=$result
+          EOF
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ci-results/stage70-closed-beta-baseline.txt
+          git commit -m "ci: record Stage 70 closed beta ${GITHUB_RUN_ID}" || exit 0
+          git fetch origin client/runtime-migration-v1
+          git rebase origin/client/runtime-migration-v1
+          git push origin HEAD:client/runtime-migration-v1
