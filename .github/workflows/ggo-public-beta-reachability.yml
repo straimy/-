@@ -45,6 +45,32 @@ jobs:
           assert data.get('game_tickets') is True, data
           PY
 
+      - name: Auth register POST route
+        id: register
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          code="$(curl -sS --connect-timeout 10 --max-time 20 -o /tmp/ggo-register.json -w '%{http_code}' -H 'Content-Type: application/json' --data '{}' https://ggo.kvicloud.ru/api/v1/auth/register)"
+          test "$code" = 400
+          python3 - <<'PY'
+          import json
+          data=json.load(open('/tmp/ggo-register.json',encoding='utf-8'))
+          assert data.get('error') == 'invalid_username', data
+          PY
+
+      - name: Auth login POST route
+        id: login
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          code="$(curl -sS --connect-timeout 10 --max-time 20 -o /tmp/ggo-login.json -w '%{http_code}' -H 'Content-Type: application/json' --data '{}' https://ggo.kvicloud.ru/api/v1/auth/login)"
+          test "$code" = 401
+          python3 - <<'PY'
+          import json
+          data=json.load(open('/tmp/ggo-login.json',encoding='utf-8'))
+          assert data.get('error') == 'invalid_credentials', data
+          PY
+
       - name: Beta manifest HTTPS
         id: manifest
         continue-on-error: true
@@ -57,6 +83,8 @@ jobs:
           assert isinstance(data,dict), data
           assert isinstance(data.get('files'),list) and data['files'], data
           paths=[str(x.get('path','')) for x in data['files'] if isinstance(x,dict)]
+          assert any('gungloryonline-core-runtime-v1-stage68.jar' in p for p in paths), paths
+          assert any('gungloryonline-ui-runtime-v1-stage69.jar' in p for p in paths), paths
           assert any('GunGloryOnline-Official.zip' in p for p in paths), paths
           PY
 
@@ -65,7 +93,7 @@ jobs:
         continue-on-error: true
         run: |
           set -euo pipefail
-          getent ahosts play.kvicloud.ru | head -n1
+          getent ahosts play.kvicloud.ru | head -n1 | grep -q '^2\.26\.100\.125[[:space:]]'
 
       - name: Official hostname TCP
         id: server
@@ -86,6 +114,8 @@ jobs:
         env:
           WEBSITE: ${{ steps.website.outcome }}
           AUTH: ${{ steps.auth.outcome }}
+          REGISTER: ${{ steps.register.outcome }}
+          LOGIN: ${{ steps.login.outcome }}
           MANIFEST: ${{ steps.manifest.outcome }}
           DNS: ${{ steps.dns.outcome }}
           SERVER: ${{ steps.server.outcome }}
@@ -93,7 +123,7 @@ jobs:
         run: |
           set -euo pipefail
           result=success
-          for value in "$WEBSITE" "$AUTH" "$MANIFEST" "$DNS" "$SERVER" "$ORIGIN"; do
+          for value in "$WEBSITE" "$AUTH" "$REGISTER" "$LOGIN" "$MANIFEST" "$DNS" "$SERVER" "$ORIGIN"; do
             [ "$value" = success ] || result=failure
           done
           mkdir -p .ci/public
@@ -106,6 +136,8 @@ jobs:
           source_sha=${GITHUB_SHA}
           website_https=$WEBSITE
           auth_health_https=$AUTH
+          auth_register_post=$REGISTER
+          auth_login_post=$LOGIN
           beta_manifest_https=$MANIFEST
           official_hostname_dns=$DNS
           official_server_tcp=$SERVER
