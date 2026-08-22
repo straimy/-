@@ -146,20 +146,37 @@ jobs:
         id: assemble
         run: |
           set -euo pipefail
-          test -d stage71-input/stage71
-          cp -a stage71-input/stage71/server stage72/
-          mkdir -p stage72/client/resourcepacks
-          CORE="$(find stage71-input/stage71/client/mods -type f -name '*core*.jar' | head -n1)"
-          RP="$(find stage71-input/stage71/client/resourcepacks -type f -name 'GunGloryOnline-Official.zip' | head -n1)"
-          test -n "$CORE" && test -f "$CORE"
+
+          SRC=stage71-input
+          if [ -d stage71-input/stage71/client ] && [ -d stage71-input/stage71/server ]; then
+            SRC=stage71-input/stage71
+          fi
+
+          test -d "$SRC/client"
+          test -d "$SRC/server"
+          test -d "$SRC/client/mods"
+          test -d "$SRC/server/mods"
+
+          mkdir -p stage72/client/mods stage72/client/resourcepacks stage72/server
+          cp -a "$SRC/server/." stage72/server/
+
+          CLIENT_CORE="$(find "$SRC/client/mods" -maxdepth 1 -type f -name '*core*.jar' | head -n1)"
+          SERVER_CORE="$(find "$SRC/server/mods" -maxdepth 1 -type f -name '*core*.jar' | head -n1)"
+          RP="$(find "$SRC/client/resourcepacks" -maxdepth 1 -type f -name 'GunGloryOnline-Official.zip' | head -n1)"
+          test -n "$CLIENT_CORE" && test -f "$CLIENT_CORE"
+          test -n "$SERVER_CORE" && test -f "$SERVER_CORE"
           test -n "$RP" && test -f "$RP"
-          cp "$CORE" stage72/client/mods/gungloryonline-core-runtime-v1-stage72.jar
+
+          cmp "$SERVER_CORE" "$CLIENT_CORE"
+          cp "$CLIENT_CORE" stage72/client/mods/gungloryonline-core-runtime-v1-stage72.jar
           cp "$RP" stage72/client/resourcepacks/GunGloryOnline-Official.zip
-          cmp stage72/server/mods/gungloryonline-core-runtime-v1-stage71.jar stage72/client/mods/gungloryonline-core-runtime-v1-stage72.jar
+
           if unzip -Z1 stage72/client/resourcepacks/GunGloryOnline-Official.zip | grep -q '^assets/minecraft/shaders/core/'; then
             echo 'forbidden vanilla shader override survived Stage 72' >&2
             exit 1
           fi
+
+          echo "stage71_layout_root=$SRC" >> "$GITHUB_OUTPUT"
           echo "core_sha256=$(sha256sum stage72/client/mods/gungloryonline-core-runtime-v1-stage72.jar | awk '{print $1}')" >> "$GITHUB_OUTPUT"
           echo "rp_sha256=$(sha256sum stage72/client/resourcepacks/GunGloryOnline-Official.zip | awk '{print $1}')" >> "$GITHUB_OUTPUT"
 
@@ -199,6 +216,7 @@ jobs:
           custom_frontend_gates=$GATES_OUTCOME
           assemble=$ASSEMBLE_OUTCOME
           upload=$UPLOAD_OUTCOME
+          stage71_layout_root=${{ steps.assemble.outputs.stage71_layout_root }}
           ui_sha256=${{ steps.client.outputs.ui_sha256 }}
           core_sha256=${{ steps.assemble.outputs.core_sha256 }}
           resource_pack_sha256=${{ steps.assemble.outputs.rp_sha256 }}
