@@ -15,12 +15,10 @@ import java.util.concurrent.TimeUnit;
  */
 @Mod.EventBusSubscriber(value = Dist.CLIENT, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class GgoLaunchTicketClient {
-    // Backend tickets live for 180 seconds. Stop offering a new connection before that hard edge so
-    // Forge startup / DNS / handshake latency cannot turn an obviously stale menu session into a confusing kick.
-    private static final long MENU_TICKET_WINDOW_NANOS = TimeUnit.SECONDS.toNanos(150);
-    private static final long PROCESS_TICKET_START_NANOS = System.nanoTime();
+    private static final long HANDSHAKE_SAFETY_MILLIS = TimeUnit.SECONDS.toMillis(15);
     private static String ticket = readTicket();
     private static final boolean OFFICIAL_LAUNCH = ticket != null;
+    private static final long TICKET_EXPIRES_AT_MILLIS = readExpiryMillis();
     private static boolean sent;
     private static int retryTicks;
 
@@ -69,19 +67,19 @@ public final class GgoLaunchTicketClient {
 
     /**
      * Whether this process still has a one-shot credential fresh enough to begin a new official connection.
-     * Once sent, or once the conservative menu window expires, a fresh launcher session is required.
+     * A safety margin is reserved for DNS + Forge handshake + server-side consume.
      */
     public static boolean canStartOnline() {
         return OFFICIAL_LAUNCH
             && !sent
             && ticket != null
-            && System.nanoTime() - PROCESS_TICKET_START_NANOS < MENU_TICKET_WINDOW_NANOS;
+            && System.currentTimeMillis() + HANDSHAKE_SAFETY_MILLIS < TICKET_EXPIRES_AT_MILLIS;
     }
 
     public static long menuSecondsRemaining() {
-        if (!canStartOnline()) return 0L;
-        long remaining = MENU_TICKET_WINDOW_NANOS - (System.nanoTime() - PROCESS_TICKET_START_NANOS);
-        return Math.max(0L, TimeUnit.NANOSECONDS.toSeconds(remaining));
+        if (!OFFICIAL_LAUNCH || sent || ticket == null) return 0L;
+        long remaining = TICKET_EXPIRES_AT_MILLIS - System.currentTimeMillis();
+        return Math.max(0L, TimeUnit.MILLISECONDS.toSeconds(remaining));
     }
 
     private static String readTicket() {
@@ -89,5 +87,20 @@ public final class GgoLaunchTicketClient {
         if (value == null) return null;
         value = value.trim();
         return value.isEmpty() || value.length() > 256 ? null : value;
+    }
+
+    private static long readExpiryMillis() {
+        if (!OFFICIAL_LAUNCH) return 0L;
+        String raw = System.getenv("GGO_GAME_TICKET_EXPIRES_AT");
+        if (raw != null) {
+            try {
+                long seconds = Long.parseLong(raw.trim());
+                if (seconds > 0L && seconds <= Long.MAX_VALUE / 1000L) return seconds * 1000L;
+            } catch (NumberFormatException ignored) {
+                // Fall through to the conservative compatibility window.
+            }
+        }
+        // Compatibility with pre-Stage76 launchers. New beta packages always provide absolute expiry.
+        return System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(150);
     }
 }
