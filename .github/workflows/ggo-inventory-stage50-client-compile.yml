@@ -6,6 +6,15 @@ on:
     branches:
       - client/runtime-migration-v1
     paths:
+      - 'hotfix/GgoCombatInputFence.java'
+      - 'hotfix/GgoCombatHud.java'
+      - 'hotfix/GgoDeathRecapState.java'
+      - 'hotfix/GgoDeathRecapAdapter.java'
+      - 'hotfix/GgoDeathRecapBootstrap.java'
+      - 'hotfix/GgoRespawnScreen.java'
+      - 'hotfix/apply_ggo_input_fence_stage45.py'
+      - 'hotfix/apply_ggo_combat_hud_stage47.py'
+      - 'hotfix/apply_ggo_death_recap_stage48.py'
       - 'hotfix/apply_ggo_inventory_stage50.py'
       - '.github/workflows/ggo-inventory-stage50-client-compile.yml'
 
@@ -69,8 +78,11 @@ jobs:
           grep -q 'PROTECTED GEAR' "$root/GgoShellScreen.java"
           grep -q 'DROP ON KIA' "$root/GgoShellScreen.java"
           grep -q 'GLFW_KEY_H' "$root/GgoCombatHud.java"
+          grep -q 'ggomed use' "$root/GgoCombatHud.java"
           grep -q 'COMBAT REPORT' "$root/GgoRespawnScreen.java"
           grep -q 'GgoDeathRecapAdapter.install()' "$root/GgoDeathRecapBootstrap.java"
+          grep -q 'MouseScrollingEvent' "$root/GgoCombatInputFence.java"
+          grep -q 'Math.floorMod(current+direction,3)' "$root/GgoCombatInputFence.java"
       - name: Bootstrap ForgeGradle wrapper
         id: bootstrap
         run: |
