@@ -24,14 +24,22 @@ for required in [
     "CommandEvent",
     "player.teleportTo",
     "player.setDeltaMovement(Vec3.ZERO)",
+    "MAX_QUARANTINE_TICKS",
+    "20 * 15",
+    "QUARANTINE_TICKS.merge",
+    "secure session verification timed out",
+    "GgoOfficialAuthState.verificationFailed(player)",
+    "GgoOfficialAuthState.clear(player)",
 ]:
     if required not in text:
         raise SystemExit(f"stage59 quarantine missing: {required}")
-for forbidden in ["ticket", "GGO_SERVER_KEY\")", "System.out", "println"]:
-    if forbidden in text and forbidden not in ["ticket"]:
+
+for forbidden in ["System.out", "println", "GGO_GAME_TICKET", "serverKey()"]:
+    if forbidden in text:
         raise SystemExit(f"stage59 quarantine must not expose auth secret/logging: {forbidden}")
 
 print("Applied GGO Stage 59 pre-auth quarantine")
 print(" - official players are frozen until launcher-ticket verification succeeds")
 print(" - pre-auth world interaction, combat, pickup and commands are blocked")
-print(" - quarantine derives directly from GgoOfficialAuthState")
+print(" - stalled verification is disconnected after 15 seconds")
+print(" - disconnect cleanup clears transient auth/quarantine state")
