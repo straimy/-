@@ -1,0 +1,78 @@
+name: GGO Runtime Stage 71 Channel Ownership Probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - client/runtime-migration-v1
+    paths:
+      - '.github/workflows/ggo-runtime-stage71-channel-probe.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: client/runtime-migration-v1
+          fetch-depth: 0
+
+      - name: Inspect network ownership in source
+        id: inspect
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf ga-probe
+          mkdir ga-probe
+          unzip -q "$SOURCE_ZIP" -d ga-probe
+          mkdir -p ci-probe
+          {
+            echo '=== CORE NETWORK DECLARATIONS ==='
+            grep -RInE 'newSimpleChannel|ChannelBuilder|ResourceLocation|gunnerarena.*ui|"ui"' ga-probe/src/main/java/arena 2>/dev/null | head -200 || true
+            echo
+            echo '=== CLIENT UI NETWORK DECLARATIONS ==='
+            grep -RInE 'newSimpleChannel|ChannelBuilder|ResourceLocation|gunnerarena.*ui|"ui"' ga-probe/client-ui/src/main/java 2>/dev/null | head -300 || true
+          } | tee ci-probe/stage71-channel-source.txt
+          grep -RIlE 'newSimpleChannel|ChannelBuilder' ga-probe/client-ui/src/main/java > ci-probe/stage71-client-network-files.txt || true
+          grep -RIlE 'newSimpleChannel|ChannelBuilder' ga-probe/src/main/java/arena > ci-probe/stage71-core-network-files.txt || true
+          echo "client_network_file_count=$(wc -l < ci-probe/stage71-client-network-files.txt)" >> "$GITHUB_OUTPUT"
+          echo "core_network_file_count=$(wc -l < ci-probe/stage71-core-network-files.txt)" >> "$GITHUB_OUTPUT"
+
+      - name: Publish exact probe receipt
+        if: always()
+        env:
+          INSPECT_OUTCOME: ${{ steps.inspect.outcome }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci-results
+          {
+            echo "workflow=${GITHUB_WORKFLOW}"
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "run_attempt=${GITHUB_RUN_ATTEMPT}"
+            echo "run_url=https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo "client_sha=$(git rev-parse HEAD)"
+            echo "inspect=$INSPECT_OUTCOME"
+            echo "client_network_file_count=${{ steps.inspect.outputs.client_network_file_count }}"
+            echo "core_network_file_count=${{ steps.inspect.outputs.core_network_file_count }}"
+            echo '--- source ---'
+            cat ci-probe/stage71-channel-source.txt 2>/dev/null || true
+            echo '--- client network files ---'
+            cat ci-probe/stage71-client-network-files.txt 2>/dev/null || true
+            echo '--- core network files ---'
+            cat ci-probe/stage71-core-network-files.txt 2>/dev/null || true
+            echo "result=$INSPECT_OUTCOME"
+          } > ci-results/stage71-channel-probe.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ci-results/stage71-channel-probe.txt
+          git commit -m "ci: record Stage 71 channel probe ${GITHUB_RUN_ID}" || exit 0
+          git fetch origin client/runtime-migration-v1
+          git rebase origin/client/runtime-migration-v1
+          git push origin HEAD:client/runtime-migration-v1
