@@ -14,13 +14,13 @@ The standalone launcher is silent by default. Launcher startup must not start th
 - `red_skyline` — Red Skyline
 - `lost_signal` — Lost Signal
 - `ggo_track_04` — GGO Track 04; temporary runtime title until an official name is chosen
-- `ggo_track_05` — GGO Track 05; temporary runtime title until an official name is chosen
+- `afterglow_protocol` — Afterglow Protocol
 
 All five masters are loudness-matched to **-18.0 LUFS integrated** before game packaging. The game ships streaming OGG Vorbis resources; WAV masters are preserved separately.
 
 The fourth packaged source asset remains `GGO_Track4_Normalized(1).ogg`, stereo 44.1 kHz, 246.853 seconds, SHA-256 `eb7ef5655e653bc542862e8a38eb7d314ed109fb8820ff27a1cc150a6c64046d`.
 
-The fifth normalized packaged source asset is `ggosounds5.ogg`, stereo 48 kHz, 232.939 seconds, SHA-256 `3bd0c7d836ebc436abb040f0c93b41effba5312727ee247f76a20e33ecc814a9`. Its original WAV measured approximately -12.7 LUFS / +0.2 dBTP; the normalized master uses a -5.3 dB gain and measures -18.0 LUFS / -5.1 dBTP, preserving the original dynamics rather than applying unnecessary extra compression.
+The fifth normalized packaged source asset is `ggosounds5.ogg`, stereo 48 kHz, 232.939 seconds, SHA-256 `3bd0c7d836ebc436abb040f0c93b41effba5312727ee247f76a20e33ecc814a9`. It is packaged in-game as `afterglow_protocol.ogg`. Its original WAV measured approximately -12.7 LUFS / +0.2 dBTP; the normalized master uses a -5.3 dB gain and measures -18.0 LUFS / -5.1 dBTP, preserving the original dynamics rather than applying unnecessary extra compression.
 
 The binary fifth-track asset is intentionally not stored in Git history; the packer validates the external normalized file by checksum before packaging.
 
