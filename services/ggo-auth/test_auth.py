@@ -31,6 +31,7 @@ class AuthSmoke(unittest.TestCase):
             "GGO_PUBLIC_URL": f"http://{BASE}",
             "GGO_AUTH_DB": str(Path(cls.temp.name) / "auth.db"),
             "GGO_SERVER_KEY": SERVER_KEY,
+            "GGO_OWNER_USERNAMES": "kvi_nella",
         })
         cls.proc = subprocess.Popen([sys.executable, str(Path(__file__).with_name("server.py"))], env=env)
         for _ in range(50):
@@ -64,6 +65,17 @@ class AuthSmoke(unittest.TestCase):
         conn.close()
         return response.status, parsed, out_headers
 
+    def register_user(self, username):
+        status, payload, headers = self.req("POST", "/api/v1/auth/register", {
+            "username": username,
+            "password": "correct-horse-123",
+            "region": "eu",
+            "language": "ru",
+            "country": "SE",
+        })
+        self.assertEqual(status, 201)
+        return payload, headers["Set-Cookie"].split(";", 1)[0]
+
     def test_registration_login_device_and_game_ticket_flow(self):
         status, reg, headers = self.req("POST", "/api/v1/auth/register", {
             "username": "Smoke_User",
@@ -74,6 +86,7 @@ class AuthSmoke(unittest.TestCase):
         })
         self.assertEqual(status, 201)
         self.assertEqual(reg["profile"]["display_name"], "Smoke_User")
+        self.assertEqual(reg["profile"]["role"], "user")
         cookie = headers["Set-Cookie"].split(";", 1)[0]
 
         status, _, _ = self.req("POST", "/api/v1/auth/register", {"username": "Smoke_User", "password": "correct-horse-123"})
@@ -127,8 +140,6 @@ class AuthSmoke(unittest.TestCase):
         self.assertEqual(status, 401)
         self.assertEqual(replay["error"], "invalid_expired_or_consumed_ticket")
 
-        # Race two server consumers against the same fresh ticket. The
-        # transaction must serialize them so exactly one request can win.
         status, race_ticket, _ = self.req(
             "POST",
             "/api/v1/auth/game-ticket",
@@ -173,6 +184,80 @@ class AuthSmoke(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertTrue(tokens["access_token"])
         self.assertTrue(tokens["refresh_token"])
+
+    def test_support_ticket_staff_and_admin_roles(self):
+        owner, owner_cookie = self.register_user("kvi_nella")
+        support, support_cookie = self.register_user("SupportGuy")
+        player, player_cookie = self.register_user("TicketPlayer")
+        self.assertEqual(owner["profile"]["role"], "admin")
+        self.assertEqual(owner["profile"]["role_label"], "Администратор")
+
+        support_id = support["profile"]["id"]
+        status, promoted, _ = self.req(
+            "PUT",
+            f"/api/v1/admin/users/{support_id}/role",
+            {"role": "support"},
+            headers={"Cookie": owner_cookie},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(promoted["role"], "support")
+        self.assertEqual(promoted["role_label"], "Тех. Поддержка")
+
+        status, forbidden, _ = self.req(
+            "PUT",
+            f"/api/v1/admin/users/{player['profile']['id']}/role",
+            {"role": "admin"},
+            headers={"Cookie": support_cookie},
+        )
+        self.assertEqual(status, 403)
+        self.assertEqual(forbidden["error"], "admin_required")
+
+        status, created, _ = self.req(
+            "POST",
+            "/api/v1/support/tickets",
+            {"subject": "Launcher error", "category": "technical", "body": "Launcher exits after pressing Play."},
+            headers={"Cookie": player_cookie},
+        )
+        self.assertEqual(status, 201)
+        ticket_id = created["id"]
+        self.assertEqual(created["status"], "open")
+
+        status, queue, _ = self.req("GET", "/api/v1/staff/tickets?status=open", headers={"Cookie": support_cookie})
+        self.assertEqual(status, 200)
+        self.assertEqual(queue["tickets"][0]["id"], ticket_id)
+
+        status, answered, _ = self.req(
+            "POST",
+            f"/api/v1/support/tickets/{ticket_id}/messages",
+            {"body": "Проверяем ваш лог. Ответим здесь."},
+            headers={"Cookie": support_cookie},
+        )
+        self.assertEqual(status, 201)
+        self.assertEqual(answered["status"], "pending")
+        self.assertEqual(answered["messages"][-1]["author"]["role"], "support")
+        self.assertEqual(answered["messages"][-1]["author"]["role_label"], "Тех. Поддержка")
+
+        status, own, _ = self.req("GET", f"/api/v1/support/tickets/{ticket_id}", headers={"Cookie": player_cookie})
+        self.assertEqual(status, 200)
+        self.assertEqual(own["messages"][-1]["author"]["role"], "support")
+
+        status, closed, _ = self.req(
+            "PUT",
+            f"/api/v1/staff/tickets/{ticket_id}/status",
+            {"status": "closed"},
+            headers={"Cookie": support_cookie},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(closed["status"], "closed")
+
+        status, locked, _ = self.req(
+            "PUT",
+            f"/api/v1/admin/users/{owner['profile']['id']}/role",
+            {"role": "user"},
+            headers={"Cookie": owner_cookie},
+        )
+        self.assertEqual(status, 409)
+        self.assertEqual(locked["error"], "owner_role_locked")
 
 
 if __name__ == "__main__":
