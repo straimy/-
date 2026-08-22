@@ -11,7 +11,6 @@ import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.registries.ForgeRegistries;
-import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -35,7 +34,8 @@ public final class GgoCombatHud {
         if(event.phase!=TickEvent.Phase.END)return;
         Minecraft mc=Minecraft.getInstance();
         if(mc.player==null||mc.level==null){medicineHeld=false;selectedMedicineSlot=-1;GgoKillFeedState.clear();return;}
-        boolean down=GLFW.glfwGetKey(mc.getWindow().getWindow(),GLFW.GLFW_KEY_H)==GLFW.GLFW_PRESS;
+        if(mc.screen!=null){medicineHeld=false;selectedMedicineSlot=-1;return;}
+        boolean down=GgoKeyMappings.MEDICAL_WHEEL.isDown();
         if(down){
             medicineHeld=true;
             while(mc.options.keyAttack.consumeClick()){}
@@ -128,8 +128,8 @@ public final class GgoCombatHud {
     }
 
     private static void renderMedicineHint(GuiGraphics g,Minecraft mc,int width,int height){
-        List<Integer> meds=medicineSlots(mc);
-        String text=meds.isEmpty()?"H  MEDICAL — EMPTY":"H  MEDICAL  "+meds.size();
+        List<Integer> meds=medicineSlots(mc);String key=medicalKey();
+        String text=meds.isEmpty()?key+"  MEDICAL — EMPTY":key+"  MEDICAL  "+meds.size();
         int x=width-300,y=height-112;
         g.drawString(mc.font,text,x,y,meds.isEmpty()?0xFF596373:0xFF8CA693,false);
     }
@@ -140,7 +140,7 @@ public final class GgoCombatHud {
         g.fill(0,0,width,height,0x66000000);
         g.fill(cx-42,cy-42,cx+42,cy+42,0xDC0A0E13);
         g.drawCenteredString(mc.font,"MEDICAL",cx,cy-7,0xFFF0F3F6);
-        g.drawCenteredString(mc.font,"RELEASE H",cx,cy+8,0xFF737F90);
+        g.drawCenteredString(mc.font,"RELEASE "+medicalKey(),cx,cy+8,0xFF737F90);
         if(meds.isEmpty()){g.drawCenteredString(mc.font,"NO MEDICINE",cx,cy+58,0xFFD14A56);return;}
         int shown=Math.min(6,meds.size());
         for(int i=0;i<shown;i++){
@@ -182,6 +182,7 @@ public final class GgoCombatHud {
         return p.contains("bandage")||p.contains("medkit")||p.contains("first_aid")||p.contains("firstaid")||p.contains("syringe")||p.contains("stim")||p.contains("injector");
     }
 
+    private static String medicalKey(){return GgoKeyMappings.MEDICAL_WHEEL.getTranslatedKeyMessage().getString().toUpperCase(Locale.ROOT);}
     private static String clip(String value,int max){if(value==null)return "";return value.length()<=max?value:value.substring(0,Math.max(1,max-3))+"...";}
     private static void panel(GuiGraphics g,int x,int y,int w,int h,int fill){g.fill(x,y,x+w,y+h,fill);g.fill(x,y,x+3,y+h,0xFFB92F3C);g.fill(x+3,y,x+w,y+1,0xFF2A333E);}
     private static String sectorFor(int x,int z){int sx=Math.floorDiv(x,256),sz=Math.floorDiv(z,256);char col=(char)('A'+Math.floorMod(sx,26));return col+"-"+Math.abs(sz);}
