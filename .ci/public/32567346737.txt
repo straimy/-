@@ -1,0 +1,17 @@
+workflow=GGO Public Beta Reachability
+run_id=32567346737
+run_attempt=1
+run_url=https://github.com/straimy/-/actions/runs/32567346737
+source_sha=b686c2742ca2b4f2973973fc519db527008c9e4b
+website_https=success
+auth_health_https=failure
+beta_manifest_https=failure
+official_hostname_dns=failure
+official_server_tcp=failure
+origin_server_tcp=failure
+website_url=https://ggo.kvicloud.ru/
+auth_health_url=https://ggo.kvicloud.ru/api/v1/health
+manifest_url=https://ggo.kvicloud.ru/content/manifests/beta.json
+official_server=play.kvicloud.ru:24842
+origin_server=2.26.100.125:24842
+result=failure
