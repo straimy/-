@@ -1,0 +1,158 @@
+name: GGO Runtime Stage 73 Auth Timeout
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - server/runtime-hardening-v1
+    paths:
+      - '.github/workflows/ggo-runtime-stage73-auth-timeout.yml'
+      - 'hotfix/GgoPreAuthQuarantine.java'
+      - 'hotfix/apply_ggo_pre_auth_quarantine_stage59.py'
+      - 'hotfix/GgoLaunchTicketNetwork.java'
+      - 'hotfix/GgoOfficialAuthState.java'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: server/runtime-hardening-v1
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Capture exact ref
+        id: refs
+        run: echo "server_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare Forge wrapper
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/ggo-mdk /tmp/ggo-mdk.zip
+          curl -fL --retry 3 -o /tmp/ggo-mdk.zip https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-mdk.zip
+          mkdir -p /tmp/ggo-mdk
+          unzip -q /tmp/ggo-mdk.zip 'gradlew' 'gradlew.bat' 'gradle/*' -d /tmp/ggo-mdk
+
+      - name: Build hardened Core
+        id: core
+        run: |
+          set -euo pipefail
+          rm -rf ga-build && mkdir ga-build
+          unzip -q "$SOURCE_ZIP" -d ga-build
+          python3 hotfix/apply_ggo_contract_rewards_stage26.py
+          python3 hotfix/apply_ggo_contract_map_stage27.py
+          python3 hotfix/apply_ggo_contract_push_stage28.py
+          python3 hotfix/apply_ggo_contract_persistence_stage29.py
+          python3 hotfix/apply_ggo_contract_lifecycle_stage30.py
+          python3 hotfix/apply_ggo_contract_balance_stage31.py
+          python3 hotfix/apply_ggo_contract_eligibility_stage32.py
+          python3 hotfix/apply_ggo_supply_lifecycle_stage33.py
+          python3 hotfix/apply_ggo_extraction_runtime_stage34.py
+          python3 hotfix/apply_ggo_contract_network_guard_stage36.py
+          python3 hotfix/apply_ggo_contract_reward_order_stage37.py
+          python3 hotfix/apply_ggo_compile_baseline_stage27.py
+          python3 hotfix/apply_ggo_spawn_presence_stage38.py
+          python3 hotfix/apply_ggo_deminecraft_world_stage39.py
+          python3 hotfix/apply_ggo_deminecraft_loot_stage41.py
+          python3 hotfix/apply_ggo_inventory_stage42.py
+          python3 hotfix/apply_ggo_visible_content_stage43.py
+          python3 hotfix/apply_ggo_medicine_stage47.py
+          python3 hotfix/apply_ggo_death_recap_stage48.py
+          python3 hotfix/apply_ggo_recovery_bag_stage49.py
+          python3 hotfix/apply_ggo_map_integrity_stage51.py
+          python3 hotfix/apply_ggo_map_palette_stage54.py
+          python3 hotfix/apply_ggo_official_auth_stage55.py
+          python3 hotfix/apply_ggo_pre_auth_quarantine_stage59.py
+          python3 hotfix/apply_ggo_ui_packets_stage65.py
+          python3 hotfix/apply_ggo_ui_channel_ownership_stage71.py
+
+          cp /tmp/ggo-mdk/gradlew ga-build/gradlew
+          cp /tmp/ggo-mdk/gradlew.bat ga-build/gradlew.bat
+          rm -rf ga-build/gradle && cp -a /tmp/ggo-mdk/gradle ga-build/gradle
+          chmod +x ga-build/gradlew
+          (cd ga-build && ./gradlew --no-daemon clean build --stacktrace)
+
+          CORE="$(find ga-build/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          test -n "$CORE" && test -f "$CORE"
+          mkdir -p stage73/server/mods stage73/client/mods
+          cp "$CORE" stage73/server/mods/gungloryonline-core-runtime-v1-stage73.jar
+          cp "$CORE" stage73/client/mods/gungloryonline-core-runtime-v1-stage73.jar
+          echo "sha256=$(sha256sum "$CORE" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Verify auth timeout contract
+        id: gates
+        run: |
+          set -euo pipefail
+          Q=ga-build/src/main/java/arena/forge/GgoPreAuthQuarantine.java
+          N=ga-build/src/main/java/arena/forge/GgoLaunchTicketNetwork.java
+          A=ga-build/src/main/java/arena/forge/GgoOfficialAuthState.java
+          test -f "$Q" && test -f "$N" && test -f "$A"
+          grep -q 'MAX_QUARANTINE_TICKS = 20 \* 15' "$Q"
+          grep -q 'QUARANTINE_TICKS.merge' "$Q"
+          grep -q 'secure session verification timed out' "$Q"
+          grep -q 'GgoOfficialAuthState.verificationFailed(player)' "$Q"
+          grep -q 'GgoOfficialAuthState.clear(player)' "$Q"
+          grep -q 'private static final String PROTOCOL = "2"' "$N"
+          grep -q 'new VerificationAck(true)' "$N"
+          grep -q 'PENDING.remove(player.getUUID())' "$A"
+          ! grep -q 'System.out' "$Q"
+          ! grep -q 'GGO_GAME_TICKET' "$Q"
+          cmp stage73/server/mods/gungloryonline-core-runtime-v1-stage73.jar stage73/client/mods/gungloryonline-core-runtime-v1-stage73.jar
+          jar tf stage73/server/mods/gungloryonline-core-runtime-v1-stage73.jar | grep -q 'arena/forge/GgoPreAuthQuarantine.class'
+          jar tf stage73/server/mods/gungloryonline-core-runtime-v1-stage73.jar | grep -q 'arena/forge/GgoLaunchTicketNetwork.class'
+
+      - uses: actions/upload-artifact@v4
+        id: upload
+        if: success()
+        with:
+          name: GunGloryOnline-Core-Stage73-AuthTimeout
+          path: stage73/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish Stage 73 receipt
+        if: always()
+        env:
+          CORE_OUTCOME: ${{ steps.core.outcome }}
+          GATES_OUTCOME: ${{ steps.gates.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+        run: |
+          set -euo pipefail
+          result=success
+          for v in "$CORE_OUTCOME" "$GATES_OUTCOME" "$UPLOAD_OUTCOME"; do
+            [ "$v" = success ] || result=failure
+          done
+          mkdir -p ci-results
+          cat > ci-results/stage73-auth-timeout.txt <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_id=${GITHUB_RUN_ID}
+          run_attempt=${GITHUB_RUN_ATTEMPT}
+          run_url=https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          server_sha=${{ steps.refs.outputs.server_sha }}
+          core_build=$CORE_OUTCOME
+          auth_timeout_gates=$GATES_OUTCOME
+          upload=$UPLOAD_OUTCOME
+          core_sha256=${{ steps.core.outputs.sha256 }}
+          pre_auth_timeout_seconds=15
+          disconnect_cleanup=true
+          raw_ticket_persisted=false
+          result=$result
+          EOF
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ci-results/stage73-auth-timeout.txt
+          git commit -m "ci: record Stage 73 auth timeout ${GITHUB_RUN_ID}" || exit 0
+          git fetch origin server/runtime-hardening-v1
+          git rebase origin/server/runtime-hardening-v1
+          git push origin HEAD:server/runtime-hardening-v1
