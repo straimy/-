@@ -1,0 +1,10 @@
+workflow=GGO Spawn Presence Stage 38 Compile
+run_id=32546376297
+run_attempt=1
+run_url=https://github.com/straimy/-/actions/runs/32546376297
+source_sha=b58dd33298d5ebd0562c78a5fe6460d687acdf0e
+apply=failure
+bootstrap=skipped
+compile=skipped
+verify=skipped
+result=failure
