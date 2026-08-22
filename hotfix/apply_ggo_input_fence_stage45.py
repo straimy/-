@@ -17,6 +17,10 @@ for required in [
     "keyHotbarSlots",
     "selected<3",
     "drain(mc.options.keyDrop)",
+    "MouseScrollingEvent",
+    "Math.floorMod(current+direction,3)",
+    "event.setCanceled(true)",
 ]:
     if required not in text: raise SystemExit(f"stage45 input behavior missing: {required}")
 print("Applied GGO Stage 45 three-slot combat input fence")
+print(" - mouse wheel cycles only the 3 GGO combat slots")
