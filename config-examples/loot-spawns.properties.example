@@ -1,0 +1,33 @@
+# Runtime v1 typed loot points. SUPPLY points create tagged items that count for SUPPLY RUN.
+# Copy to config/gunnerarena/loot-spawns.properties and adjust coordinates/items for the live map.
+count=3
+
+point.0.id=harbor_supply_alpha
+point.0.kind=SUPPLY
+point.0.dimension=minecraft:overworld
+point.0.x=128.5
+point.0.y=65.0
+point.0.z=-42.5
+point.0.item=minecraft:paper
+point.0.count=1
+point.0.respawnTicks=1200
+
+point.1.id=warehouse_supply_bravo
+point.1.kind=SUPPLY
+point.1.dimension=minecraft:overworld
+point.1.x=214.5
+point.1.y=68.0
+point.1.z=96.5
+point.1.item=minecraft:paper
+point.1.count=1
+point.1.respawnTicks=1200
+
+point.2.id=arena_ammo_alpha
+point.2.kind=AMMO
+point.2.dimension=minecraft:overworld
+point.2.x=32.5
+point.2.y=64.0
+point.2.z=18.5
+point.2.item=minecraft:iron_nugget
+point.2.count=8
+point.2.respawnTicks=400
