@@ -34,6 +34,7 @@ public final class GgoContractNetwork {
     public static void setClientConsumer(Consumer<Snapshot> c){clientConsumer=c==null?s->{}:c;}
     public static void request(){CHANNEL.sendToServer(new Request());}
     public static void track(String id){CHANNEL.sendToServer(new Track(id==null?"":id));}
+    public static void sync(ServerPlayer p){if(p!=null)sendSnapshot(p);}
     private static void request0(Request m,Supplier<NetworkEvent.Context> c){ServerPlayer p=c.get().getSender();if(p!=null)sendSnapshot(p);c.get().setPacketHandled(true);}
     private static void track0(Track m,Supplier<NetworkEvent.Context> c){ServerPlayer p=c.get().getSender();if(p!=null){GgoContractService.track(p,m.id());sendSnapshot(p);}c.get().setPacketHandled(true);}
     private static void sendSnapshot(ServerPlayer p){
