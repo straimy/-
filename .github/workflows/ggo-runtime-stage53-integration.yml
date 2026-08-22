@@ -1,0 +1,238 @@
+name: GGO Runtime Stage 53 Integration
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - client/runtime-migration-v1
+    paths:
+      - '.github/workflows/ggo-runtime-stage53-integration.yml'
+      - 'hotfix/GgoCombatInputFence.java'
+      - 'hotfix/GgoCombatHud.java'
+      - 'hotfix/GgoDeathRecapState.java'
+      - 'hotfix/GgoDeathRecapAdapter.java'
+      - 'hotfix/GgoDeathRecapBootstrap.java'
+      - 'hotfix/GgoRespawnScreen.java'
+      - 'hotfix/apply_ggo_input_fence_stage45.py'
+      - 'hotfix/apply_ggo_combat_hud_stage47.py'
+      - 'hotfix/apply_ggo_death_recap_stage48.py'
+      - 'hotfix/apply_ggo_inventory_stage50.py'
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    env:
+      SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+    steps:
+      - name: Checkout client runtime
+        uses: actions/checkout@v4
+        with:
+          ref: client/runtime-migration-v1
+          path: client-src
+      - name: Checkout server runtime
+        uses: actions/checkout@v4
+        with:
+          ref: server/runtime-hardening-v1
+          path: server-src
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Capture exact branch SHAs
+        id: refs
+        run: |
+          set -euo pipefail
+          echo "client_sha=$(git -C client-src rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "server_sha=$(git -C server-src rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Build latest server Core through Stage 51
+        id: server
+        working-directory: server-src
+        run: |
+          set -euo pipefail
+          rm -rf ga-build && mkdir ga-build
+          unzip -q "$SOURCE_ZIP" -d ga-build
+          python3 hotfix/apply_ggo_contract_rewards_stage26.py
+          python3 hotfix/apply_ggo_contract_map_stage27.py
+          python3 hotfix/apply_ggo_contract_push_stage28.py
+          python3 hotfix/apply_ggo_contract_persistence_stage29.py
+          python3 hotfix/apply_ggo_contract_lifecycle_stage30.py
+          python3 hotfix/apply_ggo_contract_balance_stage31.py
+          python3 hotfix/apply_ggo_contract_eligibility_stage32.py
+          python3 hotfix/apply_ggo_supply_lifecycle_stage33.py
+          python3 hotfix/apply_ggo_extraction_runtime_stage34.py
+          python3 hotfix/apply_ggo_contract_network_guard_stage36.py
+          python3 hotfix/apply_ggo_contract_reward_order_stage37.py
+          python3 hotfix/apply_ggo_compile_baseline_stage27.py
+          python3 hotfix/apply_ggo_spawn_presence_stage38.py
+          python3 hotfix/apply_ggo_deminecraft_world_stage39.py
+          python3 hotfix/apply_ggo_deminecraft_loot_stage41.py
+          python3 hotfix/apply_ggo_inventory_stage42.py
+          python3 hotfix/apply_ggo_visible_content_stage43.py
+          python3 hotfix/apply_ggo_medicine_stage47.py
+          python3 hotfix/apply_ggo_death_recap_stage48.py
+          python3 hotfix/apply_ggo_recovery_bag_stage49.py
+          python3 hotfix/apply_ggo_map_integrity_stage51.py
+          rm -rf /tmp/forge-mdk /tmp/forge-mdk.zip
+          curl -fL --retry 3 -o /tmp/forge-mdk.zip https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-mdk.zip
+          mkdir -p /tmp/forge-mdk
+          unzip -q /tmp/forge-mdk.zip 'gradlew' 'gradlew.bat' 'gradle/*' -d /tmp/forge-mdk
+          cp /tmp/forge-mdk/gradlew ga-build/gradlew
+          cp /tmp/forge-mdk/gradlew.bat ga-build/gradlew.bat
+          rm -rf ga-build/gradle && cp -a /tmp/forge-mdk/gradle ga-build/gradle
+          chmod +x ga-build/gradlew
+          (cd ga-build && ./gradlew --no-daemon build --stacktrace)
+          CORE="$(find ga-build/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          test -n "$CORE"
+          for c in GgoMedicineService GgoDeathRecapNetwork GgoDeathRecapHooks GgoRecoveryBagService GgoMapIntegrityGuard GgoVisibleItemPolicy GgoVanillaLootFence GgoWorldRuntimeFence GgoPlayerPresencePolicy InventoryUtilityCommands ArenaBeltGuard; do
+            jar tf "$CORE" | grep -q "^arena/forge/$c.class$"
+          done
+          mkdir -p ../stage53/server/mods
+          cp "$CORE" ../stage53/server/mods/gungloryonline-core-runtime-v1-stage51.jar
+
+      - name: Build latest client UI through Stage 50
+        id: client
+        working-directory: client-src
+        run: |
+          set -euo pipefail
+          rm -rf ga-build && mkdir ga-build
+          unzip -q "$SOURCE_ZIP" -d ga-build
+          python3 hotfix/apply_ggo_ui_shell_stage1.py
+          python3 hotfix/apply_ggo_ui_shell_stage2.py
+          python3 hotfix/apply_ggo_ui_shell_stage3.py
+          python3 hotfix/apply_ggo_hud_stage4.py
+          python3 hotfix/apply_ggo_frontend_stage5.py
+          python3 hotfix/apply_ggo_settings_stage6.py
+          python3 hotfix/apply_ggo_identity_minimap_stage7.py
+          python3 hotfix/apply_ggo_weapon_navigation_stage8.py
+          python3 hotfix/apply_ggo_ping_stage9.py
+          python3 hotfix/apply_ggo_navigation_zoom_stage10.py
+          python3 hotfix/apply_ggo_squad_ping_stage11.py
+          python3 hotfix/apply_ggo_ping_wheel_stage12.py
+          python3 hotfix/apply_ggo_tab_squad_stage13.py
+          python3 hotfix/apply_ggo_objective_squad_stage15.py
+          python3 hotfix/apply_ggo_runtime_network_stage17.py
+          python3 hotfix/apply_ggo_jeg_telemetry_stage18.py
+          python3 hotfix/apply_ggo_squad_map_stage19.py
+          python3 hotfix/apply_ggo_server_hud_stage20.py
+          python3 hotfix/apply_ggo_br_hud_stage21.py
+          python3 hotfix/apply_ggo_contracts_stage23.py
+          python3 hotfix/apply_ggo_br_map_client_stage24.py
+          python3 hotfix/apply_ggo_contract_map_stage27_fixed.py
+          python3 hotfix/apply_ggo_contract_session_stage35.py
+          python3 hotfix/apply_ggo_contract_reward_ui_stage37.py
+          python3 hotfix/apply_ggo_client_compile_baseline_stage28.py
+          python3 hotfix/apply_ggo_deminecraft_client_stage40.py
+          python3 hotfix/apply_ggo_inventory_stage42.py
+          python3 hotfix/apply_ggo_input_fence_stage45.py
+          python3 hotfix/apply_ggo_combat_hud_stage47.py
+          python3 hotfix/apply_ggo_death_recap_stage48.py
+          python3 hotfix/apply_ggo_inventory_stage50.py
+          rm -rf /tmp/forge-mdk-ui /tmp/forge-mdk-ui.zip
+          curl -fL --retry 3 -o /tmp/forge-mdk-ui.zip https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-mdk.zip
+          mkdir -p /tmp/forge-mdk-ui
+          unzip -q /tmp/forge-mdk-ui.zip 'gradlew' 'gradlew.bat' 'gradle/*' -d /tmp/forge-mdk-ui
+          cp /tmp/forge-mdk-ui/gradlew ga-build/client-ui/gradlew
+          cp /tmp/forge-mdk-ui/gradlew.bat ga-build/client-ui/gradlew.bat
+          rm -rf ga-build/client-ui/gradle && cp -a /tmp/forge-mdk-ui/gradle ga-build/client-ui/gradle
+          chmod +x ga-build/client-ui/gradlew
+          (cd ga-build/client-ui && ./gradlew --no-daemon build --stacktrace)
+          UI="$(find ga-build/client-ui/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          test -n "$UI"
+          for c in GgoCombatHud GgoCombatInputFence GgoRespawnScreen GgoVanillaRuntimeFence GgoDeathRecapState GgoDeathRecapAdapter GgoDeathRecapBootstrap GgoShellScreen; do
+            jar tf "$UI" | grep -q "^arena/client/shell/$c.class$"
+          done
+          mkdir -p ../stage53/client/mods
+          cp "$UI" ../stage53/client/mods/gungloryonline-ui-runtime-v1-stage50.jar
+          cp GunnerArena-ResourcePack-1.20.1-v1.zip ../stage53/GunGloryOnline-ResourcePack-current.zip
+
+      - name: Assemble matching client/server runtime
+        id: package
+        run: |
+          set -euo pipefail
+          cp stage53/server/mods/gungloryonline-core-runtime-v1-stage51.jar stage53/client/mods/gungloryonline-core-runtime-v1-stage51.jar
+          cat > stage53/BUILD-INFO.txt <<EOF
+          GGO_RUNTIME_STAGE=53
+          SERVER_BRANCH=server/runtime-hardening-v1
+          SERVER_SHA=${{ steps.refs.outputs.server_sha }}
+          SERVER_CORE=stage51
+          CLIENT_BRANCH=client/runtime-migration-v1
+          CLIENT_SHA=${{ steps.refs.outputs.client_sha }}
+          CLIENT_UI=stage50
+          MINECRAFT=1.20.1
+          FORGE=47.4.10
+          JAVA=17
+          COMPASS_MENU=REMOVED
+          VANILLA_HOTBAR=REMOVED
+          COMBAT_SLOTS=3
+          MEDICINE_WHEEL=H_HOLD
+          DEATH_RECAP=GGO_AUTHORITATIVE
+          RECOVERY_BAG=OWNER_BOUND_FIELD_LOOT
+          MAP_DESTRUCTION=DISABLED
+          EOF
+          sha256sum stage53/server/mods/* stage53/client/mods/* stage53/GunGloryOnline-ResourcePack-current.zip > stage53/SHA256SUMS.txt
+
+      - name: Dedicated server smoke with Stage 51 Core
+        id: smoke
+        run: |
+          set -euo pipefail
+          rm -rf ds forge-installer.jar
+          mkdir ds
+          curl -fL --retry 5 --retry-all-errors -o forge-installer.jar https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-installer.jar
+          java -jar forge-installer.jar --installServer ds >/tmp/forge-install.log 2>&1
+          echo 'eula=true' > ds/eula.txt
+          mkdir -p ds/mods
+          cp stage53/server/mods/gungloryonline-core-runtime-v1-stage51.jar ds/mods/
+          cd ds
+          timeout 110s java -Xms512M -Xmx1G @libraries/net/minecraftforge/forge/1.20.1-47.4.10/unix_args.txt nogui > ../dedicated-server-console.log 2>&1 || true
+          cd ..
+          test -f ds/logs/latest.log
+          grep -Fq 'Done (' ds/logs/latest.log
+          ! grep -Eq 'Exception in server tick loop|Failed to start the minecraft server|Duplicate key gunnerarena|ModLoadingException' ds/logs/latest.log
+
+      - name: Upload Stage 53 integration artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-Runtime-Stage53-Integration
+          path: stage53/**
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish exact integration receipt
+        if: always()
+        env:
+          SERVER_OUTCOME: ${{ steps.server.outcome }}
+          CLIENT_OUTCOME: ${{ steps.client.outcome }}
+          PACKAGE_OUTCOME: ${{ steps.package.outcome }}
+          SMOKE_OUTCOME: ${{ steps.smoke.outcome }}
+        working-directory: client-src
+        run: |
+          set -euo pipefail
+          result=success
+          for value in "$SERVER_OUTCOME" "$CLIENT_OUTCOME" "$PACKAGE_OUTCOME" "$SMOKE_OUTCOME"; do [ "$value" = success ] || result=failure; done
+          mkdir -p ci-results
+          printf '%s\n' \
+            "workflow=${{ github.workflow }}" \
+            "run_id=${{ github.run_id }}" \
+            "run_attempt=${{ github.run_attempt }}" \
+            "run_url=https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            "server_sha=${{ steps.refs.outputs.server_sha }}" \
+            "client_sha=${{ steps.refs.outputs.client_sha }}" \
+            "server_build=$SERVER_OUTCOME" \
+            "client_build=$CLIENT_OUTCOME" \
+            "package=$PACKAGE_OUTCOME" \
+            "dedicated_smoke=$SMOKE_OUTCOME" \
+            "result=$result" > ci-results/stage53-integration.txt
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add ci-results/stage53-integration.txt
+          git commit -m "ci: record stage53 integration run ${{ github.run_id }}" || exit 0
+          git fetch origin client/runtime-migration-v1
+          git rebase origin/client/runtime-migration-v1
+          git push origin HEAD:client/runtime-migration-v1
