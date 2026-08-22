@@ -1,11 +1,11 @@
 workflow=GGO Runtime Stage 69 Brand Clean UI
-run_id=32563055129
+run_id=32563153545
 run_attempt=1
-run_url=https://github.com/straimy/-/actions/runs/32563055129
-client_sha=137a2ecaa52cdf86cc7d323162e8a72983c5e2b5
+run_url=https://github.com/straimy/-/actions/runs/32563153545
+client_sha=ac154489a8bca818e1ec6d14c432a3d2b490d650
 baseline_stage67_run=32562603117
-client_build=failure
-player_facing_brand_contract=skipped
+client_build=success
+player_facing_brand_contract=failure
 engine_brand_names_in_ggo_ui=false
 packet_ui_actions=true
 chat_shell=true
