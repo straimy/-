@@ -1,0 +1,367 @@
+name: GGO Runtime Stage 68 Release Candidate
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - client/runtime-migration-v1
+    paths:
+      - '.github/workflows/ggo-runtime-stage68-release-candidate.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+      LINUX_VERIFIED_SOURCE: b8b680a11669025f33319ebb7b26252610ca2625
+      LINUX_VERIFIED_RUN: '32561828672'
+    steps:
+      - name: Checkout client runtime
+        uses: actions/checkout@v4
+        with:
+          ref: client/runtime-migration-v1
+          path: client-src
+          fetch-depth: 0
+      - name: Checkout server runtime
+        uses: actions/checkout@v4
+        with:
+          ref: server/runtime-hardening-v1
+          path: server-src
+          fetch-depth: 0
+      - name: Checkout launcher platform
+        uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+          path: launcher-src
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Capture exact refs
+        id: refs
+        run: |
+          set -euo pipefail
+          echo "client_sha=$(git -C client-src rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "server_sha=$(git -C server-src rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "launcher_sha=$(git -C launcher-src rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare Forge wrapper
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/ggo-mdk /tmp/ggo-mdk.zip
+          curl -fL --retry 3 -o /tmp/ggo-mdk.zip https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-mdk.zip
+          mkdir -p /tmp/ggo-mdk
+          unzip -q /tmp/ggo-mdk.zip 'gradlew' 'gradlew.bat' 'gradle/*' -d /tmp/ggo-mdk
+
+      - name: Build latest server Core
+        id: server
+        working-directory: server-src
+        run: |
+          set -euo pipefail
+          rm -rf ga-build && mkdir ga-build
+          unzip -q "$SOURCE_ZIP" -d ga-build
+          python3 hotfix/apply_ggo_contract_rewards_stage26.py
+          python3 hotfix/apply_ggo_contract_map_stage27.py
+          python3 hotfix/apply_ggo_contract_push_stage28.py
+          python3 hotfix/apply_ggo_contract_persistence_stage29.py
+          python3 hotfix/apply_ggo_contract_lifecycle_stage30.py
+          python3 hotfix/apply_ggo_contract_balance_stage31.py
+          python3 hotfix/apply_ggo_contract_eligibility_stage32.py
+          python3 hotfix/apply_ggo_supply_lifecycle_stage33.py
+          python3 hotfix/apply_ggo_extraction_runtime_stage34.py
+          python3 hotfix/apply_ggo_contract_network_guard_stage36.py
+          python3 hotfix/apply_ggo_contract_reward_order_stage37.py
+          python3 hotfix/apply_ggo_compile_baseline_stage27.py
+          python3 hotfix/apply_ggo_spawn_presence_stage38.py
+          python3 hotfix/apply_ggo_deminecraft_world_stage39.py
+          python3 hotfix/apply_ggo_deminecraft_loot_stage41.py
+          python3 hotfix/apply_ggo_inventory_stage42.py
+          python3 hotfix/apply_ggo_visible_content_stage43.py
+          python3 hotfix/apply_ggo_medicine_stage47.py
+          python3 hotfix/apply_ggo_death_recap_stage48.py
+          python3 hotfix/apply_ggo_recovery_bag_stage49.py
+          python3 hotfix/apply_ggo_map_integrity_stage51.py
+          python3 hotfix/apply_ggo_map_palette_stage54.py
+          python3 hotfix/apply_ggo_official_auth_stage55.py
+          python3 hotfix/apply_ggo_pre_auth_quarantine_stage59.py
+          python3 hotfix/apply_ggo_ui_packets_stage65.py
+          grep -q 'private static final String PROTOCOL = "2"' ga-build/src/main/java/arena/forge/GgoLaunchTicketNetwork.java
+          grep -q 'VerificationAck.class' ga-build/src/main/java/arena/forge/GgoLaunchTicketNetwork.java
+          grep -q 'RECOVERY_BAG_MODEL=720049' ga-build/src/main/java/arena/forge/GgoRecoveryBagService.java
+          grep -q 'new ResourceLocation("gunnerarena","ggo_ui_action")' ga-build/src/main/java/arena/forge/GgoUiActionNetwork.java
+          grep -q 'authorizedAndRateLimited' ga-build/src/main/java/arena/forge/GgoUiActionNetwork.java
+          cp /tmp/ggo-mdk/gradlew ga-build/gradlew
+          cp /tmp/ggo-mdk/gradlew.bat ga-build/gradlew.bat
+          rm -rf ga-build/gradle && cp -a /tmp/ggo-mdk/gradle ga-build/gradle
+          chmod +x ga-build/gradlew
+          (cd ga-build && ./gradlew --no-daemon build --stacktrace)
+          CORE="$(find ga-build/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          test -n "$CORE"
+          for c in GgoOfficialAuthState GgoLaunchTicketNetwork GgoPreAuthQuarantine GgoUiActionNetwork GgoRecoveryBagService GgoMapIntegrityGuard; do
+            jar tf "$CORE" | grep -q "^arena/forge/$c.class$"
+          done
+          jar tf "$CORE" | grep -q '^arena/forge/GgoLaunchTicketNetwork\$VerificationAck.class$'
+          mkdir -p ../stage68/server/mods
+          cp "$CORE" ../stage68/server/mods/gungloryonline-core-runtime-v1-stage68.jar
+
+      - name: Build latest client UI
+        id: client
+        working-directory: client-src
+        run: |
+          set -euo pipefail
+          rm -rf ga-build && mkdir ga-build
+          unzip -q "$SOURCE_ZIP" -d ga-build
+          python3 hotfix/apply_ggo_ui_shell_stage1.py
+          python3 hotfix/apply_ggo_ui_shell_stage2.py
+          python3 hotfix/apply_ggo_ui_shell_stage3.py
+          python3 hotfix/apply_ggo_hud_stage4.py
+          python3 hotfix/apply_ggo_frontend_stage5.py
+          python3 hotfix/apply_ggo_settings_stage6.py
+          python3 hotfix/apply_ggo_identity_minimap_stage7.py
+          python3 hotfix/apply_ggo_weapon_navigation_stage8.py
+          python3 hotfix/apply_ggo_ping_stage9.py
+          python3 hotfix/apply_ggo_navigation_zoom_stage10.py
+          python3 hotfix/apply_ggo_squad_ping_stage11.py
+          python3 hotfix/apply_ggo_ping_wheel_stage12.py
+          python3 hotfix/apply_ggo_tab_squad_stage13.py
+          python3 hotfix/apply_ggo_objective_squad_stage15.py
+          python3 hotfix/apply_ggo_runtime_network_stage17.py
+          python3 hotfix/apply_ggo_jeg_telemetry_stage18.py
+          python3 hotfix/apply_ggo_squad_map_stage19.py
+          python3 hotfix/apply_ggo_server_hud_stage20.py
+          python3 hotfix/apply_ggo_br_hud_stage21.py
+          python3 hotfix/apply_ggo_contracts_stage23.py
+          python3 hotfix/apply_ggo_br_map_client_stage24.py
+          python3 hotfix/apply_ggo_contract_map_stage27_fixed.py
+          python3 hotfix/apply_ggo_contract_session_stage35.py
+          python3 hotfix/apply_ggo_contract_reward_ui_stage37.py
+          python3 hotfix/apply_ggo_client_compile_baseline_stage28.py
+          python3 hotfix/apply_ggo_deminecraft_client_stage40.py
+          python3 hotfix/apply_ggo_inventory_stage42.py
+          python3 hotfix/apply_ggo_input_fence_stage45.py
+          python3 hotfix/apply_ggo_combat_hud_stage47.py
+          python3 hotfix/apply_ggo_death_recap_stage48.py
+          python3 hotfix/apply_ggo_inventory_stage50.py
+          python3 hotfix/apply_ggo_launch_ticket_stage55.py
+          python3 hotfix/apply_ggo_entry_ux_stage57.py
+          python3 hotfix/apply_ggo_launcher_authority_stage58.py
+          python3 hotfix/apply_ggo_session_verification_stage61.py
+          python3 hotfix/apply_ggo_ui_packets_stage65.py
+          python3 hotfix/apply_ggo_surface_fence_stage66.py
+          python3 hotfix/apply_ggo_chat_shell_stage67.py
+          ! grep -R -F 'sendCommand("ggomed' ga-build/client-ui/src/main/java/arena/client/shell
+          ! grep -R -F 'runClientCommand("ggoinv' ga-build/client-ui/src/main/java/arena/client/shell
+          grep -q 'GgoUiActionClientBridge.useMedicine' ga-build/client-ui/src/main/java/arena/client/shell/GgoCombatHud.java
+          grep -q 'extends ChatScreen' ga-build/client-ui/src/main/java/arena/client/shell/GgoChatScreen.java
+          grep -q 'VanillaGuiOverlay.DEBUG_TEXT' ga-build/client-ui/src/main/java/arena/client/shell/GgoProductionSurfaceFence.java
+          ! grep -q 'VanillaGuiOverlay.CHAT_TEXT' ga-build/client-ui/src/main/java/arena/client/shell/GgoProductionSurfaceFence.java
+          cp /tmp/ggo-mdk/gradlew ga-build/client-ui/gradlew
+          cp /tmp/ggo-mdk/gradlew.bat ga-build/client-ui/gradlew.bat
+          rm -rf ga-build/client-ui/gradle && cp -a /tmp/ggo-mdk/gradle ga-build/client-ui/gradle
+          chmod +x ga-build/client-ui/gradlew
+          (cd ga-build/client-ui && ./gradlew --no-daemon build --stacktrace)
+          UI="$(find ga-build/client-ui/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          test -n "$UI"
+          for c in GgoSessionVerificationOverlay GgoUiActionClientBridge GgoProductionSurfaceFence GgoChatScreen GgoChatShellHook GgoCombatHud GgoShellScreen; do
+            jar tf "$UI" | grep -q "^arena/client/shell/$c.class$"
+          done
+          mkdir -p ../stage68/client/mods
+          cp "$UI" ../stage68/client/mods/gungloryonline-ui-runtime-v1-stage68.jar
+
+      - name: Build official Stage 68 resource pack
+        id: rp
+        working-directory: client-src
+        run: |
+          set -euo pipefail
+          mkdir -p ../stage68/client/resourcepacks
+          python3 hotfix/build_ggo_recovery_bag_rp_stage63.py \
+            GunnerArena-ResourcePack-1.20.1-v1.zip \
+            ../stage68/client/resourcepacks/GunGloryOnline-Official.zip
+          python3 - <<'PY'
+          import json, zipfile
+          from pathlib import Path
+          p=Path('../stage68/client/resourcepacks/GunGloryOnline-Official.zip')
+          assert p.is_file() and p.stat().st_size > 1_000_000
+          with zipfile.ZipFile(p) as z:
+              assert 'assets/gunnerarena/models/item/recovery_bag.json' in z.namelist()
+              assert 'assets/gunnerarena/textures/item/recovery_bag.png' in z.namelist()
+              data=json.loads(z.read('assets/minecraft/models/item/bundle.json'))
+              hits=[x for x in data.get('overrides',[]) if x.get('predicate',{}).get('custom_model_data')==720049]
+              assert hits==[{'predicate':{'custom_model_data':720049},'model':'gunnerarena:item/recovery_bag'}], hits
+          PY
+
+      - name: Validate launcher auth and platform contract
+        id: launcher
+        working-directory: launcher-src
+        run: |
+          set -euo pipefail
+          python3 -m py_compile services/ggo-auth/server.py services/ggo-auth/test_auth.py infra/vds/publish_release.py
+          python3 services/ggo-auth/test_auth.py -v
+          grep -q 'GAME_TICKET_TTL = 3 \* 60' services/ggo-auth/server.py
+          grep -q 'assertGreaterEqual(ticket\["expires_in"\], 175)' services/ggo-auth/test_auth.py
+          test -f ".ci/linux/${LINUX_VERIFIED_RUN}.txt"
+          grep -q "source_sha=${LINUX_VERIFIED_SOURCE}" ".ci/linux/${LINUX_VERIFIED_RUN}.txt"
+          grep -q '^result=success$' ".ci/linux/${LINUX_VERIFIED_RUN}.txt"
+          git diff --quiet "${LINUX_VERIFIED_SOURCE}" HEAD -- launcher
+          cd launcher
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          npm install
+          npm run build
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+          cargo check --manifest-path src-tauri/Cargo.toml
+          cargo test --manifest-path src-tauri/Cargo.toml
+          grep -q 'GGO_GAME_TICKET' src-tauri/src/lib.rs
+          grep -q 'launch_with_natives_environment' src-tauri/src/lib.rs
+          grep -q 'command.env' src-tauri/src/runtime/minecraft_launch.rs
+          ! grep -q 'GGO_GAME_TICKET' src/App.tsx
+          ! grep -q '2.26.100.125:24842' src/App.tsx
+          grep -q 'GunGloryOnline-Official.zip' src-tauri/src/runtime/official_resource_pack.rs
+          grep -q 'launcher-managed' src-tauri/src/runtime/ggo_local_install.rs
+          grep -q 'acceptTextures' src-tauri/src/runtime/official_server.rs
+          grep -q 'play.kvicloud.ru:24842' src/App.tsx
+
+      - name: Verify canonical asset publication
+        id: assets
+        run: |
+          set -euo pipefail
+          cp stage68/server/mods/gungloryonline-core-runtime-v1-stage68.jar stage68/client/mods/gungloryonline-core-runtime-v1-stage68.jar
+          mkdir -p asset-smoke/pkg
+          cp -a stage68/client asset-smoke/pkg/client
+          (cd asset-smoke/pkg && zip -qr ../ready.zip client)
+          python3 launcher-src/infra/vds/publish_release.py asset-smoke/ready.zip \
+            --resource-pack stage68/client/resourcepacks/GunGloryOnline-Official.zip \
+            --public-dir asset-smoke/public \
+            --base-url https://updates.ggo.kvicloud.ru \
+            --version stage68 \
+            --channel beta
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          root=Path('asset-smoke')
+          manifest=json.loads((root/'public/manifests/beta.json').read_text())
+          rp=[f for f in manifest['files'] if f.get('kind')=='resourcepack']
+          assert len(rp)==1, rp
+          entry=rp[0]
+          assert entry['path']=='resourcepacks/GunGloryOnline-Official.zip', entry
+          assert entry['required'] is True and entry['side']=='client', entry
+          target=root/'public/files/stage68/resourcepacks/GunGloryOnline-Official.zip'
+          assert target.is_file()
+          assert hashlib.sha256(target.read_bytes()).hexdigest()==entry['sha256']
+          PY
+
+      - name: Assemble matching Stage 68 runtime
+        id: package
+        run: |
+          set -euo pipefail
+          cat > stage68/BUILD-INFO.txt <<EOF
+          GGO_RUNTIME_STAGE=68
+          PURPOSE=RELEASE_CANDIDATE_INTEGRATION
+          SERVER_BRANCH=server/runtime-hardening-v1
+          SERVER_SHA=${{ steps.refs.outputs.server_sha }}
+          CLIENT_BRANCH=client/runtime-migration-v1
+          CLIENT_SHA=${{ steps.refs.outputs.client_sha }}
+          LAUNCHER_BRANCH=launcher/bootstrap-v0.1
+          LAUNCHER_SHA=${{ steps.refs.outputs.launcher_sha }}
+          MINECRAFT=1.20.1
+          FORGE=47.4.10
+          JAVA=17
+          ENTRY_AUTH=ONE_SHOT_LAUNCHER_TICKET
+          LAUNCH_TICKET_PROTOCOL=2
+          UNUSED_TICKET_TTL_SECONDS=180
+          PRE_AUTH_GAMEPLAY=QUARANTINED
+          CLIENT_VERIFICATION_OVERLAY=ACK_GATED
+          UI_ACTIONS=PACKET_ONLY
+          CHAT_INPUT=GGO_SHELL_OVER_CHATSCREEN_TRANSPORT
+          VANILLA_PRODUCTION_SURFACES=FENCED
+          RECOVERY_BAG_CUSTOM_MODEL_DATA=720049
+          OFFICIAL_RESOURCE_PACK=client/resourcepacks/GunGloryOnline-Official.zip
+          OFFICIAL_SERVER=play.kvicloud.ru:24842
+          LINUX_VERIFY_RUN=${LINUX_VERIFIED_RUN}
+          EOF
+          sha256sum stage68/server/mods/* stage68/client/mods/* stage68/client/resourcepacks/* > stage68/SHA256SUMS.txt
+
+      - name: Dedicated Forge server smoke
+        id: smoke
+        run: |
+          set -euo pipefail
+          rm -rf ds forge-installer.jar
+          mkdir ds
+          curl -fL --retry 5 --retry-all-errors -o forge-installer.jar https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-installer.jar
+          java -jar forge-installer.jar --installServer ds >/tmp/forge-install-stage68.log 2>&1
+          echo 'eula=true' > ds/eula.txt
+          mkdir -p ds/mods
+          cp stage68/server/mods/gungloryonline-core-runtime-v1-stage68.jar ds/mods/
+          cd ds
+          timeout 110s java -Xms512M -Xmx1G @libraries/net/minecraftforge/forge/1.20.1-47.4.10/unix_args.txt nogui > ../dedicated-stage68.log 2>&1 || true
+          cd ..
+          test -f ds/logs/latest.log
+          grep -Fq 'Done (' ds/logs/latest.log
+          ! grep -Eqi 'Failed to start|Exception in server tick loop|NoClassDefFoundError|ClassNotFoundException|ModLoadingException|Encountered an unexpected exception' dedicated-stage68.log ds/logs/latest.log
+
+      - name: Upload Stage 68 release candidate
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-Runtime-Stage68-ReleaseCandidate
+          path: stage68/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish exact Stage 68 receipt
+        if: always()
+        env:
+          SERVER_OUTCOME: ${{ steps.server.outcome }}
+          CLIENT_OUTCOME: ${{ steps.client.outcome }}
+          RP_OUTCOME: ${{ steps.rp.outcome }}
+          LAUNCHER_OUTCOME: ${{ steps.launcher.outcome }}
+          ASSETS_OUTCOME: ${{ steps.assets.outcome }}
+          PACKAGE_OUTCOME: ${{ steps.package.outcome }}
+          SMOKE_OUTCOME: ${{ steps.smoke.outcome }}
+        working-directory: client-src
+        run: |
+          set -euo pipefail
+          result=success
+          for value in "$SERVER_OUTCOME" "$CLIENT_OUTCOME" "$RP_OUTCOME" "$LAUNCHER_OUTCOME" "$ASSETS_OUTCOME" "$PACKAGE_OUTCOME" "$SMOKE_OUTCOME"; do
+            [ "$value" = success ] || result=failure
+          done
+          mkdir -p ci-results
+          cat > ci-results/stage68-release-candidate.txt <<EOF
+          workflow=${{ github.workflow }}
+          run_id=${GITHUB_RUN_ID}
+          run_attempt=${GITHUB_RUN_ATTEMPT}
+          run_url=https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          server_sha=${{ steps.refs.outputs.server_sha }}
+          client_sha=${{ steps.refs.outputs.client_sha }}
+          launcher_sha=${{ steps.refs.outputs.launcher_sha }}
+          baseline_stage65_run=32562061250
+          baseline_stage66_run=32562512801
+          baseline_stage67_run=32562603117
+          linux_verify_run=${LINUX_VERIFIED_RUN}
+          launch_ticket_protocol=2
+          server_build=$SERVER_OUTCOME
+          client_build=$CLIENT_OUTCOME
+          official_resource_pack=$RP_OUTCOME
+          launcher_auth_platform=$LAUNCHER_OUTCOME
+          official_assets=$ASSETS_OUTCOME
+          package=$PACKAGE_OUTCOME
+          dedicated_smoke=$SMOKE_OUTCOME
+          result=$result
+          EOF
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ci-results/stage68-release-candidate.txt
+          git commit -m "ci: record Stage 68 release candidate ${GITHUB_RUN_ID}" || exit 0
+          git fetch origin client/runtime-migration-v1
+          git rebase origin/client/runtime-migration-v1
+          git push origin HEAD:client/runtime-migration-v1
