@@ -1,0 +1,109 @@
+name: GGO Public Beta Reachability
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - launcher/bootstrap-v0.1
+    paths:
+      - '.github/workflows/ggo-public-beta-reachability.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  public-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+          fetch-depth: 0
+
+      - name: Website HTTPS
+        id: website
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          curl -fsS --connect-timeout 10 --max-time 20 https://ggo.kvicloud.ru/ -o /tmp/ggo-site.html
+          test -s /tmp/ggo-site.html
+          grep -Eqi 'GUNGLORYONLINE|GunGloryOnline|GUN GLORY ONLINE' /tmp/ggo-site.html
+
+      - name: Auth health HTTPS
+        id: auth
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          curl -fsS --connect-timeout 10 --max-time 20 https://ggo.kvicloud.ru/api/v1/health -o /tmp/ggo-auth-health.json
+          test -s /tmp/ggo-auth-health.json
+          python3 - <<'PY'
+          import json
+          p='/tmp/ggo-auth-health.json'
+          data=json.load(open(p,encoding='utf-8'))
+          text=json.dumps(data).lower()
+          assert any(x in text for x in ('ok','healthy','pass')), data
+          PY
+
+      - name: Beta manifest HTTPS
+        id: manifest
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          curl -fsS --connect-timeout 10 --max-time 20 https://updates.ggo.kvicloud.ru/manifests/beta.json -o /tmp/ggo-beta.json
+          test -s /tmp/ggo-beta.json
+          python3 - <<'PY'
+          import json
+          data=json.load(open('/tmp/ggo-beta.json',encoding='utf-8'))
+          assert isinstance(data,dict), data
+          assert isinstance(data.get('files'),list) and data['files'], data
+          paths=[str(x.get('path','')) for x in data['files'] if isinstance(x,dict)]
+          assert any('GunGloryOnline-Official.zip' in p for p in paths), paths
+          PY
+
+      - name: Official server TCP
+        id: server
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          getent ahosts play.kvicloud.ru | head -n1
+          timeout 12 bash -c '</dev/tcp/play.kvicloud.ru/24842'
+
+      - name: Publish immutable reachability receipt
+        if: always()
+        env:
+          WEBSITE: ${{ steps.website.outcome }}
+          AUTH: ${{ steps.auth.outcome }}
+          MANIFEST: ${{ steps.manifest.outcome }}
+          SERVER: ${{ steps.server.outcome }}
+        run: |
+          set -euo pipefail
+          result=success
+          for value in "$WEBSITE" "$AUTH" "$MANIFEST" "$SERVER"; do
+            [ "$value" = success ] || result=failure
+          done
+          mkdir -p .ci/public
+          receipt=".ci/public/${GITHUB_RUN_ID}.txt"
+          cat > "$receipt" <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_id=${GITHUB_RUN_ID}
+          run_attempt=${GITHUB_RUN_ATTEMPT}
+          run_url=https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          source_sha=${GITHUB_SHA}
+          website_https=$WEBSITE
+          auth_health_https=$AUTH
+          beta_manifest_https=$MANIFEST
+          official_server_tcp=$SERVER
+          website_url=https://ggo.kvicloud.ru/
+          auth_health_url=https://ggo.kvicloud.ru/api/v1/health
+          manifest_url=https://updates.ggo.kvicloud.ru/manifests/beta.json
+          server=play.kvicloud.ru:24842
+          result=$result
+          EOF
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add "$receipt"
+          git commit -m "ci: record public reachability ${GITHUB_RUN_ID}" || exit 0
+          git fetch origin launcher/bootstrap-v0.1
+          git rebase origin/launcher/bootstrap-v0.1
+          git push origin HEAD:launcher/bootstrap-v0.1
