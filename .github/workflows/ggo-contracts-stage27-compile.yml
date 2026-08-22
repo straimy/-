@@ -8,6 +8,7 @@ on:
     paths:
       - 'hotfix/GgoContractMapNetwork.java'
       - 'hotfix/apply_ggo_contract_map_stage27.py'
+      - 'hotfix/apply_ggo_compile_baseline_stage27.py'
       - 'config-examples/loot-spawns.properties.example'
       - '.github/workflows/ggo-contracts-stage27-compile.yml'
 
@@ -43,6 +44,7 @@ jobs:
           set -euo pipefail
           python3 hotfix/apply_ggo_contract_rewards_stage26.py
           python3 hotfix/apply_ggo_contract_map_stage27.py
+          python3 hotfix/apply_ggo_compile_baseline_stage27.py
           root=ga-build/src/main/java/arena/forge
           test -f "$root/GgoContractMapNetwork.java"
           grep -q 'SUPPLY' "$root/GgoLootSpawnService.java"
