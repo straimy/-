@@ -148,7 +148,7 @@ jobs:
           grep -q 'set_property online-mode false' corrected/game-server/infra/run.sh
           grep -q 'set_property enforce-secure-profile false' corrected/game-server/infra/run.sh
           grep -q 'set_property online-mode false' corrected/web/site/recover-production.sh
-          grep -q 'EnvironmentFile=/etc/ggo-game.env' corrected/web/site/recover-production.sh
+          grep -q 'EnvironmentFile=\$GAME_ENV' corrected/web/site/recover-production.sh
 
           cat > corrected/DEPLOY-AND-VERIFY.md <<'EOF'
           # GunGloryOnline Stage 73 — Auth/Account hotfix bundle
