@@ -7,6 +7,7 @@ on:
       - ".github/workflows/ggo-stage74-launcher-update-bundle.yml"
       - "site/install-launcher.sh"
       - "site/publish-launcher-update.sh"
+      - "site/deploy-stage74.sh"
       - "site/install-site.sh"
       - "launcher/src-tauri/**"
   workflow_dispatch:
@@ -74,33 +75,29 @@ jobs:
           cp -a site corrected/web/site
           cp -a services/ggo-auth corrected/web/services/ggo-auth
 
-          chmod +x corrected/web/site/install-site.sh corrected/web/site/install-launcher.sh corrected/web/site/publish-launcher-update.sh
+          chmod +x corrected/web/site/install-site.sh corrected/web/site/install-launcher.sh corrected/web/site/publish-launcher-update.sh corrected/web/site/deploy-stage74.sh
           bash -n corrected/web/site/install-site.sh
           bash -n corrected/web/site/install-launcher.sh
           bash -n corrected/web/site/publish-launcher-update.sh
+          bash -n corrected/web/site/deploy-stage74.sh
           grep -q 'latest-beta.json' corrected/web/site/install-launcher.sh
           grep -q 'sha256sum' corrected/web/site/install-launcher.sh
           grep -q 'latest-beta.json' corrected/web/site/publish-launcher-update.sh
           grep -q 'install-launcher.sh' corrected/web/site/install-site.sh
+          grep -q 'Stage 74 launcher update deploy: GREEN' corrected/web/site/deploy-stage74.sh
 
           cat > corrected/DEPLOY-STAGE74.md <<EOF
           # GunGloryOnline Stage 74 — Launcher 0.2.2 update channel
 
           Server/game runtime is not replaced by this payload.
 
-          On the VDS, from the extracted `corrected` directory:
+          On the VDS, from the extracted `corrected` directory, use the one-command deploy helper:
 
           \`\`\`bash
-          sudo ./web/site/install-site.sh
-          sudo ./web/site/publish-launcher-update.sh ./packages 0.2.2 "GGO Account and launcher updater fixes"
+          sudo ./web/site/deploy-stage74.sh ./packages
           \`\`\`
 
-          Verify:
-
-          \`\`\`bash
-          curl -fsSL https://ggo.kvicloud.ru/install-launcher.sh | head
-          curl -fsSL https://ggo.kvicloud.ru/content/launcher/latest-beta.json | python3 -m json.tool
-          \`\`\`
+          It installs the website update, publishes launcher 0.2.2, verifies the public install script, and validates the public update manifest.
 
           Ubuntu clients can then update with:
 
