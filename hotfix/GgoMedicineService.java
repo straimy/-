@@ -27,14 +27,17 @@ public final class GgoMedicineService {
     private static final Map<UUID,Long> NEXT_USE=new HashMap<>();
     private GgoMedicineService(){}
 
+    /** Debug/admin fallback only. Normal GGO clients use GgoUiActionNetwork. */
     @SubscribeEvent public static void commands(RegisterCommandsEvent event){
-        event.getDispatcher().register(Commands.literal("ggomed")
+        event.getDispatcher().register(Commands.literal("ggomed").requires(s->s.hasPermission(2))
             .then(Commands.literal("use")
                 .then(Commands.argument("slot", IntegerArgumentType.integer(FIELD_FIRST,FIELD_LAST))
-                    .executes(ctx->use(ctx.getSource().getPlayerOrException(),IntegerArgumentType.getInteger(ctx,"slot"))))));
+                    .executes(ctx->useFromUi(ctx.getSource().getPlayerOrException(),IntegerArgumentType.getInteger(ctx,"slot"))))));
     }
 
-    private static int use(ServerPlayer p,int slot){
+    /** Narrow server-authoritative entry point shared by the packet path and admin fallback. */
+    public static int useFromUi(ServerPlayer p,int slot){
+        if(p==null||slot<FIELD_FIRST||slot>FIELD_LAST)return 0;
         ArenaRuntime runtime=GunnerArenaMod.RUNTIME;
         if(runtime==null||!runtime.auth().isAuthenticated(p)||runtime.players().session(p).state()!=ArenaPlayerState.ALIVE)return 0;
         long now=runtime.serverTick();
