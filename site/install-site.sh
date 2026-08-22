@@ -41,10 +41,14 @@ fi
 if [ -f "$GGO_SITE_AVAILABLE" ]; then
   cp -a "$GGO_SITE_AVAILABLE" "$BACKUP_DIR/ggo.conf.previous"
 fi
-# The launcher update manifest is generated from signed/verified CI packages on the VDS.
-# Preserve it when portal content is refreshed so an unrelated site deploy cannot disable updates.
+# Preserve generated launcher update metadata across portal refreshes.
 if [ -d "$WEB_ROOT/content/launcher" ]; then
   cp -a "$WEB_ROOT/content/launcher" "$BACKUP_DIR/launcher-channel"
+fi
+# Runtime payloads are published separately from the website source package.
+# Never delete them during a portal/launcher-channel update.
+if [ -d "$WEB_ROOT/content/files" ]; then
+  cp -a "$WEB_ROOT/content/files" "$BACKUP_DIR/runtime-files"
 fi
 
 install -d -m 0755 "$WEB_ROOT"
@@ -58,6 +62,11 @@ if [ -d "$BACKUP_DIR/launcher-channel" ]; then
   install -d -m 0755 "$WEB_ROOT/content"
   rm -rf "$WEB_ROOT/content/launcher"
   cp -a "$BACKUP_DIR/launcher-channel" "$WEB_ROOT/content/launcher"
+fi
+if [ -d "$BACKUP_DIR/runtime-files" ]; then
+  install -d -m 0755 "$WEB_ROOT/content"
+  rm -rf "$WEB_ROOT/content/files"
+  cp -a "$BACKUP_DIR/runtime-files" "$WEB_ROOT/content/files"
 fi
 if [ -d "$SITE_SRC/downloads" ]; then
   install -d -m 0755 "$WEB_ROOT/downloads"
