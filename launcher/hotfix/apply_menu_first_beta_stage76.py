@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 from pathlib import Path
 
-ROOT = Path("launcher")
+# CI invokes this patch in two contexts:
+# - repository root: python3 launcher/hotfix/...
+# - launcher working directory: python3 hotfix/...
+# Resolve both without depending on the caller's cwd.
+ROOT = Path(".") if Path("src/App.tsx").is_file() else Path("launcher")
 RUST = ROOT / "src-tauri/src/lib.rs"
 APP = ROOT / "src/App.tsx"
 
 if not RUST.is_file() or not APP.is_file():
-    raise SystemExit("launcher sources missing")
+    raise SystemExit(f"launcher sources missing (resolved root: {ROOT.resolve()})")
 
 rust = RUST.read_text(encoding="utf-8")
 app = APP.read_text(encoding="utf-8")
@@ -115,6 +119,7 @@ for token in [
         raise SystemExit(f"stage76 launcher requirement missing: {token}")
 
 print("Applied GGO launcher Stage 76 menu-first beta hardening")
+print(f" - resolved launcher root: {ROOT}")
 print(" - one public game launch command")
 print(" - official launch boots to GGO client menu before network connect")
 print(" - absolute ticket expiry is passed to the child without exposing the ticket to UI")
