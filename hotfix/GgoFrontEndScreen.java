@@ -49,7 +49,7 @@ public final class GgoFrontEndScreen extends Screen {
         }
 
         if (!connected) {
-            addRenderableWidget(Button.builder(Component.literal("TRAINING"), button -> openActivities())
+            addRenderableWidget(Button.builder(Component.literal("TRAINING"), button -> openTraining())
                 .bounds(x, y + 38, buttonWidth, 24).build());
         }
 
@@ -83,8 +83,8 @@ public final class GgoFrontEndScreen extends Screen {
         );
     }
 
-    private void openActivities() {
-        Minecraft.getInstance().setScreen(new GgoShellScreen(GgoShellScreen.Page.ACTIVITIES));
+    private void openTraining() {
+        Minecraft.getInstance().setScreen(new GgoTrainingScreen(this));
     }
 
     @Override
@@ -116,9 +116,9 @@ public final class GgoFrontEndScreen extends Screen {
         String detail = connected
             ? "Gameplay remains locked until secure account verification finishes."
             : officialLaunch && canStartOnline
-                ? "Online connects to the trusted GGO network. No server list is exposed."
+                ? "Online connects to the trusted GGO network. Training stays offline."
                 : officialLaunch
-                    ? "Return to GGO Launcher to create a fresh one-shot Online session."
+                    ? "Online needs a fresh session; Training remains available offline."
                     : "Account credentials and online sessions are owned by GGO Launcher.";
 
         g.drawCenteredString(font, Component.literal("GUN GLORY ONLINE"), width / 2, y + 38, 0xFFF2F5F8);
