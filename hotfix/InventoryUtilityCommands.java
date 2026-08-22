@@ -35,6 +35,12 @@ public final class InventoryUtilityCommands {
                     ServerPlayer p=ctx.getSource().getPlayerOrException();if(!authorized(p))return 0;
                     int slot=IntegerArgumentType.getInteger(ctx,"slot");return dropSlot(p,slot);
                 })))
+            .then(Commands.literal("swap")
+                .then(Commands.argument("from",IntegerArgumentType.integer(0,FIELD_LAST))
+                    .then(Commands.argument("to",IntegerArgumentType.integer(0,FIELD_LAST)).executes(ctx->{
+                        ServerPlayer p=ctx.getSource().getPlayerOrException();if(!authorized(p))return 0;
+                        return swapSlots(p,IntegerArgumentType.getInteger(ctx,"from"),IntegerArgumentType.getInteger(ctx,"to"));
+                    }))))
             .then(Commands.literal("clear").executes(ctx->{
                 ServerPlayer p=ctx.getSource().getPlayerOrException();if(!authorized(p))return 0;
                 int n=dropTrash(p);msg(p,n==0?"✓ Мусора в полевых слотах нет.":"✓ Выброшено предметов: "+n,ChatFormatting.YELLOW);return 1;
@@ -50,6 +56,22 @@ public final class InventoryUtilityCommands {
         if(runtime!=null&&runtime.auth().isAuthenticated(p))return true;
         msg(p,"GGO inventory is unavailable until authentication completes.",ChatFormatting.RED);
         return false;
+    }
+
+    private static int swapSlots(ServerPlayer p,int from,int to){
+        if(from==to)return 1;
+        if(!sameStorageCompartment(from,to))return 0;
+        ItemStack a=p.getInventory().getItem(from),b=p.getInventory().getItem(to);
+        p.getInventory().setItem(from,b);p.getInventory().setItem(to,a);p.getInventory().setChanged();
+        return 1;
+    }
+
+    private static boolean sameStorageCompartment(int a,int b){
+        boolean ammoA=a>=ArenaBeltGuard.AMMO_FIRST&&a<=ArenaBeltGuard.AMMO_LAST;
+        boolean ammoB=b>=ArenaBeltGuard.AMMO_FIRST&&b<=ArenaBeltGuard.AMMO_LAST;
+        if(ammoA||ammoB)return ammoA&&ammoB;
+        boolean fieldA=a>=FIELD_FIRST&&a<=FIELD_LAST,fieldB=b>=FIELD_FIRST&&b<=FIELD_LAST;
+        return fieldA&&fieldB;
     }
 
     private static int dropSlot(ServerPlayer p,int slot){
