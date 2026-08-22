@@ -1,0 +1,11 @@
+run_id=32552361070
+run_attempt=1
+head_sha=e7e8dcc40c53f68010de441247d1a7465a90465e
+build_status=success
+auth_status=success
+website_status=success
+windows_artifact=GunGloryOnline-Launcher-Windows
+windows_installers=GunGloryOnline-Launcher-Windows.exe,GunGloryOnline-Launcher-Windows.msi,GunGloryOnline-Launcher-Windows-Portable.zip
+linux_artifact=GunGloryOnline-Launcher-Linux
+linux_installers=GunGloryOnline-Launcher-Linux.AppImage,GunGloryOnline-Launcher-Ubuntu-Debian.deb,GunGloryOnline-Launcher-Fedora-RHEL.rpm
+website_artifact=GunGloryOnline-Website

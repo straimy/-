@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "modes": [
+    {
+      "id": "training",
+      "name": {"en": "Training", "ru": "Тренировка", "uk": "Тренування"},
+      "kind": "local",
+      "status": "available",
+      "onlineProgression": false,
+      "queue": false,
+      "order": 10
+    },
+    {
+      "id": "battle-royale",
+      "name": {"en": "Battle Royale", "ru": "Королевская битва", "uk": "Королівська битва"},
+      "kind": "matchmaking",
+      "status": "development",
+      "onlineProgression": true,
+      "queue": true,
+      "minPlayers": 3,
+      "countdownSeconds": 45,
+      "maps": ["br-dropzone", "br-mini-pubg"],
+      "order": 20
+    },
+    {
+      "id": "br-dropzone",
+      "parent": "battle-royale",
+      "name": {"en": "Dropzone", "ru": "Точка Высадки", "uk": "Точка Висадки"},
+      "kind": "map",
+      "status": "staging",
+      "temporarySource": true,
+      "templateId": "ggo_br_dropzone",
+      "sourceLevelName": "Точка Высадки",
+      "sourceSpawn": {"x": 28, "y": 23, "z": -41},
+      "order": 21
+    },
+    {
+      "id": "br-mini-pubg",
+      "parent": "battle-royale",
+      "name": {"en": "Mini PUBG", "ru": "Мини PUBG", "uk": "Міні PUBG"},
+      "kind": "map",
+      "status": "staging",
+      "temporarySource": true,
+      "templateId": "ggo_br_mini_pubg",
+      "sourceLevelName": "MINI PUBG",
+      "sourceSpawn": {"x": 999, "y": 1, "z": 1019},
+      "order": 22
+    },
+    {
+      "id": "winter-event",
+      "name": {"en": "Winter Event", "ru": "Зимний ивент", "uk": "Зимовий івент"},
+      "kind": "seasonal",
+      "status": "staging",
+      "onlineProgression": true,
+      "queue": false,
+      "templateId": "ggo_winter_event",
+      "sourceLevelName": "The pursuit fo gifts: battle royale",
+      "sourceSpawn": {"x": -126, "y": -59, "z": -177},
+      "order": 30
+    }
+  ]
+}

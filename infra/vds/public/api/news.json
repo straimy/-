@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "items": [
+    {
+      "id": "launcher-v021",
+      "date": "2026-08-17",
+      "title": {
+        "en": "GunGloryOnline Launcher 0.2.1",
+        "ru": "GunGloryOnline Launcher 0.2.1",
+        "uk": "GunGloryOnline Launcher 0.2.1"
+      },
+      "body": {
+        "en": "Simpler installation, server selection, automatic runtime setup and game updates.",
+        "ru": "Упрощённая установка, выбор серверов, автоматическая установка runtime и обновления игры.",
+        "uk": "Спрощене встановлення, вибір серверів, автоматичне встановлення runtime та оновлення гри."
+      }
+    }
+  ]
+}

@@ -1,0 +1,198 @@
+name: GGO Stage 72 VDS Deploy Payload
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - launcher/bootstrap-v0.1
+    paths:
+      - '.github/workflows/ggo-stage72-vds-deploy-payload.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  assemble:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout current deployment source
+        uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+          fetch-depth: 0
+
+      - name: Download exact Stage 70 baseline artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: GunGloryOnline-Closed-Beta-Baseline-2026-08-22
+          path: stage70-artifact
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: 32567000478
+
+      - name: Assemble production payload
+        id: payload
+        run: |
+          set -euo pipefail
+          BASELINE_ZIP="stage70-artifact/GunGloryOnline-Closed-Beta-Baseline-2026-08-22.zip"
+          test -f "$BASELINE_ZIP"
+          echo 'f71ec514ae9df25cd85d20f0ebbfde768024ac5bb781cae983811225204b8687  stage70-artifact/GunGloryOnline-Closed-Beta-Baseline-2026-08-22.zip' | sha256sum -c -
+
+          rm -rf stage70 payload
+          mkdir -p stage70 payload/web payload/game-server/mods payload/receipts
+          unzip -q "$BASELINE_ZIP" -d stage70
+
+          cp -a site payload/web/site
+          mkdir -p payload/web/services
+          cp -a services/ggo-auth payload/web/services/ggo-auth
+          mkdir -p payload/web/site/downloads payload/web/site/content/files/v40
+
+          cp stage70/final/launcher/windows/GunGloryOnline-Launcher-Windows.exe payload/web/site/downloads/
+          cp stage70/final/launcher/windows/GunGloryOnline-Launcher-Windows.msi payload/web/site/downloads/
+          cp stage70/final/launcher/windows/GunGloryOnline-Launcher-Windows-Portable.zip payload/web/site/downloads/
+          cp stage70/final/launcher/linux/GunGloryOnline-Launcher-Linux.AppImage payload/web/site/downloads/
+          cp stage70/final/launcher/linux/GunGloryOnline-Launcher-Ubuntu-Debian.deb payload/web/site/downloads/
+          cp stage70/final/launcher/linux/GunGloryOnline-Launcher-Fedora-RHEL.rpm payload/web/site/downloads/
+
+          cp stage70/final/runtime/client/mods/gungloryonline-core-runtime-v1-stage68.jar payload/web/site/content/files/v40/
+          cp stage70/final/runtime/client/mods/gungloryonline-ui-runtime-v1-stage69.jar payload/web/site/content/files/v40/
+          cp stage70/final/runtime/client/resourcepacks/GunGloryOnline-Official.zip payload/web/site/content/files/v40/
+          cp stage70/final/runtime/server/mods/gungloryonline-core-runtime-v1-stage68.jar payload/game-server/mods/
+
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          root=Path('payload/web/site')
+          manifest=json.loads((root/'content/manifests/beta.json').read_text(encoding='utf-8'))
+          wanted={
+            'mods/gungloryonline-core-runtime-v1-stage68.jar':'gungloryonline-core-runtime-v1-stage68.jar',
+            'mods/gungloryonline-ui-runtime-v1-stage69.jar':'gungloryonline-ui-runtime-v1-stage69.jar',
+            'resourcepacks/GunGloryOnline-Official.zip':'GunGloryOnline-Official.zip',
+          }
+          rows={x['path']:x for x in manifest['files']}
+          for path,name in wanted.items():
+              row=rows[path]
+              f=root/'content/files/v40'/name
+              assert f.is_file(), f
+              raw=f.read_bytes()
+              assert len(raw)==row['size'], (path,len(raw),row['size'])
+              assert hashlib.sha256(raw).hexdigest()==row['sha256'], path
+              assert row['required'] is True and row['side']=='client', row
+          assert 'resourcepacks/GunGloryOnline-ResourcePack-1.20.1-v5-swittie-social.zip' not in rows
+          print('manifest-owned-assets: PASS')
+          PY
+
+          cp .ci/auth/32567151493.txt payload/receipts/auth-32567151493.txt
+          cp .ci/public/32567346737.txt payload/receipts/public-before-deploy-32567346737.txt
+          cp stage70/final/receipts/* payload/receipts/
+          cp stage70/final/docs/GGO-HANDOFF-2026-08-22.md payload/
+          cp stage70/final/NEW-CHAT-PROMPT.txt payload/
+
+          cat > payload/DEPLOY.md <<'EOF'
+          # GunGloryOnline Closed Beta — VDS deployment payload
+
+          This package does not contain credentials. It is ready to copy to the existing Ubuntu VDS.
+
+          ## Web + account API
+          From the extracted payload root on the web VDS:
+
+          ```bash
+          cd web/site
+          chmod +x install-site.sh ../../web/services/ggo-auth/install.sh
+          ./install-site.sh
+          ```
+
+          Then verify:
+
+          ```bash
+          curl https://ggo.kvicloud.ru/api/v1/health
+          curl https://ggo.kvicloud.ru/content/manifests/beta.json
+          ```
+
+          `install-site.sh` deploys the current nginx config and account service. Back up `/var/lib/ggo-auth/auth.db` before changing the service.
+
+          ## DNS required
+          `ggo.kvicloud.ru` already resolves. Create/verify this additional DNS record for the official game route:
+
+          ```text
+          Type: A
+          Name: play
+          Content: 2.26.100.125
+          ```
+
+          The launcher is intentionally locked to `play.kvicloud.ru:24842`; do not work around missing DNS by reintroducing the numeric address into player-facing launcher code.
+
+          ## Game server
+          The current public probe found `2.26.100.125:24842` refusing connections. Ensure the Forge 1.20.1 / 47.4.10 server is running and listening on TCP 24842. Replace the GGO Core with:
+
+          `game-server/mods/gungloryonline-core-runtime-v1-stage68.jar`
+
+          Preserve the server's other required mods/config/world. Configure `GGO_SERVER_KEY` and `GGO_AUTH_API_URL=https://ggo.kvicloud.ru/api/v1` in the server environment; never place the server key in the client or this package.
+
+          ## After deployment
+          Re-run workflow `GGO Public Beta Reachability`. Required green state:
+          - website HTTPS
+          - auth health HTTPS
+          - beta manifest HTTPS
+          - `play.kvicloud.ru` DNS
+          - official hostname TCP
+          - origin server TCP
+
+          Then perform a real clean-machine launcher -> account -> install/update -> game -> verification ACK -> gameplay test.
+          EOF
+
+          (cd payload && find . -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt)
+          zip -qr GunGloryOnline-Stage72-VDS-Deploy-Payload-2026-08-22.zip payload
+          unzip -tq GunGloryOnline-Stage72-VDS-Deploy-Payload-2026-08-22.zip
+          sha256sum GunGloryOnline-Stage72-VDS-Deploy-Payload-2026-08-22.zip > GunGloryOnline-Stage72-VDS-Deploy-Payload-2026-08-22.zip.sha256
+          echo "bytes=$(stat -c%s GunGloryOnline-Stage72-VDS-Deploy-Payload-2026-08-22.zip)" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(cut -d' ' -f1 GunGloryOnline-Stage72-VDS-Deploy-Payload-2026-08-22.zip.sha256)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload VDS deployment payload
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-Stage72-VDS-Deploy-Payload-2026-08-22
+          path: |
+            GunGloryOnline-Stage72-VDS-Deploy-Payload-2026-08-22.zip
+            GunGloryOnline-Stage72-VDS-Deploy-Payload-2026-08-22.zip.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+      - name: Publish immutable Stage 72 receipt
+        if: always()
+        env:
+          PAYLOAD: ${{ steps.payload.outcome }}
+          UPLOAD: ${{ steps.upload.outcome }}
+        run: |
+          set -euo pipefail
+          result=success
+          [ "$PAYLOAD" = success ] || result=failure
+          [ "$UPLOAD" = success ] || result=failure
+          mkdir -p .ci/deploy
+          receipt=".ci/deploy/${GITHUB_RUN_ID}.txt"
+          cat > "$receipt" <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_id=${GITHUB_RUN_ID}
+          run_attempt=${GITHUB_RUN_ATTEMPT}
+          run_url=https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          source_sha=${GITHUB_SHA}
+          baseline_stage70_run=32567000478
+          auth_receipt_run=32567151493
+          public_probe_run=32567346737
+          payload=$PAYLOAD
+          upload=$UPLOAD
+          payload_bytes=${{ steps.payload.outputs.bytes }}
+          payload_sha256=${{ steps.payload.outputs.sha256 }}
+          result=$result
+          EOF
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add "$receipt"
+          git commit -m "ci: record Stage 72 deploy payload ${GITHUB_RUN_ID}" || exit 0
+          git fetch origin launcher/bootstrap-v0.1
+          git rebase origin/launcher/bootstrap-v0.1
+          git push origin HEAD:launcher/bootstrap-v0.1

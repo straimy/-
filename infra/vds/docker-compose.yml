@@ -1,0 +1,120 @@
+services:
+  ggo-edge:
+    image: caddy:2-alpine
+    container_name: ggo-edge
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      GGO_SITE_HOST: ${GGO_SITE_HOST}
+      GGO_UPDATES_HOST: ${GGO_UPDATES_HOST}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./public:/srv/ggo/updates:ro
+      - ./site:/srv/ggo/site:ro
+      - skin_data:/srv/ggo/skins:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - edge
+      - app
+    mem_limit: 384m
+    cpus: 0.50
+
+  account-api:
+    build:
+      context: ./account-api
+    container_name: ggo-account-api
+    restart: unless-stopped
+    profiles: ["backend"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ggo}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ggo}
+      REDIS_URL: redis://redis:6379/0
+      GGO_JWT_SECRET: ${GGO_JWT_SECRET}
+      GGO_JWT_ISSUER: ${GGO_SITE_HOST}
+      GGO_PUBLIC_SITE_URL: https://${GGO_SITE_HOST}
+      GGO_SKIN_DIR: /data/skins
+    volumes:
+      - skin_data:/data/skins
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - app
+      - backend
+    mem_limit: 384m
+    cpus: 0.50
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: ggo-postgres
+    restart: unless-stopped
+    profiles: ["backend"]
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ggo}
+      POSTGRES_USER: ${POSTGRES_USER:-ggo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - backend
+    mem_limit: 768m
+    cpus: 0.75
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ggo} -d ${POSTGRES_DB:-ggo}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: ggo-redis
+    restart: unless-stopped
+    profiles: ["backend"]
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "192mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - backend
+    mem_limit: 256m
+    cpus: 0.25
+
+  game-server:
+    build:
+      context: ./game-server
+    container_name: ggo-game-server
+    restart: unless-stopped
+    profiles: ["game"]
+    working_dir: /server
+    command: ["bash", "./run.sh"]
+    environment:
+      GGO_GAME_PORT: ${GGO_GAME_PORT:-24842}
+      GGO_GAME_XMS: ${GGO_GAME_XMS:-1G}
+      GGO_GAME_XMX: ${GGO_GAME_XMX:-4G}
+    ports:
+      - "${GGO_GAME_PORT:-24842}:${GGO_GAME_PORT:-24842}/tcp"
+    volumes:
+      - ./game-server:/server
+    networks:
+      - game
+    mem_limit: 4608m
+    cpus: 2.50
+    stop_grace_period: 45s
+
+networks:
+  edge:
+  app:
+    internal: true
+  backend:
+    internal: true
+  game:
+
+volumes:
+  caddy_data:
+  caddy_config:
+  postgres_data:
+  redis_data:
+  skin_data:

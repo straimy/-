@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "servers": [
+    {
+      "id": "main",
+      "name": "GunGloryOnline",
+      "address": "play.kvicloud.ru:24842",
+      "enabled": true,
+      "order": 1
+    }
+  ]
+}

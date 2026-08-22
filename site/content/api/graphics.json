@@ -1,0 +1,108 @@
+{
+  "schemaVersion": 2,
+  "engine": {
+    "id": "ggo-graphics",
+    "displayName": "GGO Graphics",
+    "backend": {
+      "shaderLoader": "oculus",
+      "renderer": "embeddium"
+    },
+    "experimental": true,
+    "hideBackendFromNormalUi": true
+  },
+  "defaultProfile": "balanced",
+  "profiles": [
+    {
+      "id": "low",
+      "name": "Low-end PC",
+      "badge": "MAX FPS",
+      "backendPack": null,
+      "backendQuality": "off",
+      "description": "For integrated graphics and older GPUs. Maximum frame rate and minimum visual overhead.",
+      "recommendedFor": {"gpuTier":"low","ramGbMin":4}
+    },
+    {
+      "id": "competitive",
+      "name": "Competitive",
+      "badge": "PVP",
+      "backendPack": "miniature",
+      "backendQuality": "low",
+      "description": "High visibility, restrained effects and high FPS for PvP, extraction zones and Battle Royale.",
+      "recommendedFor": {"gpuTier":"low-mid","ramGbMin":8}
+    },
+    {
+      "id": "balanced",
+      "name": "Balanced",
+      "badge": "RECOMMENDED",
+      "backendPack": "miniature",
+      "backendQuality": "normal",
+      "description": "Recommended GGO look with improved lighting, shadows, water and reflections at moderate GPU cost.",
+      "recommendedFor": {"gpuTier":"mid","ramGbMin":8}
+    },
+    {
+      "id": "high",
+      "name": "High",
+      "badge": "QUALITY",
+      "backendPack": "miniature",
+      "backendQuality": "high",
+      "description": "Higher shadow distance, reflections and environmental effects for modern gaming GPUs.",
+      "recommendedFor": {"gpuTier":"high","ramGbMin":12}
+    },
+    {
+      "id": "cinematic",
+      "name": "Cinematic",
+      "badge": "ULTRA VISUALS",
+      "backendPack": "photon",
+      "backendQuality": "high",
+      "description": "Atmospheric lighting, volumetrics, enhanced water and post-processing for exploration and screenshots.",
+      "recommendedFor": {"gpuTier":"very-high","ramGbMin":16}
+    },
+    {
+      "id": "custom",
+      "name": "Custom",
+      "badge": "ADVANCED",
+      "backendPack": null,
+      "backendQuality": "custom",
+      "description": "Manual control over individual GGO graphics options. Backend details are shown only in Advanced."
+    }
+  ],
+  "controls": [
+    {"id":"renderDistance","label":"World Detail Distance","type":"slider","min":4,"max":32,"default":12},
+    {"id":"shadowQuality","label":"Shadow Quality","type":"select","values":["off","low","medium","high","ultra"],"default":"medium"},
+    {"id":"reflections","label":"Reflections","type":"select","values":["off","low","high"],"default":"low"},
+    {"id":"volumetricLighting","label":"Volumetric Lighting","type":"select","values":["off","low","high"],"default":"low"},
+    {"id":"waterQuality","label":"Water Quality","type":"select","values":["low","medium","high"],"default":"medium"},
+    {"id":"antiAliasing","label":"Edge Smoothing","type":"select","values":["off","fxaa","taa"],"default":"fxaa"},
+    {"id":"particles","label":"Effects Density","type":"select","values":["minimal","normal","maximum"],"default":"normal"},
+    {"id":"postProcessing","label":"Post Processing","type":"toggle","default":true}
+  ],
+  "packs": [
+    {
+      "id": "miniature",
+      "internalRole": "competitive-balanced-high",
+      "upstreamName": "Miniature Shader",
+      "distribution": "pending-license-review",
+      "bundled": false
+    },
+    {
+      "id": "photon",
+      "internalRole": "cinematic",
+      "upstreamName": "Photon Shaders",
+      "distribution": "modpack-allowed-with-license",
+      "bundled": false
+    },
+    {
+      "id": "complementary",
+      "internalRole": "optional-external",
+      "upstreamName": "Complementary Unbound",
+      "distribution": "external-provider-only",
+      "bundled": false
+    }
+  ],
+  "originalPipelinePolicy": {
+    "playerFacingName": "GGO Graphics",
+    "doNotCopyOrDisguiseThirdPartyCode": true,
+    "allowedApproach": "Reimplement desired visual effects independently or use components whose licenses explicitly permit integration and distribution.",
+    "targetEffects": ["soft-shadows","water-reflections","volumetric-light","bloom","color-grading","fog","taa-fxaa","ambient-lighting"]
+  }
+}
