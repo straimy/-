@@ -29,9 +29,7 @@ shell = shell.replace(
 )
 SHELL.write_text(shell, encoding="utf-8")
 
-# Audit only quoted literals on player-facing UI call lines. Technical Java identifiers such as
-# Minecraft.getInstance(), imports and reflection package names may remain in the hidden engine,
-# but the string values rendered to the player must not expose engine brands.
+# Audit quoted values only: engine-side Java identifiers are allowed, player-facing brand names are not.
 STRING_LITERAL = re.compile(r'"(?:\\.|[^"\\])*"')
 UI_CALLS = ("Component.literal(", "drawString(", "drawCenteredString(", "Button.builder(")
 ENGINE_BRANDS = ("minecraft", "forge", "mojang")
