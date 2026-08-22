@@ -73,19 +73,65 @@ fi
 
 echo "Using existing Forge server: $SERVER_DIR"
 
-# In the Stage73 bundle the hardened official run script and Stage68 Core sit next to
-# the web payload. When available, install them into the detected existing server while
-# preserving the previous launcher script/Core jars in a timestamped server backup.
+# Prepare a transactional backup before touching the game runtime. If any later game
+# deployment or verification step fails, EXIT rollback restores run.sh, server.properties,
+# the previous Core jar set, and any prior systemd unit automatically.
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 SERVER_BACKUP="$SERVER_DIR/ggo-hotfix-backup-$STAMP"
 mkdir -p "$SERVER_BACKUP"
+cp -a "$RUN_SH" "$SERVER_BACKUP/run.sh.previous"
+cp -a "$PROPS" "$SERVER_BACKUP/server.properties.previous"
+SERVICE_EXISTED=0
+if [ -f "$SERVICE_FILE" ]; then
+  cp -a "$SERVICE_FILE" "$SERVER_BACKUP/ggo-game.service.previous"
+  SERVICE_EXISTED=1
+fi
 
+shopt -s nullglob
+existing_core=("$MODS"/gungloryonline-core-*.jar "$MODS"/gunnerarena-*.jar)
+for file in "${existing_core[@]}"; do
+  cp -a "$file" "$SERVER_BACKUP/"
+done
+shopt -u nullglob
+
+DEPLOY_COMMITTED=0
+rollback_game_runtime() {
+  status=$?
+  if [ "$DEPLOY_COMMITTED" -eq 1 ]; then
+    return "$status"
+  fi
+
+  echo "Stage73 game deployment did not complete; restoring previous server runtime" >&2
+  systemctl stop ggo-game.service >/dev/null 2>&1 || true
+  cp -a "$SERVER_BACKUP/run.sh.previous" "$RUN_SH" || true
+  cp -a "$SERVER_BACKUP/server.properties.previous" "$PROPS" || true
+
+  shopt -s nullglob
+  current_core=("$MODS"/gungloryonline-core-*.jar "$MODS"/gunnerarena-*.jar)
+  for file in "${current_core[@]}"; do rm -f "$file"; done
+  backed_core=("$SERVER_BACKUP"/gungloryonline-core-*.jar "$SERVER_BACKUP"/gunnerarena-*.jar)
+  for file in "${backed_core[@]}"; do cp -a "$file" "$MODS/"; done
+  shopt -u nullglob
+
+  if [ "$SERVICE_EXISTED" -eq 1 ]; then
+    cp -a "$SERVER_BACKUP/ggo-game.service.previous" "$SERVICE_FILE" || true
+  else
+    rm -f "$SERVICE_FILE"
+  fi
+  systemctl daemon-reload >/dev/null 2>&1 || true
+  echo "Rollback complete. Backup retained at: $SERVER_BACKUP" >&2
+  return "$status"
+}
+trap rollback_game_runtime EXIT
+
+# In the Stage73 bundle the hardened official run script and Stage68 Core sit next to
+# the web payload. Install them into the detected existing server; originals are already
+# preserved above for automatic rollback and manual recovery.
 BUNDLED_RUN=""
 for candidate in "$HERE/../../game-server/infra/run.sh" "$HERE/../infra/vds/game-server/run.sh"; do
   if [ -f "$candidate" ]; then BUNDLED_RUN="$candidate"; break; fi
 done
 if [ -n "$BUNDLED_RUN" ]; then
-  cp -a "$RUN_SH" "$SERVER_BACKUP/run.sh.previous"
   install -m 0755 "$BUNDLED_RUN" "$RUN_SH"
   echo "Installed hardened GGO run.sh"
 fi
@@ -99,9 +145,7 @@ done
 if [ -n "$BUNDLED_CORE" ]; then
   shopt -s nullglob
   old_core=("$MODS"/gungloryonline-core-*.jar "$MODS"/gunnerarena-*.jar)
-  for file in "${old_core[@]}"; do
-    mv "$file" "$SERVER_BACKUP/"
-  done
+  for file in "${old_core[@]}"; do rm -f "$file"; done
   shopt -u nullglob
   install -m 0644 "$BUNDLED_CORE" "$MODS/gungloryonline-core-runtime-v1-stage68.jar"
   echo "Installed Stage68 server Core"
@@ -181,3 +225,8 @@ echo "Server hotfix backup: $SERVER_BACKUP"
 
 chmod +x "$HERE/verify-production.sh"
 "$HERE/verify-production.sh"
+
+# Public verification passed; keep the new runtime and disable automatic rollback.
+DEPLOY_COMMITTED=1
+trap - EXIT
+echo "Stage73 runtime deployment committed"
