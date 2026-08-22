@@ -1,0 +1,84 @@
+name: GGO Launcher Stage 62 Diagnostics
+
+on:
+  push:
+    branches:
+      - launcher/bootstrap-v0.1
+    paths:
+      - '.github/workflows/ggo-launcher-stage62-diagnostics.yml'
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Python compile
+        run: python3 -m py_compile services/ggo-auth/server.py services/ggo-auth/test_auth.py infra/vds/publish_release.py
+
+      - name: Auth tests
+        run: python3 services/ggo-auth/test_auth.py -v
+
+      - name: Auth TTL source assertions
+        run: |
+          set -euo pipefail
+          grep -q 'GAME_TICKET_TTL = 3 \* 60' services/ggo-auth/server.py
+          grep -q 'assertGreaterEqual(ticket\["expires_in"\], 175)' services/ggo-auth/test_auth.py
+
+      - name: Install Linux launcher dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: NPM install
+        working-directory: launcher
+        run: npm install
+
+      - name: Frontend build
+        working-directory: launcher
+        run: npm run build
+
+      - name: Rust format check
+        working-directory: launcher
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+
+      - name: Rust check
+        working-directory: launcher
+        run: cargo check --manifest-path src-tauri/Cargo.toml
+
+      - name: Rust tests
+        working-directory: launcher
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Launch ticket Rust assertions
+        working-directory: launcher
+        run: |
+          set -euo pipefail
+          grep -q 'GGO_GAME_TICKET' src-tauri/src/lib.rs
+          grep -q 'launch_with_natives_environment' src-tauri/src/lib.rs
+          grep -q 'command.env' src-tauri/src/runtime/minecraft_launch.rs
+
+      - name: Frontend ticket secrecy assertions
+        working-directory: launcher
+        run: |
+          set -euo pipefail
+          ! grep -q 'GGO_GAME_TICKET' src/App.tsx
+          ! grep -q '2.26.100.125:24842' src/App.tsx
+          ! grep -q 'onDoubleClick={()=>void launch(false,server)}' src/App.tsx
+
+      - name: Managed asset assertions
+        working-directory: launcher
+        run: |
+          set -euo pipefail
+          grep -q 'GunGloryOnline-Official.zip' src-tauri/src/runtime/official_resource_pack.rs
+          grep -q 'launcher-managed' src-tauri/src/runtime/ggo_local_install.rs
+          grep -q 'acceptTextures' src-tauri/src/runtime/official_server.rs
+          grep -q 'play.kvicloud.ru:24842' src/App.tsx
