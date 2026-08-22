@@ -11,19 +11,24 @@ Tauri 2 launcher for GunGloryOnline.
 
 The current Minecraft stack is treated as `GunGlory Runtime v1`, not as the permanent identity of the game.
 
-## Current test flow
+## Current flow
 
 The launcher can currently:
 
-- use a native folder picker for the game directory;
+- use a native folder picker for the GGO data directory;
 - use native ZIP pickers for a local GunGloryOnline fallback package;
 - verify pinned size and SHA256 values before installing game files;
 - install/verify Minecraft 1.20.1 + Forge 47.4.10 Runtime v1;
-- authenticate through the Microsoft/Minecraft provider;
-- launch with configured RAM, resolution/fullscreen and the GGO server target;
-- load the production server/news catalogs from the public GGO site when production content is available.
+- authenticate the official online path through GGO Account;
+- issue a one-shot game ticket immediately before online launch;
+- allow up to 180 seconds for an unused ticket to survive a slow first Runtime v1 startup while preserving one-shot consume/replay protection;
+- keep the official online target locked to `play.kvicloud.ru:24842` in the trusted Rust backend;
+- download, verify and activate the required official resource pack as `resourcepacks/GunGloryOnline-Official.zip`;
+- preserve optional user resource packs while managing the official GGO pack separately;
+- launch with configured RAM, resolution/fullscreen and platform-native Java handling;
+- load production network/news catalogs from the public GGO site when production content is available.
 
-Production Runtime v1 server target: `2.26.100.125:24842`.
+Microsoft identity remains an optional linked provider; it is not the authority for the official GGO online session.
 
 ## Development
 
@@ -62,4 +67,4 @@ Runtime v1 does not launch Minecraft through shell scripts. The Rust backend sel
 
 ## Security
 
-No Microsoft client secret, refresh token, Minecraft access token, signing private key, or Telegram secret belongs in Git. Runtime access tokens stay in the Rust backend and are not exposed to React.
+No GGO server key, account password, Microsoft client secret, refresh token, Minecraft access token, signing private key, or Telegram secret belongs in Git. The raw one-shot game ticket exists only in the launcher backend and the child Java process environment long enough to be forwarded to the official server; it is not exposed to React, logs, or persistent game state.
