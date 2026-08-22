@@ -13,8 +13,8 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Bridges the legacy /login mod (serverreg) into GGO's AuthGate tag.
- * The external auth mod owns credentials; GGO only mirrors its current authenticated state.
+ * Bridges the legacy /login mod (serverreg) into GGO's AuthGate tag on development servers.
+ * Official servers use one-shot launcher tickets and legacy auth is deliberately ignored there.
  */
 @Mod.EventBusSubscriber(modid = "gunnerarena", bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class LegacyAuthSyncGuard {
@@ -32,6 +32,11 @@ public final class LegacyAuthSyncGuard {
     }
 
     @SubscribeEvent
+    public static void logout(PlayerEvent.PlayerLoggedOutEvent event) {
+        if (event.getEntity() instanceof ServerPlayer player) GgoOfficialAuthState.clear(player);
+    }
+
+    @SubscribeEvent
     public static void serverTick(TickEvent.ServerTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
         if (++ticks < 5) return;
@@ -41,6 +46,22 @@ public final class LegacyAuthSyncGuard {
     }
 
     private static void sync(ServerPlayer player, boolean forceCommandRefresh) {
+        if (GgoOfficialAuthState.required()) {
+            boolean authenticated = GgoOfficialAuthState.isAuthenticated(player);
+            boolean tagged = player.getTags().contains(AUTH_TAG);
+            if (authenticated && !tagged) {
+                player.addTag(AUTH_TAG);
+                player.server.getCommands().sendCommands(player);
+            } else if (!authenticated && tagged) {
+                // Fail closed: an old serverreg state must never authenticate an official session.
+                player.removeTag(AUTH_TAG);
+                player.server.getCommands().sendCommands(player);
+            } else if (forceCommandRefresh && authenticated) {
+                player.server.getCommands().sendCommands(player);
+            }
+            return;
+        }
+
         resolve();
         Object auth = legacyAuth;
         Field field = notLoggedPlayers;
