@@ -98,8 +98,8 @@ assert p.get('ok') is True and p.get('service') == 'ggo-auth', p
 print('direct auth health: PASS', p)
 PY
 
-curl_common=(--silent --show-error --resolve "${GGO_HOST}:443:127.0.0.1" "https://${GGO_HOST}")
-health_code="$(curl "${curl_common[@]}" -o /tmp/ggo-nginx-health.json -w '%{http_code}' /api/v1/health)"
+curl_local=(--silent --show-error --resolve "${GGO_HOST}:443:127.0.0.1")
+health_code="$(curl "${curl_local[@]}" -o /tmp/ggo-nginx-health.json -w '%{http_code}' "https://${GGO_HOST}/api/v1/health")"
 [ "$health_code" = 200 ] || { cat /tmp/ggo-nginx-health.json >&2; echo "HTTPS health returned $health_code" >&2; exit 6; }
 python3 - <<'PY'
 import json
@@ -110,9 +110,9 @@ PY
 
 # Route-only POST probes use invalid empty payloads. They prove nginx reaches the
 # auth service without creating users or modifying the existing auth database.
-register_code="$(curl "${curl_common[@]}" -o /tmp/ggo-register-probe.json -w '%{http_code}' -H 'Content-Type: application/json' --data '{}' /api/v1/auth/register)"
+register_code="$(curl "${curl_local[@]}" -o /tmp/ggo-register-probe.json -w '%{http_code}' -H 'Content-Type: application/json' --data '{}' "https://${GGO_HOST}/api/v1/auth/register")"
 [ "$register_code" = 400 ] || { cat /tmp/ggo-register-probe.json >&2; echo "register route returned $register_code (expected 400, never 405)" >&2; exit 7; }
-login_code="$(curl "${curl_common[@]}" -o /tmp/ggo-login-probe.json -w '%{http_code}' -H 'Content-Type: application/json' --data '{}' /api/v1/auth/login)"
+login_code="$(curl "${curl_local[@]}" -o /tmp/ggo-login-probe.json -w '%{http_code}' -H 'Content-Type: application/json' --data '{}' "https://${GGO_HOST}/api/v1/auth/login")"
 [ "$login_code" = 401 ] || { cat /tmp/ggo-login-probe.json >&2; echo "login route returned $login_code (expected 401, never 405)" >&2; exit 8; }
 
 echo "register POST route: PASS ($register_code)"
