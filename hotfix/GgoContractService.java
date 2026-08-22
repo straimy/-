@@ -63,6 +63,22 @@ public final class GgoContractService {
         pushState(p,balanceChanged);
     }
 
+    /** Load durable state and push a complete snapshot for login/respawn/dimension lifecycle events. */
+    public static void syncPlayer(ServerPlayer p){
+        if(p==null)return;
+        ensureDefaults(p);
+        Contract current=tracked(p);
+        if(current!=null)publishObjective(p,current);
+        pushState(p,true);
+    }
+
+    /** Explicitly flush mutable state before session cache eviction. */
+    public static void flush(ServerPlayer p){
+        if(p==null)return;
+        ensureDefaults(p);
+        persist(p);
+    }
+
     /** Unload session caches only. Durable state remains in the world save. */
     public static void clear(UUID id){if(id!=null){BY_PLAYER.remove(id);TRACKED.remove(id);REWARDED.remove(id);}}
 
