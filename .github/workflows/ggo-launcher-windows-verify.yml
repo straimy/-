@@ -43,6 +43,14 @@ jobs:
         id: frontend
         run: npm run build
 
+      - name: Rust format gate
+        id: rust_fmt
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+
+      - name: Rust compile gate
+        id: rust_check
+        run: cargo check --manifest-path src-tauri/Cargo.toml
+
       - name: Windows runtime unit tests
         id: runtime_tests
         run: cargo test --manifest-path src-tauri/Cargo.toml
@@ -90,17 +98,23 @@ jobs:
           INSTALL_OUTCOME: ${{ steps.install.outcome }}
           ICONS_OUTCOME: ${{ steps.icons.outcome }}
           FRONTEND_OUTCOME: ${{ steps.frontend.outcome }}
+          RUST_FMT_OUTCOME: ${{ steps.rust_fmt.outcome }}
+          RUST_CHECK_OUTCOME: ${{ steps.rust_check.outcome }}
           RUNTIME_TESTS_OUTCOME: ${{ steps.runtime_tests.outcome }}
           PACKAGE_OUTCOME: ${{ steps.package.outcome }}
           VERIFY_OUTCOME: ${{ steps.verify.outcome }}
         run: |
           $ErrorActionPreference = 'Stop'
           $result = 'success'
-          foreach ($value in @($env:INSTALL_OUTCOME,$env:ICONS_OUTCOME,$env:FRONTEND_OUTCOME,$env:RUNTIME_TESTS_OUTCOME,$env:PACKAGE_OUTCOME,$env:VERIFY_OUTCOME)) {
+          foreach ($value in @($env:INSTALL_OUTCOME,$env:ICONS_OUTCOME,$env:FRONTEND_OUTCOME,$env:RUST_FMT_OUTCOME,$env:RUST_CHECK_OUTCOME,$env:RUNTIME_TESTS_OUTCOME,$env:PACKAGE_OUTCOME,$env:VERIFY_OUTCOME)) {
             if ($value -ne 'success') { $result = 'failure' }
           }
-          New-Item -ItemType Directory -Force ../.ci/windows | Out-Null
-          $receipt = '../.ci/windows/${{ github.run_id }}.txt'
+          Set-Location ..
+          # Tauri/icon/npm can touch generated tracked files. Keep the receipt commit immutable and
+          # isolated so a successful Windows build cannot fail later only because rebase sees dirt.
+          git restore --staged --worktree .
+          New-Item -ItemType Directory -Force .ci/windows | Out-Null
+          $receipt = '.ci/windows/${{ github.run_id }}.txt'
           @(
             'workflow=${{ github.workflow }}',
             'run_id=${{ github.run_id }}',
@@ -110,16 +124,17 @@ jobs:
             "install=$env:INSTALL_OUTCOME",
             "icons=$env:ICONS_OUTCOME",
             "frontend=$env:FRONTEND_OUTCOME",
+            "rust_fmt=$env:RUST_FMT_OUTCOME",
+            "rust_check=$env:RUST_CHECK_OUTCOME",
             "runtime_tests=$env:RUNTIME_TESTS_OUTCOME",
             "package=$env:PACKAGE_OUTCOME",
             "verify=$env:VERIFY_OUTCOME",
             'installers=GunGloryOnline-Launcher-Windows.exe,GunGloryOnline-Launcher-Windows.msi,GunGloryOnline-Launcher-Windows-Portable.zip',
             "result=$result"
           ) | Set-Content -Encoding utf8 $receipt
-          Set-Location ..
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add '.ci/windows/${{ github.run_id }}.txt'
+          git add $receipt
           git commit -m 'ci: record Windows launcher run ${{ github.run_id }}'
           if ($LASTEXITCODE -ne 0) { exit 0 }
           git fetch origin '${{ github.ref_name }}'
