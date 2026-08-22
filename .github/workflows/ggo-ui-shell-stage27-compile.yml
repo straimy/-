@@ -8,6 +8,7 @@ on:
     paths:
       - 'hotfix/apply_ggo_contract_map_stage27.py'
       - 'hotfix/apply_ggo_contract_map_stage27_fixed.py'
+      - 'hotfix/apply_ggo_client_compile_baseline_stage28.py'
       - '.github/workflows/ggo-ui-shell-stage27-compile.yml'
 
 permissions:
@@ -58,6 +59,7 @@ jobs:
           python3 hotfix/apply_ggo_contracts_stage23.py
           python3 hotfix/apply_ggo_br_map_client_stage24.py
           python3 hotfix/apply_ggo_contract_map_stage27_fixed.py
+          python3 hotfix/apply_ggo_client_compile_baseline_stage28.py
           root=ga-build/client-ui/src/main/java/arena/client/shell
           test -f "$root/GgoSupplyMapState.java"
           test -f "$root/GgoRuntimeV1ContractMapAdapter.java"
@@ -66,6 +68,8 @@ jobs:
           grep -q 'CONTRACT COMPLETE' "$root/GgoCombatHud.java"
           grep -q 'BALANCE' "$root/GgoShellScreen.java"
           grep -q 'GgoRuntimeV1ContractAdapter.tick' "$root/GgoCombatHud.java"
+          grep -q 'updateWidgetNarration' ga-build/client-ui/src/main/java/arena/client/ui/ArenaButton.java
+          grep -q 'addArenaButton' ga-build/client-ui/src/main/java/arena/client/ui/AbstractArenaScreen.java
 
       - name: Bootstrap ForgeGradle wrapper
         id: bootstrap
@@ -95,6 +99,8 @@ jobs:
           test -f "$root/GgoContractCompletionState.class"
           test -f "$root/GgoCombatHud.class"
           test -f "$root/GgoShellScreen.class"
+          test -f ga-build/client-ui/build/classes/java/main/arena/client/ui/ArenaButton.class
+          test -f ga-build/client-ui/build/classes/java/main/arena/client/ui/ArenaNavigation.class
 
       - name: Publish exact CI receipt
         if: always()
