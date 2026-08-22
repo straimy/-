@@ -1,0 +1,13 @@
+workflow=GGO Runtime Stage 56 Entry Integration
+run_id=32552597555
+run_attempt=1
+run_url=https://github.com/straimy/-/actions/runs/32552597555
+server_sha=f687c611ed30352024f00b1744ad87f5045c0968
+client_sha=4922d714b7014edf823ac3a32192459e7823f3da
+launcher_sha=ea8e06482a45617c36f41db9141182f8629b6f87
+server_build=success
+client_build=success
+launcher_validation=failure
+package=skipped
+dedicated_smoke=skipped
+result=failure
