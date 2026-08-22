@@ -135,9 +135,15 @@ public final class GgoContractService {
     }
     private static LinkedHashMap<String,Contract> defaults(){
         LinkedHashMap<String,Contract> m=new LinkedHashMap<>();
-        m.put("field_test",new Contract("field_test","FIELD TEST","Eliminate hostiles with any firearm.","CONTRACT",0,10,1200,false));
-        m.put("supply_run",new Contract("supply_run","SUPPLY RUN","Recover marked supplies and return safely.","CONTRACT",0,5,900,false));
-        m.put("distance_drill",new Contract("distance_drill","DISTANCE DRILL","Land precision hits at range.","TRAINING",0,8,700,false));
+        m.put("field_test",new Contract(
+                "field_test","FIELD TEST","Eliminate hostiles with any firearm.","CONTRACT",0,
+                GgoContractBalance.target("field_test",10),GgoContractBalance.reward("field_test",1200),false));
+        m.put("supply_run",new Contract(
+                "supply_run","SUPPLY RUN","Recover marked supplies and return safely.","CONTRACT",0,
+                GgoContractBalance.target("supply_run",5),GgoContractBalance.reward("supply_run",900),false));
+        m.put("distance_drill",new Contract(
+                "distance_drill","DISTANCE DRILL","Land precision hits at range.","TRAINING",0,
+                GgoContractBalance.target("distance_drill",8),GgoContractBalance.reward("distance_drill",700),false));
         return m;
     }
 }
