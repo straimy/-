@@ -1,0 +1,10 @@
+workflow=GGO Input Stage 45 Client Compile
+run_id=32547225238
+run_attempt=1
+run_url=https://github.com/straimy/-/actions/runs/32547225238
+source_sha=c696df5915d35ad79488bb3214c4ccf2d0aa23d5
+apply=success
+bootstrap=success
+compile=success
+verify=success
+result=success
