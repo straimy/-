@@ -12,7 +12,8 @@ on:
 permissions:
   contents: write
 
-# Dedicated Windows gate: both installer formats must be created on a real Windows runner.
+# Dedicated Windows gate: installer formats, portable package and runtime tests
+# must all pass on a real Windows runner.
 jobs:
   windows:
     runs-on: windows-2022
@@ -42,26 +43,37 @@ jobs:
         id: frontend
         run: npm run build
 
+      - name: Windows runtime unit tests
+        id: runtime_tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
       - name: Build NSIS and MSI packages
         id: package
         run: npm run tauri build -- --bundles nsis,msi
 
-      - name: Verify Windows installers
+      - name: Verify Windows installers and portable package
         id: verify
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $nsis = Get-ChildItem src-tauri/target/release/bundle/nsis/*.exe | Select-Object -First 1
           $msi = Get-ChildItem src-tauri/target/release/bundle/msi/*.msi | Select-Object -First 1
+          $portable = Get-ChildItem src-tauri/target/release/*.exe | Where-Object { $_.Name -notmatch 'build|setup|installer' } | Sort-Object Length -Descending | Select-Object -First 1
           if (-not $nsis) { throw 'NSIS .exe package not found' }
           if (-not $msi) { throw 'MSI package not found' }
+          if (-not $portable) { throw 'Portable launcher executable not found' }
           if ($nsis.Length -lt 1MB) { throw 'NSIS .exe package is unexpectedly small' }
           if ($msi.Length -lt 1MB) { throw 'MSI package is unexpectedly small' }
+          if ($portable.Length -lt 1MB) { throw 'Portable launcher executable is unexpectedly small' }
           New-Item -ItemType Directory -Force dist-package | Out-Null
           Copy-Item $nsis.FullName dist-package/GunGloryOnline-Launcher-Windows.exe
           Copy-Item $msi.FullName dist-package/GunGloryOnline-Launcher-Windows.msi
+          Copy-Item $portable.FullName dist-package/GunGloryOnline-Launcher-Portable.exe
+          Compress-Archive -Path dist-package/GunGloryOnline-Launcher-Portable.exe -DestinationPath dist-package/GunGloryOnline-Launcher-Windows-Portable.zip -Force
+          Remove-Item dist-package/GunGloryOnline-Launcher-Portable.exe
           Get-FileHash dist-package/GunGloryOnline-Launcher-Windows.exe -Algorithm SHA256 | Format-List
           Get-FileHash dist-package/GunGloryOnline-Launcher-Windows.msi -Algorithm SHA256 | Format-List
+          Get-FileHash dist-package/GunGloryOnline-Launcher-Windows-Portable.zip -Algorithm SHA256 | Format-List
 
       - uses: actions/upload-artifact@v4
         if: success()
@@ -78,12 +90,13 @@ jobs:
           INSTALL_OUTCOME: ${{ steps.install.outcome }}
           ICONS_OUTCOME: ${{ steps.icons.outcome }}
           FRONTEND_OUTCOME: ${{ steps.frontend.outcome }}
+          RUNTIME_TESTS_OUTCOME: ${{ steps.runtime_tests.outcome }}
           PACKAGE_OUTCOME: ${{ steps.package.outcome }}
           VERIFY_OUTCOME: ${{ steps.verify.outcome }}
         run: |
           $ErrorActionPreference = 'Stop'
           $result = 'success'
-          foreach ($value in @($env:INSTALL_OUTCOME,$env:ICONS_OUTCOME,$env:FRONTEND_OUTCOME,$env:PACKAGE_OUTCOME,$env:VERIFY_OUTCOME)) {
+          foreach ($value in @($env:INSTALL_OUTCOME,$env:ICONS_OUTCOME,$env:FRONTEND_OUTCOME,$env:RUNTIME_TESTS_OUTCOME,$env:PACKAGE_OUTCOME,$env:VERIFY_OUTCOME)) {
             if ($value -ne 'success') { $result = 'failure' }
           }
           New-Item -ItemType Directory -Force ../.ci | Out-Null
@@ -96,9 +109,10 @@ jobs:
             "install=$env:INSTALL_OUTCOME",
             "icons=$env:ICONS_OUTCOME",
             "frontend=$env:FRONTEND_OUTCOME",
+            "runtime_tests=$env:RUNTIME_TESTS_OUTCOME",
             "package=$env:PACKAGE_OUTCOME",
             "verify=$env:VERIFY_OUTCOME",
-            'installers=GunGloryOnline-Launcher-Windows.exe,GunGloryOnline-Launcher-Windows.msi',
+            'installers=GunGloryOnline-Launcher-Windows.exe,GunGloryOnline-Launcher-Windows.msi,GunGloryOnline-Launcher-Windows-Portable.zip',
             "result=$result"
           ) | Set-Content -Encoding utf8 ../.ci/ggo-launcher-windows-last-run.txt
           Set-Location ..
