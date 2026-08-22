@@ -1,0 +1,48 @@
+name: GGO Resource Pack Stage 44 Audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - client/runtime-migration-v1
+    paths:
+      - 'GunnerArena-ResourcePack-1.20.1-v1.zip'
+      - 'hotfix/audit_ggo_resourcepack_stage44.py'
+      - '.github/workflows/ggo-resourcepack-stage44-audit.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit visible vanilla overrides
+        id: audit
+        run: |
+          set -euo pipefail
+          python3 hotfix/audit_ggo_resourcepack_stage44.py
+          grep -q '^stage=44$' ci-results/stage44-resourcepack-audit.txt
+          grep -q '^resource_pack_sha256=' ci-results/stage44-resourcepack-audit.txt
+          grep -q '^minecraft_override_files=' ci-results/stage44-resourcepack-audit.txt
+      - name: Publish audit
+        if: always()
+        env:
+          AUDIT_OUTCOME: ${{ steps.audit.outcome }}
+        run: |
+          set -euo pipefail
+          if [ "$AUDIT_OUTCOME" != success ]; then
+            mkdir -p ci-results
+            printf 'stage=44\naudit=%s\nresult=failure\n' "$AUDIT_OUTCOME" > ci-results/stage44-resourcepack-audit.txt
+          else
+            printf 'audit=%s\nresult=success\nrun_id=%s\nsource_sha=%s\n' "$AUDIT_OUTCOME" "${{ github.run_id }}" "${{ github.sha }}" >> ci-results/stage44-resourcepack-audit.txt
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add ci-results/stage44-resourcepack-audit.txt
+          git commit -m "ci: record stage44 resource-pack audit ${{ github.run_id }}" || exit 0
+          git fetch origin "$GITHUB_REF_NAME"
+          git rebase "origin/$GITHUB_REF_NAME"
+          git push origin "HEAD:$GITHUB_REF_NAME"
