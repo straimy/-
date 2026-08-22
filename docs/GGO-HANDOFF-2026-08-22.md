@@ -50,7 +50,7 @@ Unused one-shot ticket TTL is now 180 seconds to tolerate a slow first Forge sta
 
 Stage 59 pre-auth quarantine:
 - run `32554022179`
-- source `9c08709257510a838fb89ebb429380e568da57b5n` NOTE: verify exact SHA from `ci-results/stage59-server.txt` if needed; the receipt is source of truth.
+- source `9c08709257510a838fb89ebb429380e568da57b5`
 - apply/bootstrap/compile/verify/result = success.
 
 Stage 61 verification ACK:
