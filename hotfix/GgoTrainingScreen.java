@@ -73,7 +73,7 @@ public final class GgoTrainingScreen extends Screen {
         g.drawCenteredString(font, Component.literal("No server connection · no online rewards · no ticket consumption"), width / 2, y + 84, 0xFF8A96A8);
         g.drawCenteredString(font, Component.literal(selected.title), width / 2, y + 112, 0xFFF0F3F7);
         g.drawCenteredString(font, Component.literal(selected.subtitle), width / 2, y + 132, 0xFF697588);
-        g.drawCenteredString(font, Component.literal("Training runtime is isolated from the official GGO network."), width / 2, y + 154, 0xFF697588);
+        g.drawCenteredString(font, Component.literal("Training sandbox is isolated from the official GGO network."), width / 2, y + 154, 0xFF697588);
 
         super.render(g, mouseX, mouseY, partialTick);
     }
