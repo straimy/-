@@ -74,13 +74,14 @@ elif "previous.clear();" not in c:
     raise SystemExit("Stage 35: completion session anchor missing")
 completion.write_text(c, encoding="utf-8")
 
-checks = {
-    state: "public static void clear()",
-    adapter: "currentConnection!=sessionConnection",
-    adapter: "GgoSupplyMapState.clear();",
-    completion: "previous.clear();",
-}
-for path, marker in checks.items():
+checks = [
+    (state, "public static void clear()"),
+    (adapter, "currentConnection!=sessionConnection"),
+    (adapter, "GgoSupplyMapState.clear();"),
+    (completion, "previous.clear();"),
+    (completion, "initialized=false;"),
+]
+for path, marker in checks:
     if marker not in path.read_text(encoding="utf-8"):
         raise SystemExit(f"Stage 35: marker missing in {path}: {marker}")
 
