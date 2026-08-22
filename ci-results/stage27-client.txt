@@ -1,10 +1,10 @@
 workflow=GGO UI Shell Stage 27 Compile
-run_id=32540190232
+run_id=32540575554
 run_attempt=1
-run_url=https://github.com/straimy/-/actions/runs/32540190232
-source_sha=380d899b9cc1ffa2506c22327b8d400958b52be4
-apply=failure
-bootstrap=skipped
-compile=skipped
+run_url=https://github.com/straimy/-/actions/runs/32540575554
+source_sha=00aff59e7914c82a2726ef86df52d5e56aa762da
+apply=success
+bootstrap=success
+compile=failure
 verify=skipped
 result=failure
