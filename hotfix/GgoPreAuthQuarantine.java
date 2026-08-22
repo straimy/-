@@ -1,5 +1,6 @@
 package arena.forge;
 
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.event.CommandEvent;
@@ -23,7 +24,9 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 @Mod.EventBusSubscriber(modid = "gunnerarena", bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class GgoPreAuthQuarantine {
+    private static final int MAX_QUARANTINE_TICKS = 20 * 15;
     private static final Map<UUID, Anchor> ANCHORS = new ConcurrentHashMap<>();
+    private static final Map<UUID, Integer> QUARANTINE_TICKS = new ConcurrentHashMap<>();
 
     private GgoPreAuthQuarantine() {}
 
@@ -31,14 +34,21 @@ public final class GgoPreAuthQuarantine {
     public static void join(PlayerEvent.PlayerLoggedInEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer player)) return;
         if (!quarantined(player)) return;
-        ANCHORS.put(player.getUUID(), Anchor.capture(player));
+        UUID id = player.getUUID();
+        ANCHORS.put(id, Anchor.capture(player));
+        QUARANTINE_TICKS.put(id, 0);
         player.setDeltaMovement(Vec3.ZERO);
         player.fallDistance = 0.0F;
     }
 
     @SubscribeEvent
     public static void leave(PlayerEvent.PlayerLoggedOutEvent event) {
-        ANCHORS.remove(event.getEntity().getUUID());
+        UUID id = event.getEntity().getUUID();
+        ANCHORS.remove(id);
+        QUARANTINE_TICKS.remove(id);
+        if (event.getEntity() instanceof ServerPlayer player) {
+            GgoOfficialAuthState.clear(player);
+        }
     }
 
     @SubscribeEvent
@@ -51,6 +61,18 @@ public final class GgoPreAuthQuarantine {
             UUID id = player.getUUID();
             if (!quarantined(player)) {
                 ANCHORS.remove(id);
+                QUARANTINE_TICKS.remove(id);
+                continue;
+            }
+
+            int ticks = QUARANTINE_TICKS.merge(id, 1, Integer::sum);
+            if (ticks >= MAX_QUARANTINE_TICKS) {
+                ANCHORS.remove(id);
+                QUARANTINE_TICKS.remove(id);
+                GgoOfficialAuthState.verificationFailed(player);
+                player.connection.disconnect(Component.literal(
+                        "GunGloryOnline: secure session verification timed out. Return to the GGO launcher and press Play again."
+                ));
                 continue;
             }
 
