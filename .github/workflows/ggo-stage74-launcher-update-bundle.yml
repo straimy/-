@@ -61,8 +61,8 @@ jobs:
         run: |
           set -euo pipefail
           version="$(python3 -c 'import json; print(json.load(open("launcher/src-tauri/tauri.conf.json"))["version"])')"
-          test "$version" = "0.2.2"
-          test "$(dpkg-deb -f fresh/linux/GunGloryOnline-Launcher-Ubuntu-Debian.deb Version)" = "$version"
+          package_version="$(dpkg-deb -f fresh/linux/GunGloryOnline-Launcher-Ubuntu-Debian.deb Version)"
+          test "$package_version" = "$version"
 
           rm -rf corrected
           mkdir -p corrected/{packages,web/services,receipts}
@@ -87,17 +87,17 @@ jobs:
           grep -q 'Stage 74 launcher update deploy: GREEN' corrected/web/site/deploy-stage74.sh
 
           cat > corrected/DEPLOY-STAGE74.md <<EOF
-          # GunGloryOnline Stage 74 — Launcher 0.2.2 update channel
+          # GunGloryOnline Stage 74 — Launcher ${version} update channel
 
           Server/game runtime is not replaced by this payload.
 
-          On the VDS, from the extracted `corrected` directory, use the one-command deploy helper:
+          On the VDS, from the extracted \`corrected\` directory:
 
           \`\`\`bash
           sudo ./web/site/deploy-stage74.sh ./packages
           \`\`\`
 
-          It installs the website update, publishes launcher 0.2.2, verifies the public install script, and validates the public update manifest.
+          The helper derives the launcher version from the Ubuntu package, publishes it, verifies the public install script and validates the public update manifest.
 
           Ubuntu clients can then update with:
 
@@ -113,6 +113,7 @@ jobs:
           sha256sum GunGloryOnline-Stage74-Launcher-Update-2026-08-22.zip > GunGloryOnline-Stage74-Launcher-Update-2026-08-22.zip.sha256
           echo "bytes=$(stat -c%s GunGloryOnline-Stage74-Launcher-Update-2026-08-22.zip)" >> "$GITHUB_OUTPUT"
           echo "sha256=$(cut -d' ' -f1 GunGloryOnline-Stage74-Launcher-Update-2026-08-22.zip.sha256)" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Upload Stage 74 bundle
         id: upload
@@ -144,7 +145,7 @@ jobs:
           stage74_source_sha=${GITHUB_SHA}
           launcher_source_sha=${{ steps.source.outputs.head_sha }}
           launcher_package_run=${{ steps.source.outputs.run_id }}
-          launcher_version=0.2.2
+          launcher_version=${{ steps.bundle.outputs.version }}
           bundle=$BUNDLE
           upload=$UPLOAD
           bundle_bytes=${{ steps.bundle.outputs.bytes }}
