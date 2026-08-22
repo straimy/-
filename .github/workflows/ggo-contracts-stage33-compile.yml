@@ -1,0 +1,133 @@
+name: GGO Contracts Stage 33 Compile
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - server/runtime-hardening-v1
+    paths:
+      - 'hotfix/GgoContractBalance.java'
+      - 'hotfix/GgoContractService.java'
+      - 'hotfix/GgoContractProgressHooks.java'
+      - 'hotfix/GgoContractLifecycleHooks.java'
+      - 'hotfix/GgoContractPersistence.java'
+      - 'hotfix/apply_ggo_supply_lifecycle_stage33.py'
+      - 'hotfix/apply_ggo_contract_eligibility_stage32.py'
+      - 'hotfix/apply_ggo_contract_balance_stage31.py'
+      - 'hotfix/apply_ggo_contract_lifecycle_stage30.py'
+      - 'hotfix/apply_ggo_contract_persistence_stage29.py'
+      - 'hotfix/apply_ggo_contract_map_stage27.py'
+      - 'hotfix/apply_ggo_compile_baseline_stage27.py'
+      - '.github/workflows/ggo-contracts-stage33-compile.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Unpack Runtime v1 source
+        run: |
+          set -euo pipefail
+          rm -rf ga-build && mkdir ga-build
+          unzip -q "$SOURCE_ZIP" -d ga-build
+
+      - name: Apply contracts through Stage 33
+        id: apply
+        run: |
+          set -euo pipefail
+          python3 hotfix/apply_ggo_contract_rewards_stage26.py
+          python3 hotfix/apply_ggo_contract_map_stage27.py
+          python3 hotfix/apply_ggo_contract_push_stage28.py
+          python3 hotfix/apply_ggo_contract_persistence_stage29.py
+          python3 hotfix/apply_ggo_contract_lifecycle_stage30.py
+          python3 hotfix/apply_ggo_contract_balance_stage31.py
+          python3 hotfix/apply_ggo_contract_eligibility_stage32.py
+          python3 hotfix/apply_ggo_supply_lifecycle_stage33.py
+          python3 hotfix/apply_ggo_compile_baseline_stage27.py
+          root=ga-build/src/main/java/arena/forge
+          grep -q 'new ResourceLocation("jeg","bullet")' "$root/GgoContractProgressHooks.java"
+          grep -q 'victim instanceof Enemy' "$root/GgoContractProgressHooks.java"
+          ! grep -q 'victim instanceof Mob' "$root/GgoContractProgressHooks.java"
+          grep -q 'resolveActive(server, runtime, now)' "$root/GgoLootSpawnService.java"
+          grep -q 'reconcileExistingDrops(server)' "$root/GgoLootSpawnService.java"
+          grep -q 'serverStopped(ServerStoppedEvent' "$root/GgoLootSpawnService.java"
+          grep -q 'boolean available = server != null && resolveActive' "$root/GgoLootSpawnService.java"
+          grep -q 'ATOMIC_MOVE' "$root/GgoContractPersistence.java"
+
+      - name: Bootstrap ForgeGradle wrapper
+        id: bootstrap
+        run: |
+          set -euo pipefail
+          if [ ! -x ga-build/gradlew ] || [ ! -f ga-build/gradle/wrapper/gradle-wrapper.jar ]; then
+            rm -rf /tmp/forge-mdk /tmp/forge-mdk.zip
+            curl -fL --retry 3 -o /tmp/forge-mdk.zip https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-mdk.zip
+            mkdir -p /tmp/forge-mdk
+            unzip -q /tmp/forge-mdk.zip 'gradlew' 'gradlew.bat' 'gradle/*' -d /tmp/forge-mdk
+            cp /tmp/forge-mdk/gradlew ga-build/gradlew
+            cp /tmp/forge-mdk/gradlew.bat ga-build/gradlew.bat
+            rm -rf ga-build/gradle && cp -a /tmp/forge-mdk/gradle ga-build/gradle
+            chmod +x ga-build/gradlew
+          fi
+
+      - name: Compile Forge Core
+        id: compile
+        working-directory: ga-build
+        run: ./gradlew --no-daemon compileJava --stacktrace
+
+      - name: Verify Stage 33 classes
+        id: verify
+        run: |
+          set -euo pipefail
+          root=ga-build/build/classes/java/main/arena/forge
+          test -f "$root/GgoContractBalance.class"
+          test -f "$root/GgoContractService.class"
+          test -f "$root/GgoContractProgressHooks.class"
+          test -f "$root/GgoContractPersistence.class"
+          test -f "$root/GgoContractLifecycleHooks.class"
+          test -f "$root/GgoLootSpawnService.class"
+          test -f "$root/GgoLootSpawnService\$SupplyMarker.class"
+          test -f "$root/GgoSupplyExtractionService\$ExtractionMarker.class"
+
+      - name: Publish exact CI receipt
+        if: always()
+        env:
+          APPLY_OUTCOME: ${{ steps.apply.outcome }}
+          BOOTSTRAP_OUTCOME: ${{ steps.bootstrap.outcome }}
+          COMPILE_OUTCOME: ${{ steps.compile.outcome }}
+          VERIFY_OUTCOME: ${{ steps.verify.outcome }}
+        run: |
+          set -euo pipefail
+          result=success
+          for value in "$APPLY_OUTCOME" "$BOOTSTRAP_OUTCOME" "$COMPILE_OUTCOME" "$VERIFY_OUTCOME"; do
+            [ "$value" = success ] || result=failure
+          done
+          mkdir -p ci-results
+          printf '%s\n' \
+            "workflow=${{ github.workflow }}" \
+            "run_id=${{ github.run_id }}" \
+            "run_attempt=${{ github.run_attempt }}" \
+            "run_url=https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            "source_sha=${{ github.sha }}" \
+            "apply=$APPLY_OUTCOME" \
+            "bootstrap=$BOOTSTRAP_OUTCOME" \
+            "compile=$COMPILE_OUTCOME" \
+            "verify=$VERIFY_OUTCOME" \
+            "result=$result" > ci-results/stage33-server.txt
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add ci-results/stage33-server.txt
+          git commit -m "ci: record stage33 server run ${{ github.run_id }}" || exit 0
+          git fetch origin "$GITHUB_REF_NAME"
+          git rebase "origin/$GITHUB_REF_NAME"
+          git push origin "HEAD:$GITHUB_REF_NAME"
