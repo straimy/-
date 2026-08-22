@@ -1,10 +1,10 @@
 workflow=GGO Contracts Stage 30 Compile
-run_id=32541408557
+run_id=32541623174
 run_attempt=1
-run_url=https://github.com/straimy/-/actions/runs/32541408557
-source_sha=00ccc03bb1dde1b88e1e07b3994c87e4c23473eb
+run_url=https://github.com/straimy/-/actions/runs/32541623174
+source_sha=021ff368fbf9a7236a2b4e6622bf90cf3582329c
 apply=success
 bootstrap=success
-compile=success
-verify=success
-result=success
+compile=failure
+verify=skipped
+result=failure
