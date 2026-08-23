@@ -7,6 +7,7 @@ small append-only security audit trail for privileged account actions.
 """
 import json
 import os
+import re
 import secrets
 import threading
 import time
@@ -17,6 +18,8 @@ import server as core
 
 ALLOW_OWNER_BOOTSTRAP = os.environ.get("GGO_ALLOW_OWNER_BOOTSTRAP", "").strip() == "1"
 TRUST_PROXY = os.environ.get("GGO_TRUST_LOCAL_PROXY", "1").strip() == "1"
+BUILD_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,96}$")
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 # Sliding-window limits. These protect the Python service even if an upstream proxy is misconfigured.
 # They intentionally target credential/session creation, not ordinary read-only API traffic.
@@ -71,6 +74,23 @@ def _rate_allowed(client_ip: str, path: str):
     return True, 0
 
 
+def _ticket_build(data):
+    """Return normalized optional build binding; partial/invalid metadata is rejected."""
+    build_id = str(data.get("build_id", "")).strip()
+    core_sha256 = str(data.get("core_sha256", "")).strip().lower()
+    ui_sha256 = str(data.get("ui_sha256", "")).strip().lower()
+    values = (build_id, core_sha256, ui_sha256)
+    if not any(values):
+        return None
+    if not all(values):
+        raise ValueError("incomplete_build_metadata")
+    if not BUILD_ID_RE.fullmatch(build_id):
+        raise ValueError("invalid_build_id")
+    if not SHA256_RE.fullmatch(core_sha256) or not SHA256_RE.fullmatch(ui_sha256):
+        raise ValueError("invalid_build_hash")
+    return build_id, core_sha256, ui_sha256
+
+
 def init_security_db():
     with core.connect() as db:
         db.execute(
@@ -91,6 +111,12 @@ def init_security_db():
         db.execute(
             "CREATE INDEX IF NOT EXISTS idx_security_audit_actor ON security_audit(actor_user_id,created_at DESC)"
         )
+        # Additive migration: old launchers may still create unbound tickets during the beta rollout.
+        # New launchers bind the exact managed Core/UI identity into the one-shot ticket at issuance.
+        ticket_columns = {row["name"] for row in db.execute("PRAGMA table_info(game_tickets)")}
+        for name in ("build_id", "core_sha256", "ui_sha256"):
+            if name not in ticket_columns:
+                db.execute(f"ALTER TABLE game_tickets ADD COLUMN {name} TEXT")
         db.commit()
 
 
@@ -104,7 +130,7 @@ def _audit(db, actor_user_id, action, target_user_id=None, details=None):
 
 
 class SecureHandler(core.Handler):
-    server_version = "GGOAuth/1.4-secure"
+    server_version = "GGOAuth/1.5-secure"
 
     def json(self, status, payload, headers=None):
         hardened = {
@@ -153,6 +179,92 @@ class SecureHandler(core.Handler):
                 },
             )
         return super().register(data)
+
+    def game_ticket(self, data):
+        audience = str(data.get("audience", "official-online")).strip().lower()
+        if audience not in core.ALLOWED_GAME_AUDIENCES:
+            return self.json(400, {"error": "invalid_audience"})
+        try:
+            build = _ticket_build(data)
+        except ValueError as error:
+            return self.json(400, {"error": str(error)})
+        with core.connect() as db:
+            core.cleanup(db)
+            user = self.auth_user(db)
+            if not user:
+                return self.json(401, {"error": "not_authenticated"})
+            raw_ticket = core.token()
+            ts = core.now()
+            build_id, core_sha256, ui_sha256 = build or (None, None, None)
+            db.execute(
+                "INSERT INTO game_tickets(token_hash,user_id,audience,expires_at,created_at,consumed_at,build_id,core_sha256,ui_sha256) "
+                "VALUES(?,?,?,?,?,NULL,?,?,?)",
+                (
+                    core.token_hash(raw_ticket),
+                    user["id"],
+                    audience,
+                    ts + core.GAME_TICKET_TTL,
+                    ts,
+                    build_id,
+                    core_sha256,
+                    ui_sha256,
+                ),
+            )
+            db.commit()
+        return self.json(
+            201,
+            {
+                "ticket": raw_ticket,
+                "expires_in": core.GAME_TICKET_TTL,
+                "player_id": user["id"],
+                "display_name": user["display_name"],
+                "build_bound": build is not None,
+            },
+        )
+
+    def consume_game_ticket(self, data):
+        if not self.server_key_ok():
+            return self.json(401, {"error": "server_auth_required"})
+        raw_ticket = str(data.get("ticket", "")).strip()
+        audience = str(data.get("audience", "official-online")).strip().lower()
+        if not raw_ticket or audience not in core.ALLOWED_GAME_AUDIENCES:
+            return self.json(400, {"error": "invalid_ticket_request"})
+        ts = core.now()
+        with core.connect() as db:
+            core.cleanup(db)
+            db.commit()
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute(
+                "SELECT t.*,u.* FROM game_tickets t JOIN users u ON u.id=t.user_id "
+                "WHERE t.token_hash=? AND t.audience=? AND t.expires_at>? AND t.consumed_at IS NULL",
+                (core.token_hash(raw_ticket), audience, ts),
+            ).fetchone()
+            if not row:
+                db.rollback()
+                return self.json(401, {"error": "invalid_expired_or_consumed_ticket"})
+            changed = db.execute(
+                "UPDATE game_tickets SET consumed_at=? WHERE token_hash=? AND consumed_at IS NULL",
+                (ts, core.token_hash(raw_ticket)),
+            ).rowcount
+            if changed != 1:
+                db.rollback()
+                return self.json(409, {"error": "ticket_already_consumed"})
+            db.commit()
+        bound = bool(row["build_id"] and row["core_sha256"] and row["ui_sha256"])
+        return self.json(
+            200,
+            {
+                "valid": True,
+                "audience": audience,
+                "player": core.profile(row),
+                "ticket_build": {
+                    "bound": bound,
+                    "build_id": row["build_id"] if bound else "",
+                    "core_sha256": row["core_sha256"] if bound else "",
+                    "ui_sha256": row["ui_sha256"] if bound else "",
+                },
+            },
+        )
 
     def get_security_audit(self):
         with core.connect() as db:
