@@ -1,5 +1,6 @@
 name: GGO Stage 87 Staging Smoke
 # Re-run after Stage86 artifact root normalization; production remains fenced.
+# 2026-08-23: explicit staging-smoke recheck after normalized Stage86 artifact validation.
 
 on:
   workflow_dispatch:
