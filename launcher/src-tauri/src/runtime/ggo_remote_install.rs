@@ -145,8 +145,10 @@ mod tests {
 
     #[test]
     fn finalizer_preserves_stage77_until_stage85_pair_is_complete() {
-        let root =
-            std::env::temp_dir().join(format!("ggo-remote-stage85-partial-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!(
+            "ggo-remote-stage85-partial-{}",
+            uuid::Uuid::new_v4()
+        ));
         let mods = root.join("mods");
         std::fs::create_dir_all(&mods).unwrap();
         std::fs::write(mods.join(REMOTE_CORE_STAGE77), b"old-core").unwrap();
