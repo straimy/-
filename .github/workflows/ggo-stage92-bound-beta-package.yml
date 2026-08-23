@@ -95,6 +95,8 @@ jobs:
           grep -q 'options.connect_server = false;' src-tauri/src/lib.rs
           ! grep -q 'async fn launch_minecraft(' src-tauri/src/lib.rs
           ! grep -q 'async fn preview_minecraft_launch(' src-tauri/src/lib.rs
+          grep -q 'https://ggo.kvicloud.ru/content' src-tauri/src/core/bootstrap.rs
+          grep -q 'beta-stage85-candidate.json' src-tauri/src/core/bootstrap.rs
           test -s src-tauri/icons/icon.ico
 
       - name: Frontend build
@@ -172,6 +174,7 @@ jobs:
           launcher_candidate_version=0.2.4
           ticket_build_binding=true
           stage85_integrity=true
+          remote_content_default=true
           menu_first=true
           launch_autoconnect=false
           production_published=false
