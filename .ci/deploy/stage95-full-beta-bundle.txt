@@ -1,6 +1,6 @@
 workflow=GGO Stage 95 Full Closed Beta Bundle
-run_id=32635293179
-launcher_sha=a347d97c65397074ca7d92c7a577988e04901b05
+run_id=32635455248
+launcher_sha=8278168ddda5769d592cf7973361c89fe3f6ffcf
 ubuntu_launcher_run=32631622570
 server_core_run=32633191926
 runtime_candidate_run=32624078787
@@ -12,4 +12,4 @@ includes_ubuntu_launcher=true
 includes_server_core=true
 includes_runtime=true
 production_published=false
-result=failure
+result=success
