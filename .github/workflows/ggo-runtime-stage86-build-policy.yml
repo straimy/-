@@ -125,7 +125,7 @@ jobs:
           mkdir -p stage86
           cp "$CORE" stage86/gungloryonline-core-stage86-policy-check.jar
           cp deploy/stage85-build-policy.env.example stage86/stage85-build-policy.env.example
-          sha256sum stage86/gungloryonline-core-stage86-policy-check.jar stage86/stage85-build-policy.env.example > stage86/SHA256SUMS
+          (cd stage86 && sha256sum gungloryonline-core-stage86-policy-check.jar stage85-build-policy.env.example > SHA256SUMS)
           jar tf "$CORE" | grep -q 'arena/forge/GgoClientBuildPolicy.class'
           jar tf "$CORE" | grep -q 'arena/forge/GgoLaunchTicketNetwork.class'
           echo "sha256=$(sha256sum "$CORE" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
