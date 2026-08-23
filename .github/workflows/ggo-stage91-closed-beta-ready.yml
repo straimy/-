@@ -1,0 +1,117 @@
+name: GGO Stage 91 Closed Beta Ready
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - launcher/bootstrap-v0.1
+    paths:
+      - '.github/workflows/ggo-stage91-closed-beta-ready.yml'
+      - '.ci/deploy/stage89-final-beta-preflight.txt'
+      - '.ci/security/stage90-ticket-build-binding.txt'
+      - 'launcher/hotfix/apply_ticket_binding_stage90.py'
+      - 'services/ggo-auth/**'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  ready:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout launcher/auth candidate
+        uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+          fetch-depth: 0
+          path: candidate
+
+      - name: Checkout hardened server candidate
+        uses: actions/checkout@v4
+        with:
+          ref: server/runtime-hardening-v1
+          fetch-depth: 0
+          path: server-candidate
+
+      - name: Verify Stage89 final preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          R=candidate/.ci/deploy/stage89-final-beta-preflight.txt
+          test -f "$R"
+          grep -qx 'secret_gate=success' "$R"
+          grep -qx 'runtime_candidate=success' "$R"
+          grep -qx 'build_policy=success' "$R"
+          grep -qx 'launcher_packages=success' "$R"
+          grep -qx 'production_fence=success' "$R"
+          grep -qx 'launcher_candidate_version=0.2.4' "$R"
+          grep -qx 'production_published=false' "$R"
+          grep -qx 'result=success' "$R"
+
+      - name: Verify Stage90 launcher/auth binding receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          R=candidate/.ci/security/stage90-ticket-build-binding.txt
+          test -f "$R"
+          grep -qx 'ticket_build_binding=true' "$R"
+          grep -qx 'launcher_metadata_bound=true' "$R"
+          grep -qx 'auth_metadata_persisted=true' "$R"
+          grep -qx 'consume_returns_ticket_build=true' "$R"
+          grep -qx 'legacy_unbound_ticket_compatible=true' "$R"
+          grep -qx 'production_deployed=false' "$R"
+          grep -qx 'result=success' "$R"
+
+      - name: Verify hardened server consumes ticket-bound metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          N=server-candidate/hotfix/GgoLaunchTicketNetwork.java
+          test -f "$N"
+          grep -q 'private static final String PROTOCOL = "3"' "$N"
+          grep -q 'expectedBuildId' "$N"
+          grep -q 'expectedCoreSha256' "$N"
+          grep -q 'expectedUiSha256' "$N"
+          grep -q 'ticketBuildBound' "$N"
+          grep -q 'ticket build metadata mismatch' "$N"
+          grep -q '/auth/game-ticket/consume' "$N"
+          grep -q 'X-GGO-Server-Key' "$N"
+
+      - name: Verify production remains fenced
+        shell: bash
+        run: |
+          set -euo pipefail
+          M=candidate/site/content/manifests/beta.json
+          test -f "$M"
+          grep -q 'stage68.jar' "$M"
+          grep -q 'stage69.jar' "$M"
+          ! grep -q 'stage85.jar' "$M"
+
+      - name: Publish Stage91 closed-beta-ready receipt
+        shell: bash
+        working-directory: candidate
+        run: |
+          set -euo pipefail
+          mkdir -p .ci/deploy
+          cat > .ci/deploy/stage91-closed-beta-ready.txt <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_id=${GITHUB_RUN_ID}
+          launcher_sha=$(git rev-parse HEAD)
+          server_sha=$(git -C ../server-candidate rev-parse HEAD)
+          stage89=success
+          stage90=success
+          server_ticket_binding=success
+          launcher_candidate_version=0.2.4
+          production_published=false
+          manual_beta_ready=true
+          result=success
+          EOF
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .ci/deploy/stage91-closed-beta-ready.txt
+          git commit -m "ci: record Stage91 closed beta readiness ${GITHUB_RUN_ID}" || exit 0
+          git fetch origin launcher/bootstrap-v0.1
+          git rebase origin/launcher/bootstrap-v0.1
+          git push origin HEAD:launcher/bootstrap-v0.1
