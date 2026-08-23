@@ -24,6 +24,7 @@ public final class GgoAntiCheatEvidence {
         VERTICAL_SPEED,
         TELEPORT_LIKE_MOVE,
         IMPOSSIBLE_AIR_CHAIN,
+        WEAPON_STATE,
         COMBAT_RATE,
         INVENTORY_DESYNC,
         CLIENT_INTEGRITY
