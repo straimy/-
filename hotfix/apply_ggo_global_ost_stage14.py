@@ -30,6 +30,10 @@ TRACKS = {
         "file": "ggosounds5.ogg",
         "sha256": "3bd0c7d836ebc436abb040f0c93b41effba5312727ee247f76a20e33ecc814a9",
     },
+    "distant_current": {
+        "file": "GunGloryOnline_-_Distant_Current.ogg",
+        "sha256": "54cba3c8382e7d956548535e84f88c685e65c7ef8d549f7a3d9eb9fec6a7aad7",
+    },
 }
 
 
@@ -78,6 +82,7 @@ def main() -> None:
             {"name": "ggo/music/lost_signal", "stream": True},
             {"name": "ggo/music/ggo_track_04", "stream": True},
             {"name": "ggo/music/afterglow_protocol", "stream": True},
+            {"name": "ggo/music/distant_current", "stream": True},
         ]
 
         # Keep vanilla timing/context machinery, but make every normal music event
@@ -133,7 +138,7 @@ def main() -> None:
                     out.write(path, path.relative_to(root).as_posix())
 
     print("GGO OST Stage 14/55 complete")
-    print(" - Digital Horizon / Red Skyline / Lost Signal / GGO Track 04 / Afterglow Protocol")
+    print(" - Digital Horizon / Red Skyline / Lost Signal / GGO Track 04 / Afterglow Protocol / Distant Current")
     print(" - one global music pool for every normal Minecraft music event")
     print(" - streaming OGG resources")
     print(" - original Minecraft music references replaced in the GGO resource pack")
