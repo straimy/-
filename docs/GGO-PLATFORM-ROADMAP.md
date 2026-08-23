@@ -118,6 +118,21 @@ Official GGO Online treats the launcher and client machine as untrusted. The ant
 
 Do not fork an entire JDK only to hide the game or pretend DLL/native injection can be made impossible. Release obfuscation and a managed runtime can raise the cost of casual tampering, but durable enforcement remains server-side. See `docs/GGO-ANTICHEAT-ARCHITECTURE.md`.
 
+## Contributor trust and production access
+
+A contributor, tester, composer, anti-cheat developer or support worker does not automatically need production administrator access.
+
+Use least privilege:
+- scoped source/test access first;
+- no production SSH/root, auth database, signing keys or server/auth secrets for ordinary contributors;
+- support permissions stay separate from code/infrastructure permissions;
+- security-sensitive contributions require reviewable source, reproducible build/CI and provenance;
+- externally supplied anti-cheat code enters through isolated review/test/report-only stages before enforcement;
+- official music/assets need clear rights/provenance and editable source/project material when that is part of the agreed deliverable;
+- production deployment remains controlled by the GGO release chain, not a contributor workstation.
+
+See `docs/GGO-CONTRIBUTOR-TRUST.md`.
+
 ## Community server roadmap
 Not part of the first stable release.
 
@@ -135,9 +150,10 @@ This preserves the open/moddable spirit of Minecraft without turning the main GG
 4. Add an allowed GGO client-build policy and a minimal integrity handshake for required Core/UI/runtime build IDs.
 5. Add first server-authoritative anti-cheat detectors for movement, weapon timing and inventory/progression mutations in report-only mode.
 6. Add anti-cheat evidence and sanctions/audit views to the site staff console with role-gated access.
-7. Remove legacy /login and /register only after ticket-required production smoke tests are green.
-8. Add shard discovery / health API and one-button best-region connection.
-9. Replace remaining Minecraft-facing surfaces with GGO equivalents while leaving legal/technical runtime attribution available in Diagnostics.
-10. Add persistent open-world systems, Operations and Events incrementally.
-11. Evaluate an optional signed native Windows anti-tamper helper after server-side detection is mature; do not make a custom JDK fork a beta blocker.
-12. Add Community Worlds only after the official ecosystem is stable.
+7. Enforce contributor least-privilege/reproducibility/provenance gates for security-sensitive code and official assets before accepting external work into release candidates.
+8. Remove legacy /login and /register only after ticket-required production smoke tests are green.
+9. Add shard discovery / health API and one-button best-region connection.
+10. Replace remaining Minecraft-facing surfaces with GGO equivalents while leaving legal/technical runtime attribution available in Diagnostics.
+11. Add persistent open-world systems, Operations and Events incrementally.
+12. Evaluate an optional signed native Windows anti-tamper helper after server-side detection is mature; do not make a custom JDK fork a beta blocker.
+13. Add Community Worlds only after the official ecosystem is stable.
