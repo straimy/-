@@ -104,6 +104,20 @@ Long term the client should not expose a fixed Minecraft address. Launcher/API d
 
 The official GunGloryOnline entry is restored in servers.dat for compatibility, without deleting user-added entries. In the final UX this list is mostly an Advanced/Community feature; ENTER GGO uses service discovery directly.
 
+## Anti-cheat and client integrity
+
+Official GGO Online treats the launcher and client machine as untrusted. The anti-cheat model is layered:
+
+- server-authoritative movement, combat, weapon timing, inventory and progression validation;
+- current GGO Game Ticket + protocol handshake;
+- launcher-managed signed/versioned runtime files;
+- pinned supported Java 17 runtime managed by the launcher;
+- limited client integrity/build telemetry as an additional signal;
+- server-side evidence/scoring and staff review tooling;
+- optional signed native anti-tamper later, not as the primary security boundary.
+
+Do not fork an entire JDK only to hide the game or pretend DLL/native injection can be made impossible. Release obfuscation and a managed runtime can raise the cost of casual tampering, but durable enforcement remains server-side. See `docs/GGO-ANTICHEAT-ARCHITECTURE.md`.
+
 ## Community server roadmap
 Not part of the first stable release.
 
@@ -115,12 +129,15 @@ Phase 4: curated Community Worlds directory with moderation, versions, compatibi
 This preserves the open/moddable spirit of Minecraft without turning the main GGO experience back into a generic server browser.
 
 ## Near-term implementation order
-1. Complete GGO Game Ticket API and server validation.
-2. Remove legacy /login and /register after ticket validation passes production smoke tests.
-3. Restore official server on every launcher start and use play.kvicloud.ru everywhere player-facing.
-4. Replace launcher Home runtime label with GGO Client v40; move Forge/Minecraft/Java details to Advanced.
-5. Implement GGO title screen and Training separation in the client UI mod.
-6. Remove KVICloud legacy gameplay strings; use GGO branding. Keep KVICloud only as infrastructure attribution if desired.
-7. Add shard discovery / health API and one-button best-region connection.
-8. Add persistent open-world systems, Operations and Events incrementally.
-9. Add Community Worlds only after the official ecosystem is stable.
+1. Finish the current Stage77/78 runtime, Stage79 portal/staff and launcher beta chain, then perform the first real smoke test.
+2. Complete production GGO Game Ticket validation and fresh-session/reconnect architecture.
+3. Add a launcher-managed pinned Java 17 runtime with verified package hashes/signatures; keep arbitrary system Java as an Advanced fallback, not the normal path.
+4. Add an allowed GGO client-build policy and a minimal integrity handshake for required Core/UI/runtime build IDs.
+5. Add first server-authoritative anti-cheat detectors for movement, weapon timing and inventory/progression mutations in report-only mode.
+6. Add anti-cheat evidence and sanctions/audit views to the site staff console with role-gated access.
+7. Remove legacy /login and /register only after ticket-required production smoke tests are green.
+8. Add shard discovery / health API and one-button best-region connection.
+9. Replace remaining Minecraft-facing surfaces with GGO equivalents while leaving legal/technical runtime attribution available in Diagnostics.
+10. Add persistent open-world systems, Operations and Events incrementally.
+11. Evaluate an optional signed native Windows anti-tamper helper after server-side detection is mature; do not make a custom JDK fork a beta blocker.
+12. Add Community Worlds only after the official ecosystem is stable.
