@@ -34,7 +34,7 @@ jobs:
       - name: Production entrypoint security smoke
         id: secure
         run: python3 services/ggo-auth/test_security.py -v
-      - name: Verify production service uses secure entrypoint
+      - name: Verify production service hardening
         id: service
         run: |
           set -euo pipefail
@@ -42,6 +42,11 @@ jobs:
           grep -q 'secure_server.py' services/ggo-auth/install.sh
           grep -q 'reserved_owner_username' services/ggo-auth/secure_server.py
           grep -q 'GGO_ALLOW_OWNER_BOOTSTRAP' services/ggo-auth/secure_server.py
+          grep -q 'RATE_RULES' services/ggo-auth/secure_server.py
+          grep -q 'rate_limited' services/ggo-auth/secure_server.py
+          grep -q 'X-Frame-Options' services/ggo-auth/secure_server.py
+          grep -q 'Referrer-Policy' services/ggo-auth/secure_server.py
+          grep -q 'Permissions-Policy' services/ggo-auth/secure_server.py
           ! grep -q 'GGO_ALLOW_OWNER_BOOTSTRAP=1' services/ggo-auth/ggo-auth.service
       - name: Publish auth security receipt
         if: always()
@@ -67,6 +72,8 @@ jobs:
           secure_systemd_entrypoint=$SERVICE
           owner_public_registration_blocked=true
           staff_roles_server_authoritative=true
+          auth_rate_limits=true
+          hardened_security_headers=true
           result=$result
           EOF
           git config user.name github-actions[bot]
