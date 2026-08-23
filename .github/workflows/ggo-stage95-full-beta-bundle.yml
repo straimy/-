@@ -130,17 +130,18 @@ jobs:
           - GGO_SERVER_KEY remains a VDS secret and is not included in this archive.
           EOF
           (cd bundle && zip -qr GunGloryOnline-0.2.4-ClosedBeta-Full.zip GunGloryOnline-0.2.4-ClosedBeta-Full)
-          sha256sum bundle/GunGloryOnline-0.2.4-ClosedBeta-Full.zip > bundle/SHA256SUMS
+          (cd bundle && sha256sum GunGloryOnline-0.2.4-ClosedBeta-Full.zip > SHA256SUMS)
 
       - name: Verify bundle contents
         shell: bash
         run: |
           set -euo pipefail
-          unzip -l bundle/GunGloryOnline-0.2.4-ClosedBeta-Full.zip | grep -q 'vds/site/admin/index.html'
-          unzip -l bundle/GunGloryOnline-0.2.4-ClosedBeta-Full.zip | grep -q 'vds/services/ggo-auth/secure_server.py'
-          unzip -l bundle/GunGloryOnline-0.2.4-ClosedBeta-Full.zip | grep -q 'vds/server-core/'
-          unzip -l bundle/GunGloryOnline-0.2.4-ClosedBeta-Full.zip | grep -q 'client/ubuntu-launcher/'
-          unzip -l bundle/GunGloryOnline-0.2.4-ClosedBeta-Full.zip | grep -q 'runtime/stage85-candidate/'
+          ZIP=bundle/GunGloryOnline-0.2.4-ClosedBeta-Full.zip
+          unzip -l "$ZIP" | grep -q 'vds/site/admin/index.html'
+          unzip -l "$ZIP" | grep -q 'vds/services/ggo-auth/secure_server.py'
+          unzip -l "$ZIP" | grep -q 'vds/server-core/'
+          unzip -l "$ZIP" | grep -q 'client/ubuntu-launcher/'
+          unzip -l "$ZIP" | grep -q 'runtime/stage85-candidate/'
           (cd bundle && sha256sum -c SHA256SUMS)
 
       - name: Upload full bundle
