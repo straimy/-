@@ -124,9 +124,22 @@ jobs:
           test -n "$CORE" && test -f "$CORE"
           mkdir -p stage86
           cp "$CORE" stage86/gungloryonline-core-stage86-policy-check.jar
+          cp deploy/stage85-build-policy.env.example stage86/stage85-build-policy.env.example
+          sha256sum stage86/gungloryonline-core-stage86-policy-check.jar stage86/stage85-build-policy.env.example > stage86/SHA256SUMS
           jar tf "$CORE" | grep -q 'arena/forge/GgoClientBuildPolicy.class'
           jar tf "$CORE" | grep -q 'arena/forge/GgoLaunchTicketNetwork.class'
           echo "sha256=$(sha256sum "$CORE" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Verify Stage86 artifact payload
+        id: artifact_gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd stage86 && sha256sum -c SHA256SUMS)
+          grep -qx "GGO_ALLOWED_CLIENT_BUILDS=${EXPECTED_BUILD}" stage86/stage85-build-policy.env.example
+          grep -qx "GGO_ALLOWED_CORE_SHA256=${EXPECTED_CORE_SHA}" stage86/stage85-build-policy.env.example
+          grep -qx "GGO_ALLOWED_UI_SHA256=${EXPECTED_UI_SHA}" stage86/stage85-build-policy.env.example
+          grep -qx 'GGO_ENFORCE_CLIENT_BUILD=0' stage86/stage85-build-policy.env.example
 
       - uses: actions/upload-artifact@v4
         id: upload
@@ -143,11 +156,12 @@ jobs:
           CONFIG_OUTCOME: ${{ steps.config.outcome }}
           POLICY_OUTCOME: ${{ steps.policy.outcome }}
           CORE_OUTCOME: ${{ steps.core.outcome }}
+          ARTIFACT_GATE_OUTCOME: ${{ steps.artifact_gate.outcome }}
           UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
         run: |
           set -euo pipefail
           result=success
-          for v in "$CONFIG_OUTCOME" "$POLICY_OUTCOME" "$CORE_OUTCOME" "$UPLOAD_OUTCOME"; do [ "$v" = success ] || result=failure; done
+          for v in "$CONFIG_OUTCOME" "$POLICY_OUTCOME" "$CORE_OUTCOME" "$ARTIFACT_GATE_OUTCOME" "$UPLOAD_OUTCOME"; do [ "$v" = success ] || result=failure; done
           mkdir -p ci-results
           cat > ci-results/stage86-build-policy.txt <<EOF
           workflow=${GITHUB_WORKFLOW}
@@ -158,6 +172,7 @@ jobs:
           allowlist_config=$CONFIG_OUTCOME
           policy_gates=$POLICY_OUTCOME
           core_build=$CORE_OUTCOME
+          artifact_payload=$ARTIFACT_GATE_OUTCOME
           upload=$UPLOAD_OUTCOME
           core_sha256=${{ steps.core.outputs.sha256 }}
           allowed_build=${EXPECTED_BUILD}
