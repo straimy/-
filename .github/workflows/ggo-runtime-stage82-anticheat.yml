@@ -12,6 +12,8 @@ on:
       - 'hotfix/GgoWeaponStateAntiCheat.java'
       - 'hotfix/GgoInventoryAntiCheat.java'
       - 'hotfix/GgoAntiCheatCommands.java'
+      - 'hotfix/GgoClientBuildPolicy.java'
+      - 'hotfix/GgoLaunchTicketNetwork.java'
       - 'hotfix/apply_ggo_anticheat_stage82.py'
 
 permissions:
@@ -93,7 +95,7 @@ jobs:
           cp "$CORE" stage82/client/mods/gungloryonline-core-runtime-v1-stage82.jar
           echo "sha256=$(sha256sum "$CORE" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
 
-      - name: Verify anti-cheat safety boundary
+      - name: Verify anti-cheat and build-integrity safety boundary
         id: gates
         run: |
           set -euo pipefail
@@ -102,7 +104,9 @@ jobs:
           I=ga-build/src/main/java/arena/forge/GgoInventoryAntiCheat.java
           C=ga-build/src/main/java/arena/forge/GgoAntiCheatCommands.java
           E=ga-build/src/main/java/arena/forge/GgoAntiCheatEvidence.java
-          test -f "$M" && test -f "$W" && test -f "$I" && test -f "$C" && test -f "$E"
+          B=ga-build/src/main/java/arena/forge/GgoClientBuildPolicy.java
+          N=ga-build/src/main/java/arena/forge/GgoLaunchTicketNetwork.java
+          test -f "$M" && test -f "$W" && test -f "$I" && test -f "$C" && test -f "$E" && test -f "$B" && test -f "$N"
           grep -q 'REPORT ONLY' "$M"
           grep -q 'REQUIRED_SUSTAINED_TICKS = 4' "$M"
           grep -q 'GgoOfficialAuthState.isAuthenticated(player)' "$M"
@@ -117,6 +121,16 @@ jobs:
           grep -q 'mode=REPORT_ONLY' "$C"
           grep -q 'MAX_EVIDENCE_PER_PLAYER = 64' "$E"
           grep -q 'MAX_SCORE = 100.0D' "$E"
+          grep -q 'GGO_ALLOWED_CLIENT_BUILDS' "$B"
+          grep -q 'GGO_ALLOWED_CORE_SHA256' "$B"
+          grep -q 'GGO_ALLOWED_UI_SHA256' "$B"
+          grep -q 'GGO_ENFORCE_CLIENT_BUILD' "$B"
+          grep -q 'Kind.CLIENT_INTEGRITY' "$B"
+          grep -q 'private static final String PROTOCOL = "3"' "$N"
+          grep -q 'GGO_CLIENT_BUILD_ID' "$N"
+          grep -q 'GGO_CORE_SHA256' "$N"
+          grep -q 'GGO_UI_SHA256' "$N"
+          grep -q 'GgoClientBuildPolicy.evaluate' "$N"
           ! grep -q '\.disconnect(' "$M" "$W" "$I" "$C" "$E"
           ! grep -qi 'banPlayer\|kickPlayer\|System.exit\|GGO_GAME_TICKET\|Authorization' "$M" "$W" "$I" "$C" "$E"
           J=stage82/server/mods/gungloryonline-core-runtime-v1-stage82.jar
@@ -125,6 +139,7 @@ jobs:
           jar tf "$J" | grep -q 'arena/forge/GgoInventoryAntiCheat.class'
           jar tf "$J" | grep -q 'arena/forge/GgoAntiCheatCommands.class'
           jar tf "$J" | grep -q 'arena/forge/GgoAntiCheatEvidence.class'
+          jar tf "$J" | grep -q 'arena/forge/GgoClientBuildPolicy.class'
           jar tf "$J" | grep -q 'arena/forge/GgoPreAuthQuarantine.class'
           jar tf "$J" | grep -q 'arena/forge/GgoLaunchTicketNetwork.class'
           cmp stage82/server/mods/gungloryonline-core-runtime-v1-stage82.jar stage82/client/mods/gungloryonline-core-runtime-v1-stage82.jar
@@ -163,6 +178,9 @@ jobs:
           weapon_state_detector=true
           inventory_detector=true
           staff_diagnostics=true
+          client_build_policy=true
+          client_build_protocol=3
+          client_build_enforcement_default=false
           evidence_ledger=true
           authenticated_players_only=true
           enforcement=report_only
