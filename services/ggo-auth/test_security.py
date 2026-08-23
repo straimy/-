@@ -23,6 +23,7 @@ class SecuritySmoke(unittest.TestCase):
             "GGO_PUBLIC_URL": f"http://{BASE}",
             "GGO_AUTH_DB": str(Path(cls.temp.name) / "auth.db"),
             "GGO_OWNER_USERNAMES": "kvi_nella",
+            "GGO_TRUST_LOCAL_PROXY": "1",
         })
         env.pop("GGO_ALLOW_OWNER_BOOTSTRAP", None)
         cls.proc = subprocess.Popen(
@@ -31,7 +32,7 @@ class SecuritySmoke(unittest.TestCase):
         )
         for _ in range(50):
             try:
-                status, _ = cls.req("GET", "/api/v1/health")
+                status, _, _ = cls.req("GET", "/api/v1/health")
                 if status == 200:
                     return
             except OSError:
@@ -46,35 +47,65 @@ class SecuritySmoke(unittest.TestCase):
         cls.temp.cleanup()
 
     @staticmethod
-    def req(method, path, data=None):
+    def req(method, path, data=None, headers=None):
         conn = http.client.HTTPConnection(BASE, timeout=5)
         body = None if data is None else json.dumps(data)
-        conn.request(method, path, body=body, headers={"Content-Type": "application/json"})
+        request_headers = {"Content-Type": "application/json"}
+        if headers:
+            request_headers.update(headers)
+        conn.request(method, path, body=body, headers=request_headers)
         response = conn.getresponse()
         raw = response.read()
         payload = json.loads(raw) if raw else {}
         code = response.status
+        response_headers = {k.lower(): v for k, v in response.getheaders()}
         conn.close()
-        return code, payload
+        return code, payload, response_headers
 
     def test_reserved_owner_cannot_be_publicly_registered(self):
-        status, payload = self.req("POST", "/api/v1/auth/register", {
+        status, payload, _ = self.req("POST", "/api/v1/auth/register", {
             "username": "kvi_nella",
             "password": "correct-horse-123",
-        })
+        }, {"X-Forwarded-For": "198.51.100.10"})
         self.assertEqual(status, 403)
         self.assertEqual(payload["error"], "reserved_owner_username")
 
     def test_normal_registration_still_works(self):
-        status, payload = self.req("POST", "/api/v1/auth/register", {
+        status, payload, _ = self.req("POST", "/api/v1/auth/register", {
             "username": "SecurityUser",
             "password": "correct-horse-123",
             "region": "eu",
             "language": "ru",
             "country": "EE",
-        })
+        }, {"X-Forwarded-For": "198.51.100.11"})
         self.assertEqual(status, 201)
         self.assertEqual(payload["profile"]["role"], "user")
+
+    def test_security_headers_present(self):
+        status, _, headers = self.req("GET", "/api/v1/health")
+        self.assertEqual(status, 200)
+        self.assertEqual(headers.get("x-frame-options"), "DENY")
+        self.assertEqual(headers.get("referrer-policy"), "no-referrer")
+        self.assertIn("camera=()", headers.get("permissions-policy", ""))
+
+    def test_login_rate_limit_uses_forwarded_client_from_loopback_proxy(self):
+        ip = "198.51.100.50"
+        payload = {"username": "nobody", "password": "wrong-password"}
+        for _ in range(8):
+            status, body, _ = self.req("POST", "/api/v1/auth/login", payload, {"X-Forwarded-For": ip})
+            self.assertEqual(status, 401)
+            self.assertEqual(body["error"], "invalid_credentials")
+        status, body, headers = self.req("POST", "/api/v1/auth/login", payload, {"X-Forwarded-For": ip})
+        self.assertEqual(status, 429)
+        self.assertEqual(body["error"], "rate_limited")
+        self.assertGreaterEqual(int(headers.get("retry-after", "0")), 1)
+
+    def test_rate_limit_isolated_by_client_ip(self):
+        payload = {"username": "nobody", "password": "wrong-password"}
+        for _ in range(8):
+            self.req("POST", "/api/v1/auth/login", payload, {"X-Forwarded-For": "198.51.100.60"})
+        status, _, _ = self.req("POST", "/api/v1/auth/login", payload, {"X-Forwarded-For": "198.51.100.61"})
+        self.assertEqual(status, 401)
 
 
 if __name__ == "__main__":
