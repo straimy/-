@@ -1,0 +1,11 @@
+workflow=GGO Stage 94 Auth Binding Attestation
+run_id=32634304562
+launcher_sha=499948168e9197e35d66bf7c9f762d96d6aa1b22
+stage92_bound_launcher=success
+auth_schema_binding=success
+auth_one_shot_consume=success
+ticket_ttl_seconds=180
+consume_returns_ticket_build=success
+launcher_requests_bound_ticket=failure
+production_deployed=false
+result=failure
