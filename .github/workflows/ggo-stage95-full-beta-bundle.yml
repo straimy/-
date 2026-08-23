@@ -1,0 +1,153 @@
+name: GGO Stage 95 Full Closed Beta Bundle
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - launcher/bootstrap-v0.1
+    paths:
+      - '.github/workflows/ggo-stage95-full-beta-bundle.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  package:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout launcher/site/auth
+        uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+          path: launcher-src
+
+      - name: Checkout client runtime source
+        uses: actions/checkout@v4
+        with:
+          ref: client/runtime-migration-v1
+          path: client-src
+
+      - name: Checkout hardened server source
+        uses: actions/checkout@v4
+        with:
+          ref: server/runtime-hardening-v1
+          path: server-src
+
+      - name: Download Stage92 Ubuntu launcher
+        uses: actions/download-artifact@v4
+        with:
+          name: GunGloryOnline-Launcher-0.2.4-Beta-Bound-Linux
+          path: downloads/linux-launcher
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 32631622570
+
+      - name: Download Stage93 server Core
+        uses: actions/download-artifact@v4
+        with:
+          name: GunGloryOnline-Stage93-Ticket-Bound-Server-Core
+          path: downloads/server-core
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 32633191926
+
+      - name: Download Stage85 runtime candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: GunGloryOnline-Stage85-Beta-Candidate
+          path: downloads/runtime
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 32624078787
+
+      - name: Assemble full bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          B=bundle/GunGloryOnline-0.2.4-ClosedBeta-Full
+          mkdir -p "$B/vds" "$B/client" "$B/runtime" "$B/source-snapshots"
+          cp -a launcher-src/site "$B/vds/site"
+          mkdir -p "$B/vds/services"
+          cp -a launcher-src/services/ggo-auth "$B/vds/services/ggo-auth"
+          cp -a downloads/server-core "$B/vds/server-core"
+          cp -a downloads/linux-launcher "$B/client/ubuntu-launcher"
+          cp -a downloads/runtime "$B/runtime/stage85-candidate"
+          cp -a client-src/hotfix "$B/source-snapshots/client-hotfix"
+          cp -a server-src/hotfix "$B/source-snapshots/server-hotfix"
+          cat > "$B/README-INSTALL.txt" <<'EOF'
+          GunGloryOnline 0.2.4 Closed Beta - FULL bundle
+
+          Contains:
+          - Ubuntu/Linux ticket-bound launcher package (Stage92)
+          - Website + account portal + support + staff/admin console
+          - GGO Auth secure service sources/install scripts
+          - Ticket-bound hardened server Core (Stage93)
+          - Stage85 runtime candidate payload
+          - client/server hotfix source snapshots for audit
+
+          LOCAL UBUNTU LAUNCHER:
+            cd client/ubuntu-launcher
+            find . -maxdepth 3 -type f -print
+            Prefer the .deb package on Ubuntu when present:
+              sudo apt install ./<GunGloryOnline*.deb>
+            If only AppImage is present:
+              chmod +x ./<GunGloryOnline*.AppImage>
+              ./<GunGloryOnline*.AppImage>
+
+          COPY FULL BUNDLE TO VDS FROM YOUR UBUNTU PC:
+            scp GunGloryOnline-0.2.4-ClosedBeta-Full.zip root@2.26.100.125:/root/
+
+          ON VDS:
+            ssh root@2.26.100.125
+            cd /root
+            apt-get update && apt-get install -y unzip
+            unzip -o GunGloryOnline-0.2.4-ClosedBeta-Full.zip
+            cd GunGloryOnline-0.2.4-ClosedBeta-Full
+
+          WEBSITE + AUTH DEPLOY (backs up existing auth DB/site channel first):
+            chmod +x vds/site/install-site.sh vds/services/ggo-auth/install.sh
+            GGO_AUTH_SOURCE="$PWD/vds/services/ggo-auth" sudo -E ./vds/site/install-site.sh
+
+          SERVER CORE:
+            First locate the active mods directory and existing GGO Core:
+              systemctl cat ggo-game.service
+              find /root -maxdepth 3 -type f -name 'gungloryonline-core*.jar' -print
+            Back up the current Core before replacement. The Stage93 jar is under:
+              vds/server-core/
+            Do NOT delete unrelated mods.
+
+          HEALTH CHECKS AFTER SITE/AUTH DEPLOY:
+            systemctl --no-pager --full status ggo-auth.service
+            curl -fsS http://127.0.0.1:8787/api/v1/health
+            nginx -t
+            curl -fsS https://ggo.kvicloud.ru/api/v1/health
+
+          IMPORTANT:
+          - This bundle is CLOSED BETA, not the production update channel.
+          - Production manifest is intentionally not changed by this package.
+          - GGO_SERVER_KEY remains a VDS secret and is not included in this archive.
+          EOF
+          (cd bundle && zip -qr GunGloryOnline-0.2.4-ClosedBeta-Full.zip GunGloryOnline-0.2.4-ClosedBeta-Full)
+          sha256sum bundle/GunGloryOnline-0.2.4-ClosedBeta-Full.zip > bundle/SHA256SUMS
+
+      - name: Verify bundle contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -l bundle/GunGloryOnline-0.2.4-ClosedBeta-Full.zip | grep -q 'vds/site/admin/index.html'
+          unzip -l bundle/GunGloryOnline-0.2.4-ClosedBeta-Full.zip | grep -q 'vds/services/ggo-auth/secure_server.py'
+          unzip -l bundle/GunGloryOnline-0.2.4-ClosedBeta-Full.zip | grep -q 'vds/server-core/'
+          unzip -l bundle/GunGloryOnline-0.2.4-ClosedBeta-Full.zip | grep -q 'client/ubuntu-launcher/'
+          unzip -l bundle/GunGloryOnline-0.2.4-ClosedBeta-Full.zip | grep -q 'runtime/stage85-candidate/'
+          (cd bundle && sha256sum -c SHA256SUMS)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-0.2.4-ClosedBeta-Full
+          path: |
+            bundle/GunGloryOnline-0.2.4-ClosedBeta-Full.zip
+            bundle/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30
