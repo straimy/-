@@ -1,4 +1,5 @@
 name: GGO Stage 90 Ticket Build Binding
+# Final beta auth-binding gate; production remains untouched.
 
 on:
   workflow_dispatch:
