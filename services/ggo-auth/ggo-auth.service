@@ -14,7 +14,7 @@ Environment=GGO_AUTH_PORT=8787
 Environment=GGO_PUBLIC_URL=https://ggo.kvicloud.ru
 Environment=GGO_AUTH_DB=/var/lib/ggo-auth/auth.db
 EnvironmentFile=-/etc/ggo-auth.env
-ExecStart=/usr/bin/python3 /opt/ggo-auth/server.py
+ExecStart=/usr/bin/python3 /opt/ggo-auth/secure_server.py
 Restart=on-failure
 RestartSec=2
 NoNewPrivileges=true
