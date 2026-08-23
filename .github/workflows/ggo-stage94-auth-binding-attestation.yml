@@ -8,6 +8,7 @@ on:
     paths:
       - '.github/workflows/ggo-stage94-auth-binding-attestation.yml'
       - '.ci/launcher/stage92-bound-beta-package.txt'
+      - 'services/ggo-auth/server.py'
       - 'services/ggo-auth/secure_server.py'
       - 'launcher/hotfix/apply_ticket_binding_stage90.py'
 
@@ -40,7 +41,9 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m py_compile services/ggo-auth/server.py services/ggo-auth/secure_server.py
+          CORE=services/ggo-auth/server.py
           A=services/ggo-auth/secure_server.py
+          grep -q '^GAME_TICKET_TTL = 3 \* 60$' "$CORE"
           grep -q 'ALTER TABLE game_tickets ADD COLUMN' "$A"
           grep -q 'build_id' "$A"
           grep -q 'core_sha256' "$A"
@@ -49,6 +52,7 @@ jobs:
           grep -q 'ticket_build' "$A"
           grep -q '"bound": bound' "$A"
           grep -q 'consumed_at IS NULL' "$A"
+          grep -q 'UPDATE game_tickets SET consumed_at=' "$A"
           grep -q 'X-GGO-Server-Key\|server_key_ok' "$A"
 
       - name: Verify launcher transform requests bound ticket
@@ -76,6 +80,7 @@ jobs:
           stage92_bound_launcher=success
           auth_schema_binding=success
           auth_one_shot_consume=success
+          ticket_ttl_seconds=180
           consume_returns_ticket_build=success
           launcher_requests_bound_ticket=success
           production_deployed=false
