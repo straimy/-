@@ -21,6 +21,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -169,7 +170,15 @@ public final class GgoLaunchTicketNetwork {
                     return;
                 }
                 try {
-                    // Build metadata is only an integrity signal; the one-shot account ticket remains the authentication root.
+                    // When auth returned ticket-bound metadata, it is authoritative for this one-shot ticket.
+                    // A client packet that disagrees is rejected even if the broader allowlist remains report-only.
+                    if (profile.buildBound() && !profile.matches(packet)) {
+                        GgoOfficialAuthState.verificationFailed(live);
+                        live.connection.disconnect(Component.literal("GunGloryOnline: launcher build verification failed. Update or repair the game in the GGO launcher."));
+                        return;
+                    }
+
+                    // The allowlist is a second policy layer; account authentication still comes from the one-shot ticket.
                     GgoClientBuildPolicy.Result build = GgoClientBuildPolicy.evaluate(
                             live, packet.buildId(), packet.coreSha256(), packet.uiSha256());
                     if (build.enforced() && !build.accepted()) {
@@ -211,7 +220,19 @@ public final class GgoLaunchTicketNetwork {
                     String displayName = string(player, "display_name");
                     String skinSource = player.has("skin_source") ? string(player, "skin_source") : "default";
                     if (id.isBlank() || displayName.isBlank()) throw new IllegalStateException("ticket profile incomplete");
-                    return new VerifiedTicketProfile(id, displayName, skinSource);
+
+                    JsonObject ticketBuild = root.has("ticket_build") && root.get("ticket_build").isJsonObject()
+                            ? root.getAsJsonObject("ticket_build") : null;
+                    boolean buildBound = ticketBuild != null
+                            && ticketBuild.has("bound")
+                            && ticketBuild.get("bound").getAsBoolean();
+                    String buildId = buildBound ? string(ticketBuild, "build_id") : "";
+                    String coreSha256 = buildBound ? string(ticketBuild, "core_sha256").toLowerCase(Locale.ROOT) : "";
+                    String uiSha256 = buildBound ? string(ticketBuild, "ui_sha256").toLowerCase(Locale.ROOT) : "";
+                    if (buildBound && (buildId.isBlank() || coreSha256.length() != 64 || uiSha256.length() != 64)) {
+                        throw new IllegalStateException("ticket build metadata incomplete");
+                    }
+                    return new VerifiedTicketProfile(id, displayName, skinSource, buildBound, buildId, coreSha256, uiSha256);
                 });
     }
 
@@ -228,5 +249,19 @@ public final class GgoLaunchTicketNetwork {
 
     private record LaunchTicket(String ticket, String buildId, String coreSha256, String uiSha256) {}
     private record VerificationAck(boolean verified) {}
-    private record VerifiedTicketProfile(String id, String displayName, String skinSource) {}
+    private record VerifiedTicketProfile(
+            String id,
+            String displayName,
+            String skinSource,
+            boolean buildBound,
+            String buildId,
+            String coreSha256,
+            String uiSha256
+    ) {
+        private boolean matches(LaunchTicket packet) {
+            return buildId.equals(packet.buildId())
+                    && coreSha256.equalsIgnoreCase(packet.coreSha256())
+                    && uiSha256.equalsIgnoreCase(packet.uiSha256());
+        }
+    }
 }
