@@ -89,8 +89,11 @@ jobs:
           preserves the live account DB and runtime/launcher payloads, restarts ggo-auth, validates
           nginx, Support, Staff Console and the unauthenticated ticket API wall.
           EOF
-          find stage79 -type f -print0 | sort -z | xargs -0 sha256sum > stage79/SHA256SUMS
-          (cd stage79 && sha256sum -c SHA256SUMS)
+          (
+            cd stage79
+            find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
+            sha256sum -c SHA256SUMS
+          )
 
       - uses: actions/upload-artifact@v4
         id: upload
