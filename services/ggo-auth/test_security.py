@@ -107,6 +107,45 @@ class SecuritySmoke(unittest.TestCase):
         status, _, _ = self.req("POST", "/api/v1/auth/login", payload, {"X-Forwarded-For": "198.51.100.61"})
         self.assertEqual(status, 401)
 
+    def test_logout_all_revokes_access_and_refresh_sessions(self):
+        status, payload, _ = self.req("POST", "/api/v1/auth/register", {
+            "username": "RevokeUser",
+            "password": "correct-horse-123",
+            "region": "eu",
+            "language": "ru",
+            "country": "SE",
+        }, {"X-Forwarded-For": "198.51.100.70"})
+        self.assertEqual(status, 201)
+        access = payload["access_token"]
+        headers = {
+            "Authorization": f"Bearer {access}",
+            "X-Forwarded-For": "198.51.100.70",
+        }
+        status, body, _ = self.req("POST", "/api/v1/auth/logout-all", {}, headers)
+        self.assertEqual(status, 200)
+        self.assertTrue(body["ok"])
+        self.assertGreaterEqual(body["revoked"]["access_sessions"], 1)
+        self.assertGreaterEqual(body["revoked"]["refresh_tokens"], 1)
+        status, body, _ = self.req("GET", "/api/v1/me", headers=headers)
+        self.assertEqual(status, 401)
+        self.assertEqual(body["error"], "not_authenticated")
+
+    def test_cookie_logout_all_requires_origin(self):
+        status, payload, response_headers = self.req("POST", "/api/v1/auth/register", {
+            "username": "CookieRevoke",
+            "password": "correct-horse-123",
+        }, {"X-Forwarded-For": "198.51.100.71"})
+        self.assertEqual(status, 201)
+        cookie = response_headers.get("set-cookie", "").split(";", 1)[0]
+        status, body, _ = self.req(
+            "POST",
+            "/api/v1/auth/logout-all",
+            {},
+            {"Cookie": cookie, "X-Forwarded-For": "198.51.100.71"},
+        )
+        self.assertEqual(status, 403)
+        self.assertEqual(body["error"], "origin_rejected")
+
 
 if __name__ == "__main__":
     unittest.main()
