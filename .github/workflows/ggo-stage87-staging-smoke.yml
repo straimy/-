@@ -1,4 +1,5 @@
 name: GGO Stage 87 Staging Smoke
+# Re-run after Stage86 artifact root normalization; production remains fenced.
 
 on:
   workflow_dispatch:
