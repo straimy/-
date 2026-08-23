@@ -8,6 +8,7 @@ on:
     paths:
       - '.github/workflows/ggo-launcher-stage76-menu-first.yml'
       - 'launcher/hotfix/apply_menu_first_beta_stage76.py'
+      - 'launcher/hotfix/apply_client_integrity_stage84.py'
       - 'launcher/src/App.tsx'
       - 'launcher/src/AccountHub.tsx'
       - 'launcher/src-tauri/src/lib.rs'
@@ -48,11 +49,12 @@ jobs:
         with:
           components: rustfmt
 
-      - name: Apply menu-first launcher hardening
+      - name: Apply menu-first launcher hardening and client integrity metadata
         id: patch
         run: |
           set -euo pipefail
           python3 launcher/hotfix/apply_menu_first_beta_stage76.py
+          python3 launcher/hotfix/apply_client_integrity_stage84.py
 
       - name: Verify launcher trust boundary
         id: gates
@@ -65,6 +67,14 @@ jobs:
           grep -q 'GGO_GAME_TICKET' "$R"
           grep -q 'GGO_GAME_TICKET_EXPIRES_AT' "$R"
           grep -q 'issue_game_ticket' "$R"
+          grep -q 'fn ggo_integrity_pair(' "$R"
+          grep -q 'runtime-stage77' "$R"
+          grep -q 'runtime-stage68-69' "$R"
+          grep -q 'GGO_CLIENT_BUILD_ID' "$R"
+          grep -q 'GGO_CORE_SHA256' "$R"
+          grep -q 'GGO_UI_SHA256' "$R"
+          grep -q 'Sha256::digest(core_bytes)' "$R"
+          grep -q 'Sha256::digest(ui_bytes)' "$R"
           ! grep -q 'async fn preview_minecraft_launch(' "$R"
           ! grep -q 'async fn launch_minecraft(' "$R"
           ! grep -q '            launch_training,' "$R"
@@ -124,6 +134,8 @@ jobs:
           one_primary_home_action=true
           external_training_action=false
           home_repair_action=false
+          client_integrity_metadata=true
+          client_integrity_local_sha256=true
           result=$result
           EOF
           git config user.name 'github-actions[bot]'
