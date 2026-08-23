@@ -44,6 +44,10 @@ jobs:
         with:
           node-version: '22'
 
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
       - name: Apply menu-first launcher hardening
         id: patch
         run: |
@@ -79,6 +83,11 @@ jobs:
           npm install --no-audit --no-fund
           npm run build
 
+      - name: Verify generated Rust is formatted
+        id: fmt
+        working-directory: launcher
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+
       - name: Check Rust launcher core
         id: rust
         working-directory: launcher/src-tauri
@@ -90,11 +99,12 @@ jobs:
           PATCH_OUTCOME: ${{ steps.patch.outcome }}
           GATES_OUTCOME: ${{ steps.gates.outcome }}
           WEB_OUTCOME: ${{ steps.web.outcome }}
+          FMT_OUTCOME: ${{ steps.fmt.outcome }}
           RUST_OUTCOME: ${{ steps.rust.outcome }}
         run: |
           set -euo pipefail
           result=success
-          for v in "$PATCH_OUTCOME" "$GATES_OUTCOME" "$WEB_OUTCOME" "$RUST_OUTCOME"; do
+          for v in "$PATCH_OUTCOME" "$GATES_OUTCOME" "$WEB_OUTCOME" "$FMT_OUTCOME" "$RUST_OUTCOME"; do
             [ "$v" = success ] || result=failure
           done
           mkdir -p .ci/launcher
@@ -107,6 +117,7 @@ jobs:
           patch=$PATCH_OUTCOME
           trust_boundary_gates=$GATES_OUTCOME
           web_build=$WEB_OUTCOME
+          rustfmt=$FMT_OUTCOME
           rust_check=$RUST_OUTCOME
           public_game_launch_commands=1
           launch_autoconnect=false
