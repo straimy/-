@@ -11,6 +11,7 @@ on:
       - 'hotfix/GgoMovementAntiCheat.java'
       - 'hotfix/GgoWeaponStateAntiCheat.java'
       - 'hotfix/GgoInventoryAntiCheat.java'
+      - 'hotfix/GgoAntiCheatCommands.java'
       - 'hotfix/apply_ggo_anticheat_stage82.py'
 
 permissions:
@@ -99,8 +100,9 @@ jobs:
           M=ga-build/src/main/java/arena/forge/GgoMovementAntiCheat.java
           W=ga-build/src/main/java/arena/forge/GgoWeaponStateAntiCheat.java
           I=ga-build/src/main/java/arena/forge/GgoInventoryAntiCheat.java
+          C=ga-build/src/main/java/arena/forge/GgoAntiCheatCommands.java
           E=ga-build/src/main/java/arena/forge/GgoAntiCheatEvidence.java
-          test -f "$M" && test -f "$W" && test -f "$I" && test -f "$E"
+          test -f "$M" && test -f "$W" && test -f "$I" && test -f "$C" && test -f "$E"
           grep -q 'REPORT ONLY' "$M"
           grep -q 'REQUIRED_SUSTAINED_TICKS = 4' "$M"
           grep -q 'GgoOfficialAuthState.isAuthenticated(player)' "$M"
@@ -110,14 +112,18 @@ jobs:
           grep -q 'REQUIRED_BAD_SAMPLES = 3' "$I"
           grep -q 'Kind.INVENTORY_DESYNC' "$I"
           grep -q 'ArenaBeltGuard.AMMO_FIRST' "$I"
+          grep -q 'Commands.literal("ggoac")' "$C"
+          grep -q 'source.hasPermission(2)' "$C"
+          grep -q 'mode=REPORT_ONLY' "$C"
           grep -q 'MAX_EVIDENCE_PER_PLAYER = 64' "$E"
           grep -q 'MAX_SCORE = 100.0D' "$E"
-          ! grep -q '\.disconnect(' "$M" "$W" "$I" "$E"
-          ! grep -qi 'banPlayer\|kickPlayer\|System.exit\|GGO_GAME_TICKET\|Authorization' "$M" "$W" "$I" "$E"
+          ! grep -q '\.disconnect(' "$M" "$W" "$I" "$C" "$E"
+          ! grep -qi 'banPlayer\|kickPlayer\|System.exit\|GGO_GAME_TICKET\|Authorization' "$M" "$W" "$I" "$C" "$E"
           J=stage82/server/mods/gungloryonline-core-runtime-v1-stage82.jar
           jar tf "$J" | grep -q 'arena/forge/GgoMovementAntiCheat.class'
           jar tf "$J" | grep -q 'arena/forge/GgoWeaponStateAntiCheat.class'
           jar tf "$J" | grep -q 'arena/forge/GgoInventoryAntiCheat.class'
+          jar tf "$J" | grep -q 'arena/forge/GgoAntiCheatCommands.class'
           jar tf "$J" | grep -q 'arena/forge/GgoAntiCheatEvidence.class'
           jar tf "$J" | grep -q 'arena/forge/GgoPreAuthQuarantine.class'
           jar tf "$J" | grep -q 'arena/forge/GgoLaunchTicketNetwork.class'
@@ -156,6 +162,7 @@ jobs:
           movement_detector=true
           weapon_state_detector=true
           inventory_detector=true
+          staff_diagnostics=true
           evidence_ledger=true
           authenticated_players_only=true
           enforcement=report_only
