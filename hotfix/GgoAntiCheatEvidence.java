@@ -6,6 +6,7 @@ import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,7 +38,19 @@ public final class GgoAntiCheatEvidence {
             String detail
     ) {}
 
+    /**
+     * Sanitized bounded view intended for staff diagnostics and the future admin bridge.
+     * It deliberately contains no IP address, ticket, credential, packet body, or auth secret.
+     */
+    public record Snapshot(
+            UUID playerId,
+            double score,
+            Map<Kind, Integer> counts,
+            List<Evidence> recent
+    ) {}
+
     private static final int MAX_EVIDENCE_PER_PLAYER = 64;
+    private static final int MAX_SNAPSHOT_EVENTS = 32;
     private static final double MAX_SCORE = 100.0D;
     private static final Map<UUID, Deque<Evidence>> EVIDENCE = new HashMap<>();
     private static final Map<UUID, Double> SCORE = new HashMap<>();
@@ -73,6 +86,31 @@ public final class GgoAntiCheatEvidence {
     public static synchronized List<Evidence> evidence(UUID playerId) {
         Deque<Evidence> list = EVIDENCE.get(playerId);
         return list == null ? List.of() : new ArrayList<>(list);
+    }
+
+    public static synchronized Snapshot snapshot(UUID playerId, int requestedLimit) {
+        if (playerId == null) return new Snapshot(null, 0.0D, Map.of(), List.of());
+        Deque<Evidence> list = EVIDENCE.get(playerId);
+        int limit = Math.max(0, Math.min(MAX_SNAPSHOT_EVENTS, requestedLimit));
+        if (list == null || list.isEmpty() || limit == 0) {
+            return new Snapshot(playerId, SCORE.getOrDefault(playerId, 0.0D), Map.of(), List.of());
+        }
+
+        EnumMap<Kind, Integer> counts = new EnumMap<>(Kind.class);
+        for (Evidence item : list) counts.merge(item.kind(), 1, Integer::sum);
+
+        List<Evidence> recent = new ArrayList<>(Math.min(limit, list.size()));
+        int skip = Math.max(0, list.size() - limit);
+        int index = 0;
+        for (Evidence item : list) {
+            if (index++ >= skip) recent.add(item);
+        }
+        return new Snapshot(
+                playerId,
+                SCORE.getOrDefault(playerId, 0.0D),
+                Map.copyOf(counts),
+                List.copyOf(recent)
+        );
     }
 
     public static synchronized void decay(UUID playerId, double amount) {
