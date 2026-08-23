@@ -32,9 +32,11 @@ import java.util.function.Supplier;
  */
 @Mod.EventBusSubscriber(modid = "gunnerarena", bus = Mod.EventBusSubscriber.Bus.MOD)
 public final class GgoLaunchTicketNetwork {
-    // v2 requires the server -> client VerificationAck added to the official entry handshake.
-    private static final String PROTOCOL = "2";
+    // v3 adds bounded launcher/runtime build metadata to the authenticated entry handshake.
+    private static final String PROTOCOL = "3";
     private static final int MAX_TICKET_LENGTH = 256;
+    private static final int MAX_BUILD_ID_LENGTH = 96;
+    private static final int MAX_HASH_LENGTH = 64;
     private static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation("gunnerarena", "launch_ticket"),
             () -> PROTOCOL,
@@ -84,7 +86,12 @@ public final class GgoLaunchTicketNetwork {
         if (value.isEmpty() || value.length() > MAX_TICKET_LENGTH) return;
         clientVerificationExpected = true;
         clientVerificationComplete = false;
-        CHANNEL.sendToServer(new LaunchTicket(value));
+        CHANNEL.sendToServer(new LaunchTicket(
+                value,
+                environment("GGO_CLIENT_BUILD_ID", MAX_BUILD_ID_LENGTH),
+                environment("GGO_CORE_SHA256", MAX_HASH_LENGTH),
+                environment("GGO_UI_SHA256", MAX_HASH_LENGTH)
+        ));
     }
 
     /** Read by the UI module through reflection; no credential or account data is exposed. */
@@ -99,10 +106,18 @@ public final class GgoLaunchTicketNetwork {
 
     private static void encode(LaunchTicket packet, FriendlyByteBuf buf) {
         buf.writeUtf(packet.ticket(), MAX_TICKET_LENGTH);
+        buf.writeUtf(packet.buildId(), MAX_BUILD_ID_LENGTH);
+        buf.writeUtf(packet.coreSha256(), MAX_HASH_LENGTH);
+        buf.writeUtf(packet.uiSha256(), MAX_HASH_LENGTH);
     }
 
     private static LaunchTicket decode(FriendlyByteBuf buf) {
-        return new LaunchTicket(buf.readUtf(MAX_TICKET_LENGTH));
+        return new LaunchTicket(
+                buf.readUtf(MAX_TICKET_LENGTH),
+                buf.readUtf(MAX_BUILD_ID_LENGTH),
+                buf.readUtf(MAX_HASH_LENGTH),
+                buf.readUtf(MAX_HASH_LENGTH)
+        );
     }
 
     private static void encodeAck(VerificationAck packet, FriendlyByteBuf buf) {
@@ -128,7 +143,6 @@ public final class GgoLaunchTicketNetwork {
         }
         String ticket = packet.ticket() == null ? "" : packet.ticket().trim();
         if (!GgoOfficialAuthState.required()) {
-            // Development servers intentionally retain the legacy auth fallback.
             context.setPacketHandled(true);
             return;
         }
@@ -155,13 +169,16 @@ public final class GgoLaunchTicketNetwork {
                     return;
                 }
                 try {
-                    // Success is deliberately silent. The user should flow straight into GGO,
-                    // not see a Minecraft-style chat acknowledgement.
+                    // Build metadata is only an integrity signal; the one-shot account ticket remains the authentication root.
+                    GgoClientBuildPolicy.Result build = GgoClientBuildPolicy.evaluate(
+                            live, packet.buildId(), packet.coreSha256(), packet.uiSha256());
+                    if (build.enforced() && !build.accepted()) {
+                        GgoOfficialAuthState.verificationFailed(live);
+                        live.connection.disconnect(Component.literal("GunGloryOnline: this client build is not approved. Update or repair the game in the GGO launcher."));
+                        return;
+                    }
                     GgoOfficialAuthState.bind(live, profile.id(), profile.displayName(), profile.skinSource());
-                    CHANNEL.send(
-                            PacketDistributor.PLAYER.with(() -> live),
-                            new VerificationAck(true)
-                    );
+                    CHANNEL.send(PacketDistributor.PLAYER.with(() -> live), new VerificationAck(true));
                 } catch (RuntimeException ex) {
                     GgoOfficialAuthState.verificationFailed(live);
                     live.connection.disconnect(Component.literal("GunGloryOnline: account identity could not be verified."));
@@ -198,11 +215,18 @@ public final class GgoLaunchTicketNetwork {
                 });
     }
 
+    private static String environment(String key, int maxLength) {
+        String value = System.getenv(key);
+        if (value == null) return "";
+        value = value.trim();
+        return value.length() <= maxLength ? value : "";
+    }
+
     private static String string(JsonObject object, String key) {
         return object.has(key) && !object.get(key).isJsonNull() ? object.get(key).getAsString() : "";
     }
 
-    private record LaunchTicket(String ticket) {}
+    private record LaunchTicket(String ticket, String buildId, String coreSha256, String uiSha256) {}
     private record VerificationAck(boolean verified) {}
     private record VerifiedTicketProfile(String id, String displayName, String skinSource) {}
 }
