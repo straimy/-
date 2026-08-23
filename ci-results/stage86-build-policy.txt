@@ -1,0 +1,16 @@
+workflow=GGO Runtime Stage 86 Build Policy
+run_id=32619773730
+run_attempt=1
+run_url=https://github.com/straimy/-/actions/runs/32619773730
+server_sha=121fdd0da19bf66db2c93d87df6e98eaf244ae8c
+allowlist_config=success
+policy_gates=success
+core_build=success
+upload=success
+core_sha256=ef1faeabbcf3c09967fa2bd74ff8f6cdb150c6ebdeaf572a7ab74a7f6336afdf
+allowed_build=runtime-stage85
+allowed_core_sha256=20436c304da3f891f1514fd0e0cf969f61020306d510e8f30353b66be36db403
+allowed_ui_sha256=0e4f2e7e81e3f460b1d01d5f15bcc087b0d0adafbc1f6134f366f0d44c04af79
+enforcement_default=off
+authentication_root=one_shot_ticket
+result=success
