@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Production entrypoint for the GGO Account API.
 
-Keeps the core API implementation in server.py while enforcing bootstrap-only owner identities
-and conservative per-client rate limits on authentication/session issuance endpoints.
+Keeps the core API implementation in server.py while enforcing bootstrap-only owner identities,
+conservative per-client rate limits, hardened response headers, and an emergency session-revoke
+endpoint for compromised accounts.
 """
 import os
 import threading
@@ -23,6 +24,7 @@ RATE_RULES = {
     "/api/v1/auth/device/start": (12, 60),
     "/api/v1/auth/device/token": (30, 60),
     "/api/v1/auth/game-ticket": (20, 60),
+    "/api/v1/auth/logout-all": (3, 300),
 }
 _RATE_LOCK = threading.Lock()
 _RATE_BUCKETS = defaultdict(deque)
@@ -95,6 +97,9 @@ class SecureHandler(core.Handler):
     def do_POST(self):
         if self._rate_limit():
             return
+        path = self.path.split("?", 1)[0]
+        if path == "/api/v1/auth/logout-all":
+            return self.logout_all_sessions()
         return super().do_POST()
 
     def register(self, data):
@@ -108,6 +113,43 @@ class SecureHandler(core.Handler):
                 },
             )
         return super().register(data)
+
+    def logout_all_sessions(self):
+        # Emergency containment for a stolen browser/launcher session. Bearer auth is accepted for
+        # launcher recovery; cookie-based browser calls must come from the configured GGO origin.
+        if self.cookie_token() and not self.bearer():
+            origin = self.headers.get("Origin", "").rstrip("/")
+            if not origin or origin != core.PUBLIC_URL:
+                return self.json(403, {"error": "origin_rejected"})
+        with core.connect() as db:
+            user = self.auth_user(db)
+            if not user:
+                return self.json(401, {"error": "not_authenticated"})
+            user_id = user["id"]
+            access = db.execute("DELETE FROM access_sessions WHERE user_id=?", (user_id,)).rowcount
+            refresh = db.execute("DELETE FROM refresh_tokens WHERE user_id=?", (user_id,)).rowcount
+            tickets = db.execute(
+                "DELETE FROM game_tickets WHERE user_id=? AND consumed_at IS NULL",
+                (user_id,),
+            ).rowcount
+            devices = db.execute("DELETE FROM device_flows WHERE user_id=?", (user_id,)).rowcount
+            db.commit()
+        cookie = "ggo_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0" + (
+            "; Secure" if core.PUBLIC_URL.startswith("https://") else ""
+        )
+        return self.json(
+            200,
+            {
+                "ok": True,
+                "revoked": {
+                    "access_sessions": access,
+                    "refresh_tokens": refresh,
+                    "game_tickets": tickets,
+                    "device_flows": devices,
+                },
+            },
+            {"Set-Cookie": cookie},
+        )
 
 
 if __name__ == "__main__":
