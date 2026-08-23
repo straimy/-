@@ -9,7 +9,7 @@ on:
       - '.github/workflows/ggo-stage95-full-beta-bundle.yml'
 
 permissions:
-  contents: read
+  contents: write
   actions: read
 
 jobs:
@@ -143,7 +143,9 @@ jobs:
           unzip -l bundle/GunGloryOnline-0.2.4-ClosedBeta-Full.zip | grep -q 'runtime/stage85-candidate/'
           (cd bundle && sha256sum -c SHA256SUMS)
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload full bundle
+        id: upload
+        uses: actions/upload-artifact@v4
         with:
           name: GunGloryOnline-0.2.4-ClosedBeta-Full
           path: |
@@ -151,3 +153,37 @@ jobs:
             bundle/SHA256SUMS
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish Stage95 receipt
+        if: always()
+        shell: bash
+        working-directory: launcher-src
+        run: |
+          set -euo pipefail
+          result='${{ job.status }}'
+          [ "$result" = success ] || result=failure
+          mkdir -p .ci/deploy
+          cat > .ci/deploy/stage95-full-beta-bundle.txt <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_id=${GITHUB_RUN_ID}
+          launcher_sha=$(git rev-parse HEAD)
+          ubuntu_launcher_run=32631622570
+          server_core_run=32633191926
+          runtime_candidate_run=32624078787
+          includes_site=true
+          includes_admin=true
+          includes_support=true
+          includes_auth=true
+          includes_ubuntu_launcher=true
+          includes_server_core=true
+          includes_runtime=true
+          production_published=false
+          result=$result
+          EOF
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .ci/deploy/stage95-full-beta-bundle.txt
+          git commit -m "ci: record Stage95 full beta bundle ${GITHUB_RUN_ID}" || exit 0
+          git fetch origin launcher/bootstrap-v0.1
+          git rebase origin/launcher/bootstrap-v0.1
+          git push origin HEAD:launcher/bootstrap-v0.1
