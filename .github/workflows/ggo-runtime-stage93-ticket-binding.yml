@@ -1,0 +1,162 @@
+name: GGO Runtime Stage 93 Ticket Binding
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - server/runtime-hardening-v1
+    paths:
+      - '.github/workflows/ggo-runtime-stage93-ticket-binding.yml'
+      - 'hotfix/GgoLaunchTicketNetwork.java'
+      - 'hotfix/GgoClientBuildPolicy.java'
+      - 'hotfix/apply_ggo_anticheat_stage82.py'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: server/runtime-hardening-v1
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Capture exact ref
+        id: refs
+        run: echo "server_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Verify ticket-bound server source
+        id: source_gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          N=hotfix/GgoLaunchTicketNetwork.java
+          test -f "$N"
+          grep -q 'private static final String PROTOCOL = "3"' "$N"
+          grep -q 'expectedBuildId' "$N"
+          grep -q 'expectedCoreSha256' "$N"
+          grep -q 'expectedUiSha256' "$N"
+          grep -q 'ticketBuildBound' "$N"
+          grep -q 'ticket build metadata mismatch' "$N"
+          grep -q '/auth/game-ticket/consume' "$N"
+          grep -q 'X-GGO-Server-Key' "$N"
+          grep -q 'GgoClientBuildPolicy.evaluate' "$N"
+
+      - name: Prepare Forge wrapper
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/ggo-mdk /tmp/ggo-mdk.zip
+          curl -fL --retry 3 -o /tmp/ggo-mdk.zip https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-mdk.zip
+          mkdir -p /tmp/ggo-mdk
+          unzip -q /tmp/ggo-mdk.zip 'gradlew' 'gradlew.bat' 'gradle/*' -d /tmp/ggo-mdk
+
+      - name: Build ticket-bound hardened Core
+        id: core
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf ga-build stage93 && mkdir ga-build
+          unzip -q "$SOURCE_ZIP" -d ga-build
+          for patch in \
+            apply_ggo_contract_rewards_stage26.py \
+            apply_ggo_contract_map_stage27.py \
+            apply_ggo_contract_push_stage28.py \
+            apply_ggo_contract_persistence_stage29.py \
+            apply_ggo_contract_lifecycle_stage30.py \
+            apply_ggo_contract_balance_stage31.py \
+            apply_ggo_contract_eligibility_stage32.py \
+            apply_ggo_supply_lifecycle_stage33.py \
+            apply_ggo_extraction_runtime_stage34.py \
+            apply_ggo_contract_network_guard_stage36.py \
+            apply_ggo_contract_reward_order_stage37.py \
+            apply_ggo_compile_baseline_stage27.py \
+            apply_ggo_spawn_presence_stage38.py \
+            apply_ggo_deminecraft_world_stage39.py \
+            apply_ggo_deminecraft_loot_stage41.py \
+            apply_ggo_inventory_stage42.py \
+            apply_ggo_visible_content_stage43.py \
+            apply_ggo_medicine_stage47.py \
+            apply_ggo_death_recap_stage48.py \
+            apply_ggo_recovery_bag_stage49.py \
+            apply_ggo_map_integrity_stage51.py \
+            apply_ggo_map_palette_stage54.py \
+            apply_ggo_official_auth_stage55.py \
+            apply_ggo_pre_auth_quarantine_stage59.py \
+            apply_ggo_ui_packets_stage65.py \
+            apply_ggo_ui_channel_ownership_stage71.py \
+            apply_ggo_anticheat_stage82.py; do
+              python3 "hotfix/$patch"
+          done
+          cp /tmp/ggo-mdk/gradlew ga-build/gradlew
+          cp /tmp/ggo-mdk/gradlew.bat ga-build/gradlew.bat
+          rm -rf ga-build/gradle && cp -a /tmp/ggo-mdk/gradle ga-build/gradle
+          chmod +x ga-build/gradlew
+          (cd ga-build && ./gradlew --no-daemon clean build --stacktrace)
+          CORE="$(find ga-build/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          test -n "$CORE" && test -f "$CORE"
+          jar tf "$CORE" | grep -q 'arena/forge/GgoLaunchTicketNetwork.class'
+          jar tf "$CORE" | grep -q 'arena/forge/GgoClientBuildPolicy.class'
+          mkdir -p stage93
+          cp "$CORE" stage93/gungloryonline-core-runtime-v1-stage93-ticket-binding.jar
+          (cd stage93 && sha256sum gungloryonline-core-runtime-v1-stage93-ticket-binding.jar > SHA256SUMS)
+          echo "sha256=$(sha256sum "$CORE" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Verify artifact payload
+        id: payload
+        run: |
+          set -euo pipefail
+          (cd stage93 && sha256sum -c SHA256SUMS)
+          test -s stage93/gungloryonline-core-runtime-v1-stage93-ticket-binding.jar
+
+      - uses: actions/upload-artifact@v4
+        id: upload
+        if: success()
+        with:
+          name: GunGloryOnline-Stage93-Ticket-Bound-Server-Core
+          path: stage93/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish Stage93 receipt
+        if: always()
+        env:
+          SOURCE_OUTCOME: ${{ steps.source_gate.outcome }}
+          CORE_OUTCOME: ${{ steps.core.outcome }}
+          PAYLOAD_OUTCOME: ${{ steps.payload.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+        run: |
+          set -euo pipefail
+          result=success
+          for v in "$SOURCE_OUTCOME" "$CORE_OUTCOME" "$PAYLOAD_OUTCOME" "$UPLOAD_OUTCOME"; do [ "$v" = success ] || result=failure; done
+          mkdir -p ci-results
+          cat > ci-results/stage93-ticket-binding.txt <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_id=${GITHUB_RUN_ID}
+          server_sha=${{ steps.refs.outputs.server_sha }}
+          source_gate=$SOURCE_OUTCOME
+          core_build=$CORE_OUTCOME
+          artifact_payload=$PAYLOAD_OUTCOME
+          upload=$UPLOAD_OUTCOME
+          core_sha256=${{ steps.core.outputs.sha256 }}
+          protocol=3
+          ticket_build_binding=true
+          production_deployed=false
+          result=$result
+          EOF
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add ci-results/stage93-ticket-binding.txt
+          git commit -m "ci: record Stage93 ticket binding ${GITHUB_RUN_ID}" || exit 0
+          git fetch origin server/runtime-hardening-v1
+          git rebase origin/server/runtime-hardening-v1
+          git push origin HEAD:server/runtime-hardening-v1
