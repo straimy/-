@@ -79,6 +79,21 @@ jobs:
           grep -qx 'production_published=false' "$R"
           grep -qx 'result=success' "$R"
 
+      - name: Verify Stage93 ticket-bound server build receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          R=server-candidate/ci-results/stage93-ticket-binding.txt
+          test -f "$R"
+          grep -qx 'source_gate=success' "$R"
+          grep -qx 'core_build=success' "$R"
+          grep -qx 'artifact_payload=success' "$R"
+          grep -qx 'upload=success' "$R"
+          grep -qx 'protocol=3' "$R"
+          grep -qx 'ticket_build_binding=true' "$R"
+          grep -qx 'production_deployed=false' "$R"
+          grep -qx 'result=success' "$R"
+
       - name: Verify hardened server consumes ticket-bound metadata
         shell: bash
         run: |
@@ -86,11 +101,13 @@ jobs:
           N=server-candidate/hotfix/GgoLaunchTicketNetwork.java
           test -f "$N"
           grep -q 'private static final String PROTOCOL = "3"' "$N"
-          grep -q 'expectedBuildId' "$N"
-          grep -q 'expectedCoreSha256' "$N"
-          grep -q 'expectedUiSha256' "$N"
-          grep -q 'ticketBuildBound' "$N"
-          grep -q 'ticket build metadata mismatch' "$N"
+          grep -q 'profile.buildBound()' "$N"
+          grep -q 'profile.matches(packet)' "$N"
+          grep -q 'ticket_build' "$N"
+          grep -q 'build_id' "$N"
+          grep -q 'core_sha256' "$N"
+          grep -q 'ui_sha256' "$N"
+          grep -q 'launcher build verification failed' "$N"
           grep -q '/auth/game-ticket/consume' "$N"
           grep -q 'X-GGO-Server-Key' "$N"
 
@@ -118,6 +135,7 @@ jobs:
           stage89=success
           stage90=success
           stage92=success
+          stage93=success
           server_ticket_binding=success
           launcher_candidate_version=0.2.4
           production_published=false
