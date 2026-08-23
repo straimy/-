@@ -57,6 +57,25 @@ jobs:
       - name: Install frontend dependencies
         run: npm install --no-audit --no-fund
 
+      - name: Generate platform launcher icons
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import struct
+          p = Path('src-tauri/icons/icon.png')
+          data = p.read_bytes()
+          if data[:8] != b'\x89PNG\r\n\x1a\n':
+              raise SystemExit('launcher icon.png is not a PNG')
+          width, height = struct.unpack('>II', data[16:24])
+          if width < 32 or height < 32:
+              raise SystemExit(f'launcher icon.png too small: {width}x{height}')
+          print(f'launcher source icon: {width}x{height}')
+          PY
+          npm run tauri -- icon src-tauri/icons/icon.png
+          test -s src-tauri/icons/icon.ico
+
       - name: Apply Stage76 and Stage84 launcher transforms
         run: |
           python3 hotfix/apply_menu_first_beta_stage76.py
@@ -82,6 +101,7 @@ jobs:
           grep -q 'REMOTE_UI_STAGE85' src-tauri/src/runtime/ggo_remote_install.rs
           grep -q '?t.install:updateAvailable?t.updateGame:t.play' src/App.tsx
           ! grep -q 'onClick={()=>void launch(true)}' src/App.tsx
+          test -s src-tauri/icons/icon.ico
 
       - name: Frontend build
         run: npm run build
@@ -162,6 +182,7 @@ jobs:
           stage85_integrity=true
           menu_first=true
           launch_autoconnect=false
+          platform_icons_generated=true
           production_published=false
           windows_artifact=GunGloryOnline-Launcher-0.2.4-Beta-Windows
           linux_artifact=GunGloryOnline-Launcher-0.2.4-Beta-Linux
