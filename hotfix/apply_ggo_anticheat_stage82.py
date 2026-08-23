@@ -6,7 +6,12 @@ ROOT = Path("ga-build/src/main/java/arena/forge")
 if not ROOT.is_dir():
     raise SystemExit("GGO Core arena/forge source tree missing")
 
-for name in ["GgoAntiCheatEvidence.java", "GgoMovementAntiCheat.java", "GgoWeaponStateAntiCheat.java"]:
+for name in [
+    "GgoAntiCheatEvidence.java",
+    "GgoMovementAntiCheat.java",
+    "GgoWeaponStateAntiCheat.java",
+    "GgoInventoryAntiCheat.java",
+]:
     src = Path("hotfix") / name
     dst = ROOT / name
     if not src.is_file():
@@ -15,8 +20,9 @@ for name in ["GgoAntiCheatEvidence.java", "GgoMovementAntiCheat.java", "GgoWeapo
 
 movement = (ROOT / "GgoMovementAntiCheat.java").read_text(encoding="utf-8")
 weapon = (ROOT / "GgoWeaponStateAntiCheat.java").read_text(encoding="utf-8")
+inventory = (ROOT / "GgoInventoryAntiCheat.java").read_text(encoding="utf-8")
 evidence = (ROOT / "GgoAntiCheatEvidence.java").read_text(encoding="utf-8")
-combined = movement + weapon + evidence
+combined = movement + weapon + inventory + evidence
 
 for required in [
     "REPORT ONLY",
@@ -25,8 +31,11 @@ for required in [
     "TELEPORT_LIKE_MOVE",
     "IMPOSSIBLE_AIR_CHAIN",
     "WEAPON_STATE",
+    "INVENTORY_DESYNC",
     "IgnoreAmmo",
     "AmmoCount",
+    "REQUIRED_BAD_SAMPLES = 3",
+    "ArenaBeltGuard.AMMO_FIRST",
     "GgoOfficialAuthState.isAuthenticated(player)",
     "PlayerTickEvent",
 ]:
@@ -48,6 +57,7 @@ for forbidden in [
 print("Applied GGO Stage 82 report-only anti-cheat")
 print(" - server-authoritative movement telemetry")
 print(" - high-confidence weapon-state validation")
+print(" - sustained inventory/belt policy telemetry")
 print(" - bounded in-memory evidence scoring")
 print(" - authenticated official sessions are fenced before gameplay")
 print(" - zero automatic kick/ban enforcement")
