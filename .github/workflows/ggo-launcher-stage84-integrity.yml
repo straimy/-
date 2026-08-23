@@ -10,6 +10,7 @@ on:
       - 'launcher/hotfix/apply_menu_first_beta_stage76.py'
       - 'launcher/hotfix/apply_client_integrity_stage84.py'
       - 'launcher/src-tauri/src/lib.rs'
+      - 'launcher/src-tauri/src/runtime/ggo_remote_install.rs'
       - 'launcher/src-tauri/Cargo.toml'
       - 'launcher/src/App.tsx'
       - 'launcher/package.json'
@@ -60,9 +61,13 @@ jobs:
         run: |
           set -euo pipefail
           R=launcher/src-tauri/src/lib.rs
+          U=launcher/src-tauri/src/runtime/ggo_remote_install.rs
           grep -q 'fn ggo_integrity_pair(' "$R"
+          grep -q 'runtime-stage85' "$R"
           grep -q 'runtime-stage77' "$R"
           grep -q 'runtime-stage68-69' "$R"
+          grep -q 'gungloryonline-core-runtime-v1-stage85.jar' "$R"
+          grep -q 'gungloryonline-ui-runtime-v1-stage85.jar' "$R"
           grep -q 'Sha256::digest(core_bytes)' "$R"
           grep -q 'Sha256::digest(ui_bytes)' "$R"
           grep -q 'GGO_CLIENT_BUILD_ID' "$R"
@@ -72,6 +77,9 @@ jobs:
           grep -q 'options.connect_server = false;' "$R"
           ! grep -q 'async fn launch_minecraft(' "$R"
           ! grep -q 'async fn preview_minecraft_launch(' "$R"
+          grep -q 'REMOTE_CORE_STAGE85' "$U"
+          grep -q 'REMOTE_UI_STAGE85' "$U"
+          grep -q 'stage85_ready' "$U"
 
       - name: Build launcher web UI
         id: web
@@ -90,6 +98,11 @@ jobs:
         working-directory: launcher/src-tauri
         run: cargo check
 
+      - name: Rust updater migration tests
+        id: tests
+        working-directory: launcher/src-tauri
+        run: cargo test runtime::ggo_remote_install::tests --lib
+
       - name: Publish Stage84 receipt
         if: always()
         env:
@@ -98,10 +111,11 @@ jobs:
           WEB_OUTCOME: ${{ steps.web.outcome }}
           FMT_OUTCOME: ${{ steps.fmt.outcome }}
           RUST_OUTCOME: ${{ steps.rust.outcome }}
+          TESTS_OUTCOME: ${{ steps.tests.outcome }}
         run: |
           set -euo pipefail
           result=success
-          for v in "$PATCH_OUTCOME" "$GATES_OUTCOME" "$WEB_OUTCOME" "$FMT_OUTCOME" "$RUST_OUTCOME"; do
+          for v in "$PATCH_OUTCOME" "$GATES_OUTCOME" "$WEB_OUTCOME" "$FMT_OUTCOME" "$RUST_OUTCOME" "$TESTS_OUTCOME"; do
             [ "$v" = success ] || result=failure
           done
           mkdir -p .ci/launcher
@@ -116,8 +130,11 @@ jobs:
           web_build=$WEB_OUTCOME
           rustfmt=$FMT_OUTCOME
           rust_check=$RUST_OUTCOME
+          updater_tests=$TESTS_OUTCOME
           local_core_sha256=true
           local_ui_sha256=true
+          stage85_pair_supported=true
+          stage85_atomic_migration=true
           managed_pair_fail_closed=true
           child_build_metadata=true
           launch_autoconnect=false
