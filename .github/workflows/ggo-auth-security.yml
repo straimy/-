@@ -1,0 +1,37 @@
+name: GGO Auth Security
+
+on:
+  push:
+    branches: ["launcher/bootstrap-v0.1"]
+    paths:
+      - "services/ggo-auth/**"
+      - "site/support/**"
+      - "site/admin/**"
+      - ".github/workflows/ggo-auth-security.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  security:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+      - name: Compile auth service
+        run: python3 -m py_compile services/ggo-auth/server.py services/ggo-auth/secure_server.py services/ggo-auth/test_auth.py services/ggo-auth/test_security.py
+      - name: Core account and support smoke
+        run: python3 services/ggo-auth/test_auth.py -v
+      - name: Production entrypoint security smoke
+        run: python3 services/ggo-auth/test_security.py -v
+      - name: Verify production service uses secure entrypoint
+        run: |
+          set -euo pipefail
+          grep -q 'ExecStart=/usr/bin/python3 /opt/ggo-auth/secure_server.py' services/ggo-auth/ggo-auth.service
+          grep -q 'secure_server.py' services/ggo-auth/install.sh
+          grep -q 'reserved_owner_username' services/ggo-auth/secure_server.py
+          grep -q 'GGO_ALLOW_OWNER_BOOTSTRAP' services/ggo-auth/secure_server.py
+          ! grep -q 'GGO_ALLOW_OWNER_BOOTSTRAP=1' services/ggo-auth/ggo-auth.service
