@@ -1,0 +1,14 @@
+workflow=GGO Stage 91 Closed Beta Ready
+run_id=32634545863
+launcher_sha=202c1a6cf33548c657ca1cb47f3f22af4eb084cf
+server_sha=b4229a0a1929e1b2e2c5b59d79014e9c20bdd15d
+stage89=success
+stage94=success
+stage92=success
+stage93=success
+ticket_ttl_seconds=180
+server_ticket_binding=success
+launcher_candidate_version=0.2.4
+production_published=false
+manual_beta_ready=true
+result=success
