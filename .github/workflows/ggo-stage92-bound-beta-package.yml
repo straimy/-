@@ -1,4 +1,5 @@
 name: GGO Stage 92 Ticket-Bound Beta Package
+# Final closed-beta launcher package; includes Stage90 ticket-bound build identity.
 
 on:
   workflow_dispatch:
