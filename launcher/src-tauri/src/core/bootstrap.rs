@@ -18,26 +18,37 @@ pub struct BootstrapInfo {
 
 impl BootstrapInfo {
     pub fn current() -> Self {
+        // Closed-beta launchers must work out of the box. The old bootstrap only
+        // exposed remote install when GGO_CONTENT_BASE_URL happened to be set at
+        // build time, which made INSTALL silently fall back to a local v40 ZIP.
+        // Keep env overrides for staging while providing the official beta
+        // channel as a safe default.
         let content_base_url = option_env!("GGO_CONTENT_BASE_URL")
             .map(str::trim)
             .filter(|value| !value.is_empty())
-            .map(|value| value.trim_end_matches('/'));
+            .map(|value| value.trim_end_matches('/'))
+            .unwrap_or("https://ggo.kvicloud.ru/content");
         let site_url = option_env!("GGO_SITE_URL")
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(|value| value.trim_end_matches('/'))
             .unwrap_or("https://ggo.kvicloud.ru");
+        let manifest_url = option_env!("GGO_MANIFEST_URL")
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            .unwrap_or_else(|| format!("{content_base_url}/manifests/beta-stage85-candidate.json"));
 
         Self {
             launcher_version: env!("CARGO_PKG_VERSION"),
-            game_version: "v40",
+            game_version: "v85-candidate",
             channel: "beta",
             runtime: "minecraft-forge",
             server: "play.kvicloud.ru:24842",
-            content_base_url,
-            manifest_url: content_base_url.map(|base| format!("{base}/manifests/beta.json")),
-            servers_url: content_base_url.map(|base| format!("{base}/api/servers.json")),
-            news_url: content_base_url.map(|base| format!("{base}/api/news.json")),
+            content_base_url: Some(content_base_url),
+            manifest_url: Some(manifest_url),
+            servers_url: Some(format!("{content_base_url}/api/servers.json")),
+            news_url: Some(format!("{content_base_url}/api/news.json")),
             site_url,
             account_api_url: format!("{site_url}/api/v1"),
         }
