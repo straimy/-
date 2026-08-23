@@ -101,7 +101,10 @@ jobs:
           candidate['files'] = out
           Path('stage85/manifests/beta-stage85-candidate.json').write_text(json.dumps(candidate, indent=2, ensure_ascii=False)+'\n')
           PY
-          sha256sum stage85/client/mods/* stage85/server/mods/* stage85/client/resourcepacks/* stage85/manifests/* > stage85/SHA256SUMS
+          (
+            cd stage85
+            sha256sum client/mods/* server/mods/* client/resourcepacks/* manifests/* > SHA256SUMS
+          )
 
       - name: Verify candidate and production fence
         id: gates
