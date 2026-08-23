@@ -16,6 +16,11 @@ helper = r'''fn ggo_integrity_pair(root: &std::path::Path) -> Result<(String, St
     let mods = root.join("mods");
     let candidates = [
         (
+            "runtime-stage85",
+            "gungloryonline-core-runtime-v1-stage85.jar",
+            "gungloryonline-ui-runtime-v1-stage85.jar",
+        ),
+        (
             "runtime-stage77",
             "gungloryonline-core-runtime-v1-stage77.jar",
             "gungloryonline-ui-runtime-v1-stage77.jar",
@@ -74,6 +79,7 @@ if old in rust:
 
 for token in [
     "fn ggo_integrity_pair(",
+    '"runtime-stage85"',
     '"runtime-stage77"',
     '"runtime-stage68-69"',
     '"GGO_CLIENT_BUILD_ID"',
@@ -89,5 +95,5 @@ RUST.write_text(rust, encoding="utf-8")
 print("Applied GGO Stage84 launcher integrity metadata")
 print(" - hashes installed managed Core/UI immediately before Java launch")
 print(" - passes bounded build id + SHA-256 values to the child process")
-print(" - supports current Stage68/69 and beta Stage77 managed pairs")
+print(" - supports Stage85 candidate, Stage77 beta and current Stage68/69 managed pairs")
 print(" - fails closed on an incomplete managed GGO pair")
