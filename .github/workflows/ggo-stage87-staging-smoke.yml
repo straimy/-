@@ -1,0 +1,194 @@
+name: GGO Stage 87 Staging Smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - launcher/bootstrap-v0.1
+    paths:
+      - '.github/workflows/ggo-stage87-staging-smoke.yml'
+      - '.github/workflows/ggo-stage85-beta-candidate.yml'
+      - '.github/workflows/ggo-stage81-beta-chain-preflight.yml'
+      - 'launcher/hotfix/apply_menu_first_beta_stage76.py'
+      - 'launcher/hotfix/apply_client_integrity_stage84.py'
+      - 'launcher/src-tauri/src/runtime/ggo_remote_install.rs'
+      - 'site/verify-production.sh'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      STAGE85_RUN: '32618991746'
+      STAGE85_ARTIFACT: GunGloryOnline-Stage85-Beta-Candidate
+      STAGE79_RUN: '32609630441'
+      STAGE79_ARTIFACT: GunGloryOnline-Stage79-Portal-Staff-Beta
+      STAGE86_RUN: '32619773730'
+      STAGE86_ARTIFACT: GunGloryOnline-Stage86-Build-Policy-Check
+      EXPECTED_CORE_SHA: 20436c304da3f891f1514fd0e0cf969f61020306d510e8f30353b66be36db403
+      EXPECTED_UI_SHA: 0e4f2e7e81e3f460b1d01d5f15bcc087b0d0adafbc1f6134f366f0d44c04af79
+      EXPECTED_RP_SHA: ec3c1e83d59195ba5a8fb2a90a0a41b7439f3b98f10970bfc9c359d0f7a22dae
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+          fetch-depth: 0
+
+      - name: Capture exact ref
+        id: refs
+        run: echo "launcher_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Download Stage85 candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.STAGE85_ARTIFACT }}
+          path: stage85-input
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.STAGE85_RUN }}
+
+      - name: Download Stage79 portal bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.STAGE79_ARTIFACT }}
+          path: stage79-input
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.STAGE79_RUN }}
+
+      - name: Download Stage86 policy check
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.STAGE86_ARTIFACT }}
+          path: stage86-input
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.STAGE86_RUN }}
+
+      - name: Verify candidate payload
+        id: runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$(find stage85-input -type f -name SHA256SUMS -printf '%h\n' | head -n1)"
+          test -n "$ROOT" && test -d "$ROOT"
+          (cd "$ROOT" && sha256sum -c SHA256SUMS)
+          MAN="$ROOT/manifests/beta-stage85-candidate.json"
+          CORE_C="$ROOT/client/mods/gungloryonline-core-runtime-v1-stage85.jar"
+          CORE_S="$ROOT/server/mods/gungloryonline-core-runtime-v1-stage85.jar"
+          UI="$ROOT/client/mods/gungloryonline-ui-runtime-v1-stage85.jar"
+          RP="$ROOT/client/resourcepacks/GunGloryOnline-Official.zip"
+          for f in "$MAN" "$CORE_C" "$CORE_S" "$UI" "$RP"; do test -f "$f"; done
+          cmp "$CORE_C" "$CORE_S"
+          test "$(sha256sum "$CORE_C" | awk '{print $1}')" = "$EXPECTED_CORE_SHA"
+          test "$(sha256sum "$UI" | awk '{print $1}')" = "$EXPECTED_UI_SHA"
+          test "$(sha256sum "$RP" | awk '{print $1}')" = "$EXPECTED_RP_SHA"
+          grep -q '"betaRuntimeStage": 85' "$MAN"
+          grep -q '"production": false' "$MAN"
+          jar tf "$UI" | grep -q '^arena/client/shell/GgoFrontEndScreen.class$'
+          jar tf "$UI" | grep -q '^arena/client/shell/GgoTrainingScreen.class$'
+          if unzip -Z1 "$RP" | grep -q '^assets/minecraft/shaders/core/'; then exit 1; fi
+
+      - name: Verify portal and auth bundle
+        id: portal
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$(find stage79-input -type f -name DEPLOY-STAGE79.txt -printf '%h\n' | head -n1)"
+          test -n "$ROOT" && test -d "$ROOT"
+          test -f "$ROOT/SHA256SUMS"
+          (cd "$ROOT" && sha256sum -c SHA256SUMS)
+          test -f "$ROOT/web/services/ggo-auth/secure_server.py"
+          test -f "$ROOT/web/site/admin/index.html"
+          test -f "$ROOT/web/site/support/index.html"
+          ! find "$ROOT" -type f -name auth.db | grep -q .
+          grep -q 'reserved_owner_username' "$ROOT/web/services/ggo-auth/secure_server.py"
+
+      - name: Verify server build policy artifact
+        id: policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          ENV_FILE="$(find stage86-input -type f -name 'stage85-build-policy.env.example' | head -n1)"
+          test -n "$ENV_FILE" && test -f "$ENV_FILE"
+          grep -q '^GGO_ALLOWED_CLIENT_BUILDS=runtime-stage85$' "$ENV_FILE"
+          grep -q "^GGO_ALLOWED_CORE_SHA256=${EXPECTED_CORE_SHA}$" "$ENV_FILE"
+          grep -q "^GGO_ALLOWED_UI_SHA256=${EXPECTED_UI_SHA}$" "$ENV_FILE"
+          grep -q '^GGO_ENFORCE_CLIENT_BUILD=0$' "$ENV_FILE"
+          ! grep -qi 'GGO_SERVER_KEY=.*[^[:space:]]\|Authorization: Bearer\|password=' "$ENV_FILE"
+
+      - name: Verify launcher transforms and migration tests
+        id: launcher
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 launcher/hotfix/apply_menu_first_beta_stage76.py
+          python3 launcher/hotfix/apply_client_integrity_stage84.py
+          R=launcher/src-tauri/src/lib.rs
+          grep -q 'runtime-stage85' "$R"
+          grep -q 'gungloryonline-core-runtime-v1-stage85.jar' "$R"
+          grep -q 'gungloryonline-ui-runtime-v1-stage85.jar' "$R"
+          grep -q 'GGO_CLIENT_BUILD_ID' "$R"
+          grep -q 'GGO_CORE_SHA256' "$R"
+          grep -q 'GGO_UI_SHA256' "$R"
+          grep -q 'options.connect_server = false;' "$R"
+          ! grep -q 'async fn launch_minecraft(' "$R"
+          ! grep -q 'async fn preview_minecraft_launch(' "$R"
+
+      - name: Verify production fence
+        id: production
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code -- site/content/manifests/beta.json
+          grep -q 'stage68.jar' site/content/manifests/beta.json
+          grep -q 'stage69.jar' site/content/manifests/beta.json
+          ! grep -q 'stage85.jar' site/content/manifests/beta.json
+          bash -n site/verify-production.sh
+
+      - name: Publish Stage87 receipt
+        if: always()
+        env:
+          RUNTIME: ${{ steps.runtime.outcome }}
+          PORTAL: ${{ steps.portal.outcome }}
+          POLICY: ${{ steps.policy.outcome }}
+          LAUNCHER: ${{ steps.launcher.outcome }}
+          PRODUCTION: ${{ steps.production.outcome }}
+        run: |
+          set -euo pipefail
+          result=success
+          for v in "$RUNTIME" "$PORTAL" "$POLICY" "$LAUNCHER" "$PRODUCTION"; do [ "$v" = success ] || result=failure; done
+          mkdir -p .ci/deploy
+          cat > .ci/deploy/stage87-staging-smoke.txt <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_id=${GITHUB_RUN_ID}
+          run_attempt=${GITHUB_RUN_ATTEMPT}
+          run_url=https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          launcher_sha=${{ steps.refs.outputs.launcher_sha }}
+          stage85_run=${STAGE85_RUN}
+          stage79_run=${STAGE79_RUN}
+          stage86_run=${STAGE86_RUN}
+          runtime_candidate=$RUNTIME
+          portal_bundle=$PORTAL
+          build_policy=$POLICY
+          launcher_integrity=$LAUNCHER
+          production_fence=$PRODUCTION
+          core_sha256=${EXPECTED_CORE_SHA}
+          ui_sha256=${EXPECTED_UI_SHA}
+          resource_pack_sha256=${EXPECTED_RP_SHA}
+          server_enforcement_default=off
+          production_deployed=false
+          result=$result
+          EOF
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .ci/deploy/stage87-staging-smoke.txt
+          git commit -m "ci: record Stage87 staging smoke ${GITHUB_RUN_ID}" || exit 0
+          git fetch origin launcher/bootstrap-v0.1
+          git rebase origin/launcher/bootstrap-v0.1
+          git push origin HEAD:launcher/bootstrap-v0.1
