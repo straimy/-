@@ -28,6 +28,8 @@ jobs:
       STAGE85_ARTIFACT: GunGloryOnline-Stage85-Beta-Candidate
       STAGE79_RUN: '32609630441'
       STAGE79_ARTIFACT: GunGloryOnline-Stage79-Portal-Staff-Beta
+      STAGE86_RUN: '32619773730'
+      STAGE86_ARTIFACT: GunGloryOnline-Stage86-Build-Policy-Check
       EXPECTED_CORE_SHA: 20436c304da3f891f1514fd0e0cf969f61020306d510e8f30353b66be36db403
       EXPECTED_UI_SHA: 0e4f2e7e81e3f460b1d01d5f15bcc087b0d0adafbc1f6134f366f0d44c04af79
       EXPECTED_RP_SHA: ec3c1e83d59195ba5a8fb2a90a0a41b7439f3b98f10970bfc9c359d0f7a22dae
@@ -58,6 +60,15 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ github.repository }}
           run-id: ${{ env.STAGE79_RUN }}
+
+      - name: Download verified Stage86 policy
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.STAGE86_ARTIFACT }}
+          path: stage86-input
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.STAGE86_RUN }}
 
       - name: Verify Stage85 runtime identity
         id: runtime
@@ -99,6 +110,19 @@ jobs:
           grep -q 'reserved_owner_username' "$ROOT/web/services/ggo-auth/secure_server.py"
           grep -q 'STAFF CONSOLE' "$ROOT/web/site/admin/index.html"
           grep -q 'НАПИСАТЬ В ПОДДЕРЖКУ' "$ROOT/web/site/support/index.html"
+
+      - name: Verify Stage86 build policy identity
+        id: policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          ENV_FILE="$(find stage86-input -type f -name 'stage85-build-policy.env.example' | head -n1)"
+          test -n "$ENV_FILE" && test -f "$ENV_FILE"
+          grep -q '^GGO_ALLOWED_CLIENT_BUILDS=runtime-stage85$' "$ENV_FILE"
+          grep -q "^GGO_ALLOWED_CORE_SHA256=${EXPECTED_CORE_SHA}$" "$ENV_FILE"
+          grep -q "^GGO_ALLOWED_UI_SHA256=${EXPECTED_UI_SHA}$" "$ENV_FILE"
+          grep -q '^GGO_ENFORCE_CLIENT_BUILD=0$' "$ENV_FILE"
+          ! grep -qi 'GGO_SERVER_KEY=.*[^[:space:]]\|Authorization: Bearer\|password=' "$ENV_FILE"
 
       - name: Verify launcher menu-first and integrity transforms
         id: launcher
@@ -146,12 +170,13 @@ jobs:
         env:
           RUNTIME: ${{ steps.runtime.outcome }}
           PORTAL: ${{ steps.portal.outcome }}
+          POLICY: ${{ steps.policy.outcome }}
           LAUNCHER: ${{ steps.launcher.outcome }}
           PRODUCTION: ${{ steps.production.outcome }}
         run: |
           set -euo pipefail
           result=success
-          for v in "$RUNTIME" "$PORTAL" "$LAUNCHER" "$PRODUCTION"; do [ "$v" = success ] || result=failure; done
+          for v in "$RUNTIME" "$PORTAL" "$POLICY" "$LAUNCHER" "$PRODUCTION"; do [ "$v" = success ] || result=failure; done
           mkdir -p .ci/deploy
           cat > .ci/deploy/stage81-beta-chain-preflight.txt <<EOF
           workflow=${GITHUB_WORKFLOW}
@@ -161,14 +186,17 @@ jobs:
           launcher_sha=${{ steps.refs.outputs.launcher_sha }}
           stage85_run=${STAGE85_RUN}
           stage79_run=${STAGE79_RUN}
+          stage86_run=${STAGE86_RUN}
           runtime_identity=$RUNTIME
           portal_integrity=$PORTAL
+          build_policy=$POLICY
           launcher_menu_first_integrity=$LAUNCHER
           production_unchanged=$PRODUCTION
           core_sha256=${EXPECTED_CORE_SHA}
           ui_sha256=${EXPECTED_UI_SHA}
           resource_pack_sha256=${EXPECTED_RP_SHA}
           beta_runtime_stage=85
+          build_policy_enforcement_default=off
           launcher_local_hashing=true
           launcher_child_build_metadata=true
           launcher_stage85_pair=true
