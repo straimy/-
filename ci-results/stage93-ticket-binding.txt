@@ -1,0 +1,12 @@
+workflow=GGO Runtime Stage 93 Ticket Binding
+run_id=32631858243
+server_sha=1641ac65971bb236f502b23f9c98497e54d35fdb
+source_gate=failure
+core_build=skipped
+artifact_payload=skipped
+upload=skipped
+core_sha256=
+protocol=3
+ticket_build_binding=true
+production_deployed=false
+result=failure
