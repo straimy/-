@@ -7,10 +7,12 @@ on:
       - launcher/bootstrap-v0.1
     paths:
       - '.github/workflows/ggo-stage81-beta-chain-preflight.yml'
+      - '.github/workflows/ggo-stage85-beta-candidate.yml'
       - 'launcher/hotfix/apply_menu_first_beta_stage76.py'
       - 'launcher/hotfix/apply_client_integrity_stage84.py'
       - 'launcher/src/App.tsx'
       - 'launcher/src-tauri/src/lib.rs'
+      - 'launcher/src-tauri/src/runtime/ggo_remote_install.rs'
       - 'site/verify-production.sh'
 
 permissions:
@@ -22,11 +24,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      STAGE77_RUN: '32604880362'
-      STAGE77_ARTIFACT: GunGloryOnline-Runtime-Stage77-Training
+      STAGE85_RUN: '32618991746'
+      STAGE85_ARTIFACT: GunGloryOnline-Stage85-Beta-Candidate
       STAGE79_RUN: '32609630441'
       STAGE79_ARTIFACT: GunGloryOnline-Stage79-Portal-Staff-Beta
-      EXPECTED_CORE_SHA: 71f3d2d6f08b5980e3da494b595235f36d7aa5ac7ada880c8e04f97c1d244c46
+      EXPECTED_CORE_SHA: 20436c304da3f891f1514fd0e0cf969f61020306d510e8f30353b66be36db403
       EXPECTED_UI_SHA: 0e4f2e7e81e3f460b1d01d5f15bcc087b0d0adafbc1f6134f366f0d44c04af79
       EXPECTED_RP_SHA: ec3c1e83d59195ba5a8fb2a90a0a41b7439f3b98f10970bfc9c359d0f7a22dae
     steps:
@@ -39,16 +41,16 @@ jobs:
         id: refs
         run: echo "launcher_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Download verified Stage 77 runtime
+      - name: Download verified Stage85 candidate
         uses: actions/download-artifact@v4
         with:
-          name: ${{ env.STAGE77_ARTIFACT }}
-          path: stage77-input
+          name: ${{ env.STAGE85_ARTIFACT }}
+          path: stage85-input
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ github.repository }}
-          run-id: ${{ env.STAGE77_RUN }}
+          run-id: ${{ env.STAGE85_RUN }}
 
-      - name: Download verified Stage 79 portal
+      - name: Download verified Stage79 portal
         uses: actions/download-artifact@v4
         with:
           name: ${{ env.STAGE79_ARTIFACT }}
@@ -57,25 +59,31 @@ jobs:
           repository: ${{ github.repository }}
           run-id: ${{ env.STAGE79_RUN }}
 
-      - name: Verify Stage 77 runtime identity
+      - name: Verify Stage85 runtime identity
         id: runtime
         shell: bash
         run: |
           set -euo pipefail
-          CORE_CLIENT="$(find stage77-input -type f -path '*/client/mods/*' -name '*core*stage77*.jar' | head -n1)"
-          CORE_SERVER="$(find stage77-input -type f -path '*/server/mods/*' -name '*core*stage77*.jar' | head -n1)"
-          UI="$(find stage77-input -type f -path '*/client/mods/*' -name '*ui*stage77*.jar' | head -n1)"
-          RP="$(find stage77-input -type f -path '*/client/resourcepacks/*' -name 'GunGloryOnline-Official.zip' | head -n1)"
-          for f in "$CORE_CLIENT" "$CORE_SERVER" "$UI" "$RP"; do test -n "$f" && test -f "$f"; done
+          ROOT="$(find stage85-input -type f -name 'SHA256SUMS' -printf '%h\n' | head -n1)"
+          test -n "$ROOT" && test -d "$ROOT"
+          (cd "$ROOT" && sha256sum -c SHA256SUMS)
+          CORE_CLIENT="$(find "$ROOT" -type f -path '*/client/mods/*' -name '*core*stage85*.jar' | head -n1)"
+          CORE_SERVER="$(find "$ROOT" -type f -path '*/server/mods/*' -name '*core*stage85*.jar' | head -n1)"
+          UI="$(find "$ROOT" -type f -path '*/client/mods/*' -name '*ui*stage85*.jar' | head -n1)"
+          RP="$(find "$ROOT" -type f -path '*/client/resourcepacks/*' -name 'GunGloryOnline-Official.zip' | head -n1)"
+          MANIFEST="$(find "$ROOT" -type f -path '*/manifests/*' -name 'beta-stage85-candidate.json' | head -n1)"
+          for f in "$CORE_CLIENT" "$CORE_SERVER" "$UI" "$RP" "$MANIFEST"; do test -n "$f" && test -f "$f"; done
           cmp "$CORE_CLIENT" "$CORE_SERVER"
           test "$(sha256sum "$CORE_CLIENT" | awk '{print $1}')" = "$EXPECTED_CORE_SHA"
           test "$(sha256sum "$UI" | awk '{print $1}')" = "$EXPECTED_UI_SHA"
           test "$(sha256sum "$RP" | awk '{print $1}')" = "$EXPECTED_RP_SHA"
+          grep -q '"betaRuntimeStage": 85' "$MANIFEST"
+          grep -q '"production": false' "$MANIFEST"
           jar tf "$UI" | grep -q '^arena/client/shell/GgoFrontEndScreen.class$'
           jar tf "$UI" | grep -q '^arena/client/shell/GgoTrainingScreen.class$'
           if unzip -Z1 "$RP" | grep -q '^assets/minecraft/shaders/core/'; then exit 1; fi
 
-      - name: Verify Stage 79 portal identity and safety
+      - name: Verify Stage79 portal identity and safety
         id: portal
         shell: bash
         run: |
@@ -100,17 +108,20 @@ jobs:
           python3 launcher/hotfix/apply_menu_first_beta_stage76.py
           python3 launcher/hotfix/apply_client_integrity_stage84.py
           R=launcher/src-tauri/src/lib.rs
+          U=launcher/src-tauri/src/runtime/ggo_remote_install.rs
           A=launcher/src/App.tsx
           grep -q 'async fn launch_game(' "$R"
           grep -q 'options.connect_server = false;' "$R"
           grep -q 'GGO_GAME_TICKET_EXPIRES_AT' "$R"
           grep -q 'fn ggo_integrity_pair(' "$R"
-          grep -q 'runtime-stage77' "$R"
+          grep -q 'runtime-stage85' "$R"
           grep -q 'GGO_CLIENT_BUILD_ID' "$R"
           grep -q 'GGO_CORE_SHA256' "$R"
           grep -q 'GGO_UI_SHA256' "$R"
           grep -q 'Sha256::digest(core_bytes)' "$R"
           grep -q 'Sha256::digest(ui_bytes)' "$R"
+          grep -q 'REMOTE_CORE_STAGE85' "$U"
+          grep -q 'REMOTE_UI_STAGE85' "$U"
           ! grep -q 'async fn preview_minecraft_launch(' "$R"
           ! grep -q 'async fn launch_minecraft(' "$R"
           ! grep -q '            launch_training,' "$R"
@@ -127,9 +138,10 @@ jobs:
           git diff --exit-code -- site/content/manifests/beta.json
           grep -q 'stage68.jar' site/content/manifests/beta.json
           grep -q 'stage69.jar' site/content/manifests/beta.json
+          ! grep -q 'stage85.jar' site/content/manifests/beta.json
           bash -n site/verify-production.sh
 
-      - name: Publish Stage 81 receipt
+      - name: Publish Stage81 receipt
         if: always()
         env:
           RUNTIME: ${{ steps.runtime.outcome }}
@@ -147,7 +159,7 @@ jobs:
           run_attempt=${GITHUB_RUN_ATTEMPT}
           run_url=https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
           launcher_sha=${{ steps.refs.outputs.launcher_sha }}
-          stage77_run=${STAGE77_RUN}
+          stage85_run=${STAGE85_RUN}
           stage79_run=${STAGE79_RUN}
           runtime_identity=$RUNTIME
           portal_integrity=$PORTAL
@@ -156,8 +168,10 @@ jobs:
           core_sha256=${EXPECTED_CORE_SHA}
           ui_sha256=${EXPECTED_UI_SHA}
           resource_pack_sha256=${EXPECTED_RP_SHA}
+          beta_runtime_stage=85
           launcher_local_hashing=true
           launcher_child_build_metadata=true
+          launcher_stage85_pair=true
           no_auth_db_artifact=true
           client_server_core_identical=true
           result=$result
@@ -165,7 +179,7 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add .ci/deploy/stage81-beta-chain-preflight.txt
-          git commit -m "ci: record Stage 81 beta chain ${GITHUB_RUN_ID}" || exit 0
+          git commit -m "ci: record Stage81 beta chain ${GITHUB_RUN_ID}" || exit 0
           git fetch origin launcher/bootstrap-v0.1
           git rebase origin/launcher/bootstrap-v0.1
           git push origin HEAD:launcher/bootstrap-v0.1
