@@ -1,0 +1,175 @@
+name: GGO Launcher Stage 88 Beta Package
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - launcher/bootstrap-v0.1
+    paths:
+      - '.github/workflows/ggo-launcher-stage88-beta-package.yml'
+      - 'launcher/hotfix/apply_menu_first_beta_stage76.py'
+      - 'launcher/hotfix/apply_client_integrity_stage84.py'
+      - 'launcher/src/**'
+      - 'launcher/src-tauri/**'
+      - 'launcher/package.json'
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            bundle: appimage,deb
+            artifact: GunGloryOnline-Launcher-0.2.4-Beta-Linux
+          - os: windows-2022
+            bundle: nsis,msi
+            artifact: GunGloryOnline-Launcher-0.2.4-Beta-Windows
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: launcher
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Linux Tauri dependencies
+        if: runner.os == 'Linux'
+        working-directory: .
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libfuse2
+
+      - name: Install frontend dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Apply Stage76 and Stage84 launcher transforms
+        run: |
+          python3 hotfix/apply_menu_first_beta_stage76.py
+          python3 hotfix/apply_client_integrity_stage84.py
+
+      - name: Candidate contract gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q '"version": "0.2.4"' package.json
+          grep -q '^version = "0.2.4"' src-tauri/Cargo.toml
+          grep -q 'runtime-stage85' src-tauri/src/lib.rs
+          grep -q 'gungloryonline-core-runtime-v1-stage85.jar' src-tauri/src/lib.rs
+          grep -q 'gungloryonline-ui-runtime-v1-stage85.jar' src-tauri/src/lib.rs
+          grep -q 'GGO_CLIENT_BUILD_ID' src-tauri/src/lib.rs
+          grep -q 'GGO_CORE_SHA256' src-tauri/src/lib.rs
+          grep -q 'GGO_UI_SHA256' src-tauri/src/lib.rs
+          grep -q 'GGO_GAME_TICKET_EXPIRES_AT' src-tauri/src/lib.rs
+          grep -q 'options.connect_server = false;' src-tauri/src/lib.rs
+          ! grep -q 'async fn launch_minecraft(' src-tauri/src/lib.rs
+          ! grep -q 'async fn preview_minecraft_launch(' src-tauri/src/lib.rs
+          grep -q 'REMOTE_CORE_STAGE85' src-tauri/src/runtime/ggo_remote_install.rs
+          grep -q 'REMOTE_UI_STAGE85' src-tauri/src/runtime/ggo_remote_install.rs
+          grep -q '?t.install:updateAvailable?t.updateGame:t.play' src/App.tsx
+          ! grep -q 'onClick={()=>void launch(true)}' src/App.tsx
+
+      - name: Frontend build
+        run: npm run build
+
+      - name: Rust format gate
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+
+      - name: Rust compile gate
+        run: cargo check --manifest-path src-tauri/Cargo.toml
+
+      - name: Runtime migration tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml runtime::ggo_remote_install::tests --lib
+
+      - name: Build beta package
+        run: npm run tauri build -- --bundles ${{ matrix.bundle }}
+
+      - name: Normalize Linux beta packages
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist-stage88
+          APPIMAGE="$(find src-tauri/target/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage' | head -n1)"
+          DEB="$(find src-tauri/target/release/bundle/deb -maxdepth 1 -type f -name '*.deb' | head -n1)"
+          test -n "$APPIMAGE" && test -f "$APPIMAGE" && test "$(stat -c%s "$APPIMAGE")" -gt 1048576
+          test -n "$DEB" && test -f "$DEB" && test "$(stat -c%s "$DEB")" -gt 1048576
+          cp "$APPIMAGE" dist-stage88/GunGloryOnline-Launcher-0.2.4-Beta.AppImage
+          cp "$DEB" dist-stage88/GunGloryOnline-Launcher-0.2.4-Beta.deb
+          (cd dist-stage88 && sha256sum * > SHA256SUMS)
+
+      - name: Normalize Windows beta packages
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force dist-stage88 | Out-Null
+          $nsis = Get-ChildItem src-tauri/target/release/bundle/nsis/*.exe | Select-Object -First 1
+          $msi = Get-ChildItem src-tauri/target/release/bundle/msi/*.msi | Select-Object -First 1
+          if (-not $nsis -or $nsis.Length -lt 1MB) { throw 'Stage88 NSIS missing or too small' }
+          if (-not $msi -or $msi.Length -lt 1MB) { throw 'Stage88 MSI missing or too small' }
+          Copy-Item $nsis.FullName dist-stage88/GunGloryOnline-Launcher-0.2.4-Beta-Windows.exe
+          Copy-Item $msi.FullName dist-stage88/GunGloryOnline-Launcher-0.2.4-Beta-Windows.msi
+          $hashes = Get-ChildItem dist-stage88/* | Get-FileHash -Algorithm SHA256
+          $lines = $hashes | ForEach-Object { "$($_.Hash.ToLower())  $([System.IO.Path]::GetFileName($_.Path))" }
+          Set-Content -Path dist-stage88/SHA256SUMS -Value $lines -Encoding ascii
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: launcher/dist-stage88/**
+          if-no-files-found: error
+          retention-days: 30
+
+  receipt:
+    if: always()
+    needs: [package]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+          fetch-depth: 0
+      - name: Publish Stage88 receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          result='${{ needs.package.result }}'
+          [ "$result" = success ] || result=failure
+          mkdir -p .ci/launcher
+          cat > .ci/launcher/stage88-beta-package.txt <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_id=${GITHUB_RUN_ID}
+          run_attempt=${GITHUB_RUN_ATTEMPT}
+          run_url=https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          launcher_sha=$(git rev-parse HEAD)
+          launcher_candidate_version=0.2.4
+          stage85_integrity=true
+          menu_first=true
+          launch_autoconnect=false
+          production_published=false
+          windows_artifact=GunGloryOnline-Launcher-0.2.4-Beta-Windows
+          linux_artifact=GunGloryOnline-Launcher-0.2.4-Beta-Linux
+          result=$result
+          EOF
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .ci/launcher/stage88-beta-package.txt
+          git commit -m "ci: record launcher Stage88 beta package ${GITHUB_RUN_ID}" || exit 0
+          git fetch origin launcher/bootstrap-v0.1
+          git rebase origin/launcher/bootstrap-v0.1
+          git push origin HEAD:launcher/bootstrap-v0.1
