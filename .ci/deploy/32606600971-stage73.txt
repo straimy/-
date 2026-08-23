@@ -1,0 +1,13 @@
+workflow=GGO Stage 73 Auth Hotfix Bundle
+run_id=32606600971
+run_attempt=1
+run_url=https://github.com/straimy/-/actions/runs/32606600971
+hotfix_source_sha=f5e8d1cf1f7d87962727781e9376deab9534b7b9
+launcher_source_sha=40c88a9a181f5dda3e14152670b22af0c52d772e
+launcher_package_run=32605900885
+stage70_runtime_run=32567000478
+bundle=success
+upload=success
+bundle_bytes=122333992
+bundle_sha256=04fd542dbe2a3293dff1afb2d2fc8fba9cf6de4870f6092c066bba3b4f3ebb3b
+result=success
