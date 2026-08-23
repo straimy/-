@@ -86,6 +86,7 @@ jobs:
       - name: Frontend build
         run: npm run build
 
+      # Keep this before cargo check/build so transformed Rust can never be packaged if it drifts.
       - name: Rust format gate
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
 
