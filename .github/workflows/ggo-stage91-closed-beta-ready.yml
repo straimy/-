@@ -9,6 +9,7 @@ on:
       - '.github/workflows/ggo-stage91-closed-beta-ready.yml'
       - '.ci/deploy/stage89-final-beta-preflight.txt'
       - '.ci/security/stage90-ticket-build-binding.txt'
+      - '.ci/launcher/stage92-bound-beta-package.txt'
       - 'launcher/hotfix/apply_ticket_binding_stage90.py'
       - 'services/ggo-auth/**'
 
@@ -64,6 +65,20 @@ jobs:
           grep -qx 'production_deployed=false' "$R"
           grep -qx 'result=success' "$R"
 
+      - name: Verify Stage92 ticket-bound launcher package
+        shell: bash
+        run: |
+          set -euo pipefail
+          R=candidate/.ci/launcher/stage92-bound-beta-package.txt
+          test -f "$R"
+          grep -qx 'launcher_candidate_version=0.2.4' "$R"
+          grep -qx 'ticket_build_binding=true' "$R"
+          grep -qx 'stage85_integrity=true' "$R"
+          grep -qx 'menu_first=true' "$R"
+          grep -qx 'launch_autoconnect=false' "$R"
+          grep -qx 'production_published=false' "$R"
+          grep -qx 'result=success' "$R"
+
       - name: Verify hardened server consumes ticket-bound metadata
         shell: bash
         run: |
@@ -102,6 +117,7 @@ jobs:
           server_sha=$(git -C ../server-candidate rev-parse HEAD)
           stage89=success
           stage90=success
+          stage92=success
           server_ticket_binding=success
           launcher_candidate_version=0.2.4
           production_published=false
