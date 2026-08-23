@@ -4,6 +4,8 @@ use super::{
 };
 use std::{fs, io, path::Path};
 
+const REMOTE_CORE_STAGE85: &str = "gungloryonline-core-runtime-v1-stage85.jar";
+const REMOTE_UI_STAGE85: &str = "gungloryonline-ui-runtime-v1-stage85.jar";
 const REMOTE_CORE_STAGE77: &str = "gungloryonline-core-runtime-v1-stage77.jar";
 const REMOTE_UI_STAGE77: &str = "gungloryonline-ui-runtime-v1-stage77.jar";
 const REMOTE_CORE_STAGE68: &str = "gungloryonline-core-runtime-v1-stage68.jar";
@@ -26,12 +28,13 @@ fn remove_legacy_managed_jars(mods_dir: &Path) -> Result<(), io::Error> {
         return Ok(());
     }
 
-    // Transitional rule for the beta migration:
-    // 1) once the complete Stage77 pair is present, it is the only remote pair preserved;
-    // 2) otherwise preserve the current production Stage68/69 pair;
-    // 3) otherwise preserve the old local-full-install pair.
-    // This makes an updater run atomic from the player's perspective and prevents duplicate GGO
-    // Core/UI jars from surviving after the new manifest has finished downloading both files.
+    // Atomic managed-runtime preference:
+    // 1) preserve Stage85 only after the complete Stage85 pair is present;
+    // 2) otherwise preserve the complete Stage77 pair;
+    // 3) otherwise preserve current production Stage68/69;
+    // 4) otherwise preserve the old local-full-install pair.
+    // A partial newer download never destroys the last complete working pair.
+    let stage85_ready = pair_exists(mods_dir, REMOTE_CORE_STAGE85, REMOTE_UI_STAGE85);
     let stage77_ready = pair_exists(mods_dir, REMOTE_CORE_STAGE77, REMOTE_UI_STAGE77);
     let stage68_ready = pair_exists(mods_dir, REMOTE_CORE_STAGE68, REMOTE_UI_STAGE69);
 
@@ -54,7 +57,9 @@ fn remove_legacy_managed_jars(mods_dir: &Path) -> Result<(), io::Error> {
             continue;
         }
 
-        let current = if stage77_ready {
+        let current = if stage85_ready {
+            matches!(name, REMOTE_CORE_STAGE85 | REMOTE_UI_STAGE85)
+        } else if stage77_ready {
             matches!(name, REMOTE_CORE_STAGE77 | REMOTE_UI_STAGE77)
         } else if stage68_ready {
             matches!(name, REMOTE_CORE_STAGE68 | REMOTE_UI_STAGE69)
@@ -71,8 +76,8 @@ fn remove_legacy_managed_jars(mods_dir: &Path) -> Result<(), io::Error> {
 #[cfg(test)]
 mod tests {
     use super::{
-        finalize_remote_install, REMOTE_CORE_STAGE68, REMOTE_CORE_STAGE77, REMOTE_UI_STAGE69,
-        REMOTE_UI_STAGE77,
+        finalize_remote_install, REMOTE_CORE_STAGE68, REMOTE_CORE_STAGE77, REMOTE_CORE_STAGE85,
+        REMOTE_UI_STAGE69, REMOTE_UI_STAGE77, REMOTE_UI_STAGE85,
     };
     use crate::runtime::official_resource_pack::OFFICIAL_PACK_FILE;
 
@@ -135,6 +140,44 @@ mod tests {
         assert!(!mods.join(REMOTE_CORE_STAGE68).exists());
         assert!(!mods.join(REMOTE_UI_STAGE69).exists());
         assert!(!mods.join("gungloryonline-core-old.jar").exists());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn finalizer_preserves_stage77_until_stage85_pair_is_complete() {
+        let root =
+            std::env::temp_dir().join(format!("ggo-remote-stage85-partial-{}", uuid::Uuid::new_v4()));
+        let mods = root.join("mods");
+        std::fs::create_dir_all(&mods).unwrap();
+        std::fs::write(mods.join(REMOTE_CORE_STAGE77), b"old-core").unwrap();
+        std::fs::write(mods.join(REMOTE_UI_STAGE77), b"old-ui").unwrap();
+        std::fs::write(mods.join(REMOTE_CORE_STAGE85), b"new-core").unwrap();
+
+        super::remove_legacy_managed_jars(&mods).unwrap();
+
+        assert!(mods.join(REMOTE_CORE_STAGE77).is_file());
+        assert!(mods.join(REMOTE_UI_STAGE77).is_file());
+        assert!(!mods.join(REMOTE_CORE_STAGE85).exists());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn finalizer_switches_to_stage85_atomically() {
+        let root =
+            std::env::temp_dir().join(format!("ggo-remote-stage85-{}", uuid::Uuid::new_v4()));
+        let mods = root.join("mods");
+        std::fs::create_dir_all(&mods).unwrap();
+        std::fs::write(mods.join(REMOTE_CORE_STAGE77), b"old-core").unwrap();
+        std::fs::write(mods.join(REMOTE_UI_STAGE77), b"old-ui").unwrap();
+        std::fs::write(mods.join(REMOTE_CORE_STAGE85), b"new-core").unwrap();
+        std::fs::write(mods.join(REMOTE_UI_STAGE85), b"new-ui").unwrap();
+
+        super::remove_legacy_managed_jars(&mods).unwrap();
+
+        assert!(mods.join(REMOTE_CORE_STAGE85).is_file());
+        assert!(mods.join(REMOTE_UI_STAGE85).is_file());
+        assert!(!mods.join(REMOTE_CORE_STAGE77).exists());
+        assert!(!mods.join(REMOTE_UI_STAGE77).exists());
         let _ = std::fs::remove_dir_all(root);
     }
 }
