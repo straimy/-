@@ -60,6 +60,7 @@ jobs:
           grep -qx 'stage92_bound_launcher=success' "$R"
           grep -qx 'auth_schema_binding=success' "$R"
           grep -qx 'auth_one_shot_consume=success' "$R"
+          grep -qx 'ticket_ttl_seconds=180' "$R"
           grep -qx 'consume_returns_ticket_build=success' "$R"
           grep -qx 'launcher_requests_bound_ticket=success' "$R"
           grep -qx 'production_deployed=false' "$R"
@@ -136,6 +137,7 @@ jobs:
           stage94=success
           stage92=success
           stage93=success
+          ticket_ttl_seconds=180
           server_ticket_binding=success
           launcher_candidate_version=0.2.4
           production_published=false
