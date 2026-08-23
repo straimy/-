@@ -15,14 +15,17 @@ The standalone launcher is silent by default. Launcher startup must not start th
 - `lost_signal` — Lost Signal
 - `ggo_track_04` — GGO Track 04; temporary runtime title until an official name is chosen
 - `afterglow_protocol` — Afterglow Protocol
+- `distant_current` — Distant Current
 
-All five masters are loudness-matched to **-18.0 LUFS integrated** before game packaging. The game ships streaming OGG Vorbis resources; WAV masters are preserved separately.
+All six masters are loudness-matched to **-18.0 LUFS integrated** before game packaging. The game ships streaming OGG Vorbis resources; WAV masters are preserved separately.
 
 The fourth packaged source asset remains `GGO_Track4_Normalized(1).ogg`, stereo 44.1 kHz, 246.853 seconds, SHA-256 `eb7ef5655e653bc542862e8a38eb7d314ed109fb8820ff27a1cc150a6c64046d`.
 
 The fifth normalized packaged source asset is `ggosounds5.ogg`, stereo 48 kHz, 232.939 seconds, SHA-256 `3bd0c7d836ebc436abb040f0c93b41effba5312727ee247f76a20e33ecc814a9`. It is packaged in-game as `afterglow_protocol.ogg`. Its original WAV measured approximately -12.7 LUFS / +0.2 dBTP; the normalized master uses a -5.3 dB gain and measures -18.0 LUFS / -5.1 dBTP, preserving the original dynamics rather than applying unnecessary extra compression.
 
-The binary fifth-track asset is intentionally not stored in Git history; the packer validates the external normalized file by checksum before packaging.
+The sixth normalized source asset is `GunGloryOnline_-_Distant_Current.ogg`, stereo 48 kHz, 60.000 seconds, SHA-256 `54cba3c8382e7d956548535e84f88c685e65c7ef8d549f7a3d9eb9fec6a7aad7`. It is packaged in-game as `distant_current.ogg`. The supplied WAV measured approximately -18.4 LUFS / -6.2 dBTP; the normalized master uses a simple +0.4 dB gain and measures -18.0 LUFS / about -5.8 dBTP, preserving the original dynamics without compression.
+
+Binary normalized soundtrack assets are intentionally not stored in Git history; the packer validates the external normalized files by checksum before packaging.
 
 ## Playback behavior
 
@@ -48,4 +51,4 @@ When the special state ends, return to the normal global ambient pool after an a
 
 ## Packaging
 
-`hotfix/apply_ggo_global_ost_stage14.py` validates every source checksum, writes all five files under `assets/minecraft/sounds/ggo/music`, and replaces normal Minecraft music events with the shared five-track pool. Preserve WAV masters separately; package OGG files for the game.
+`hotfix/apply_ggo_global_ost_stage14.py` validates every source checksum, writes all six files under `assets/minecraft/sounds/ggo/music`, and replaces normal Minecraft music events with the shared six-track pool. Preserve WAV masters separately; package OGG files for the game.
