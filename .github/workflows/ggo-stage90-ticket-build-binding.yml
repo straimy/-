@@ -1,5 +1,5 @@
 name: GGO Stage 90 Ticket Build Binding
-# Final beta auth-binding gate; production remains untouched.
+# Closed-beta binding verification; retriggered after Stage91/92 finalization.
 
 on:
   workflow_dispatch:
