@@ -1,0 +1,140 @@
+name: GGO Stage 79 Portal Staff Beta
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["launcher/bootstrap-v0.1"]
+    paths:
+      - "site/**"
+      - "services/ggo-auth/**"
+      - ".github/workflows/ggo-stage79-portal-staff-beta.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  bundle:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+          fetch-depth: 0
+      - name: Capture exact ref
+        id: refs
+        run: echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Validate auth and staff backend
+        id: auth
+        run: |
+          set -euo pipefail
+          python3 -m py_compile services/ggo-auth/server.py services/ggo-auth/secure_server.py services/ggo-auth/test_auth.py services/ggo-auth/test_security.py
+          python3 services/ggo-auth/test_auth.py -v
+          python3 services/ggo-auth/test_security.py -v
+          grep -q 'ExecStart=/usr/bin/python3 /opt/ggo-auth/secure_server.py' services/ggo-auth/ggo-auth.service
+          grep -q 'systemctl restart ggo-auth.service' services/ggo-auth/install.sh
+          ! grep -q 'GGO_ALLOW_OWNER_BOOTSTRAP=1' services/ggo-auth/ggo-auth.service
+
+      - name: Validate portal support and staff UI
+        id: portal
+        run: |
+          set -euo pipefail
+          bash -n site/install-site.sh
+          bash -n site/verify-production.sh
+          test -f site/support/index.html
+          test -f site/support/support.js
+          test -f site/admin/index.html
+          test -f site/admin/admin.js
+          grep -q 'НАПИСАТЬ В ПОДДЕРЖКУ' site/support/index.html
+          grep -q '/api/v1/support/tickets' site/support/support.js
+          grep -q 'STAFF CONSOLE' site/admin/index.html
+          grep -q '/api/v1/staff/tickets' site/admin/admin.js
+          grep -q '/api/v1/admin/users' site/admin/admin.js
+          grep -q 'role-badge.admin' site/portal.css
+          grep -q 'role-badge.support' site/portal.css
+          grep -q 'profileRole' site/account/index.html
+          grep -q 'staffAccountLink' site/account/account.js
+          grep -q 'support_tickets' site/verify-production.sh
+          grep -q 'staff_roles' site/verify-production.sh
+          grep -q 'betaRuntimeStage' site/verify-production.sh
+
+      - name: Assemble deploy candidate
+        id: assemble
+        run: |
+          set -euo pipefail
+          rm -rf stage79
+          mkdir -p stage79/web
+          cp -a site stage79/web/site
+          mkdir -p stage79/web/services
+          cp -a services/ggo-auth stage79/web/services/ggo-auth
+          rm -f stage79/web/services/ggo-auth/__pycache__/* 2>/dev/null || true
+          find stage79 -name '*.pyc' -delete
+          test ! -e stage79/web/services/ggo-auth/auth.db
+          test ! -e stage79/web/site/auth.db
+          cat > stage79/DEPLOY-STAGE79.txt <<'EOF'
+          GGO Stage 79 Portal + Staff beta candidate
+
+          Deploy only on vds.play2go.cloud as root.
+          This bundle intentionally contains no auth.db, passwords, server keys or game tickets.
+
+          1. Extract the artifact on the VDS.
+          2. cd stage79/web/site
+          3. Set GGO_AUTH_SOURCE to the sibling bundled auth service:
+             export GGO_AUTH_SOURCE="$(cd ../services/ggo-auth && pwd)"
+          4. ./install-site.sh
+          5. ./verify-production.sh
+
+          install-site.sh creates a protected timestamped backup under /root/ggo-site-backups,
+          preserves the live account DB and runtime/launcher payloads, restarts ggo-auth, validates
+          nginx, Support, Staff Console and the unauthenticated ticket API wall.
+          EOF
+          find stage79 -type f -print0 | sort -z | xargs -0 sha256sum > stage79/SHA256SUMS
+          (cd stage79 && sha256sum -c SHA256SUMS)
+
+      - uses: actions/upload-artifact@v4
+        id: upload
+        with:
+          name: GunGloryOnline-Stage79-Portal-Staff-Beta
+          path: stage79/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish Stage 79 receipt
+        if: always()
+        env:
+          AUTH: ${{ steps.auth.outcome }}
+          PORTAL: ${{ steps.portal.outcome }}
+          ASSEMBLE: ${{ steps.assemble.outcome }}
+          UPLOAD: ${{ steps.upload.outcome }}
+        run: |
+          set -euo pipefail
+          result=success
+          for v in "$AUTH" "$PORTAL" "$ASSEMBLE" "$UPLOAD"; do [ "$v" = success ] || result=failure; done
+          mkdir -p .ci/deploy
+          cat > .ci/deploy/stage79-portal-staff.txt <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_id=${GITHUB_RUN_ID}
+          run_attempt=${GITHUB_RUN_ATTEMPT}
+          run_url=https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          source_sha=${{ steps.refs.outputs.source_sha }}
+          auth_security=$AUTH
+          portal_gates=$PORTAL
+          assemble=$ASSEMBLE
+          upload=$UPLOAD
+          artifact=GunGloryOnline-Stage79-Portal-Staff-Beta
+          support_ticket_ui=true
+          staff_console=true
+          support_role=server_authoritative
+          admin_role=server_authoritative
+          owner_registration_reserved=true
+          auth_db_in_artifact=false
+          result=$result
+          EOF
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .ci/deploy/stage79-portal-staff.txt
+          git commit -m "ci: record Stage 79 portal staff ${GITHUB_RUN_ID}" || exit 0
+          git fetch origin launcher/bootstrap-v0.1
+          git rebase origin/launcher/bootstrap-v0.1
+          git push origin HEAD:launcher/bootstrap-v0.1
