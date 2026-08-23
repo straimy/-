@@ -8,7 +8,7 @@ on:
     paths:
       - '.github/workflows/ggo-stage91-closed-beta-ready.yml'
       - '.ci/deploy/stage89-final-beta-preflight.txt'
-      - '.ci/security/stage90-ticket-build-binding.txt'
+      - '.ci/security/stage94-auth-binding-attestation.txt'
       - '.ci/launcher/stage92-bound-beta-package.txt'
       - 'launcher/hotfix/apply_ticket_binding_stage90.py'
       - 'services/ggo-auth/**'
@@ -51,17 +51,17 @@ jobs:
           grep -qx 'production_published=false' "$R"
           grep -qx 'result=success' "$R"
 
-      - name: Verify Stage90 launcher/auth binding receipt
+      - name: Verify Stage94 auth binding attestation
         shell: bash
         run: |
           set -euo pipefail
-          R=candidate/.ci/security/stage90-ticket-build-binding.txt
+          R=candidate/.ci/security/stage94-auth-binding-attestation.txt
           test -f "$R"
-          grep -qx 'ticket_build_binding=true' "$R"
-          grep -qx 'launcher_metadata_bound=true' "$R"
-          grep -qx 'auth_metadata_persisted=true' "$R"
-          grep -qx 'consume_returns_ticket_build=true' "$R"
-          grep -qx 'legacy_unbound_ticket_compatible=true' "$R"
+          grep -qx 'stage92_bound_launcher=success' "$R"
+          grep -qx 'auth_schema_binding=success' "$R"
+          grep -qx 'auth_one_shot_consume=success' "$R"
+          grep -qx 'consume_returns_ticket_build=success' "$R"
+          grep -qx 'launcher_requests_bound_ticket=success' "$R"
           grep -qx 'production_deployed=false' "$R"
           grep -qx 'result=success' "$R"
 
@@ -133,7 +133,7 @@ jobs:
           launcher_sha=$(git rev-parse HEAD)
           server_sha=$(git -C ../server-candidate rev-parse HEAD)
           stage89=success
-          stage90=success
+          stage94=success
           stage92=success
           stage93=success
           server_ticket_binding=success
