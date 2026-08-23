@@ -27,7 +27,7 @@ jobs:
       STAGE85_ARTIFACT: GunGloryOnline-Stage85-Beta-Candidate
       STAGE79_RUN: '32609630441'
       STAGE79_ARTIFACT: GunGloryOnline-Stage79-Portal-Staff-Beta
-      STAGE86_RUN: '32619773730'
+      STAGE86_RUN: '32623500769'
       STAGE86_ARTIFACT: GunGloryOnline-Stage86-Build-Policy-Check
       EXPECTED_CORE_SHA: 20436c304da3f891f1514fd0e0cf969f61020306d510e8f30353b66be36db403
       EXPECTED_UI_SHA: 0e4f2e7e81e3f460b1d01d5f15bcc087b0d0adafbc1f6134f366f0d44c04af79
@@ -114,12 +114,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ENV_FILE="$(find stage86-input -type f -name 'stage85-build-policy.env.example' | head -n1)"
-          test -n "$ENV_FILE" && test -f "$ENV_FILE"
-          grep -q '^GGO_ALLOWED_CLIENT_BUILDS=runtime-stage85$' "$ENV_FILE"
-          grep -q "^GGO_ALLOWED_CORE_SHA256=${EXPECTED_CORE_SHA}$" "$ENV_FILE"
-          grep -q "^GGO_ALLOWED_UI_SHA256=${EXPECTED_UI_SHA}$" "$ENV_FILE"
-          grep -q '^GGO_ENFORCE_CLIENT_BUILD=0$' "$ENV_FILE"
+          ROOT="$(find stage86-input -type f -name SHA256SUMS -printf '%h\n' | head -n1)"
+          test -n "$ROOT" && test -d "$ROOT"
+          (cd "$ROOT" && sha256sum -c SHA256SUMS)
+          ENV_FILE="$ROOT/stage85-build-policy.env.example"
+          test -f "$ENV_FILE"
+          grep -qx 'GGO_ALLOWED_CLIENT_BUILDS=runtime-stage85' "$ENV_FILE"
+          grep -qx "GGO_ALLOWED_CORE_SHA256=${EXPECTED_CORE_SHA}" "$ENV_FILE"
+          grep -qx "GGO_ALLOWED_UI_SHA256=${EXPECTED_UI_SHA}" "$ENV_FILE"
+          grep -qx 'GGO_ENFORCE_CLIENT_BUILD=0' "$ENV_FILE"
           ! grep -qi 'GGO_SERVER_KEY=.*[^[:space:]]\|Authorization: Bearer\|password=' "$ENV_FILE"
 
       - name: Verify launcher transforms and migration tests
