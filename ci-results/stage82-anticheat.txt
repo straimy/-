@@ -1,12 +1,12 @@
 workflow=GGO Runtime Stage 82 AntiCheat
-run_id=32619797812
+run_id=32627386638
 run_attempt=1
-run_url=https://github.com/straimy/-/actions/runs/32619797812
-server_sha=e3ae5315c6a2cb7e0dde481f8090b0aa9483940c
+run_url=https://github.com/straimy/-/actions/runs/32627386638
+server_sha=c8a9537949540e9fcd0872138a477173562381df
 core_build=success
 anticheat_gates=success
 upload=success
-core_sha256=5e865ac9e61752793e958c4b2a3eb2c912ff5fc74c20bae258e907252730c1d5
+core_sha256=c2a7b4bb812e0588599d553437d707e77b185657d23ba7def27755b2931c03bf
 movement_detector=true
 weapon_state_detector=true
 inventory_detector=true
