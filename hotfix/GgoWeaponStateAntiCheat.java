@@ -27,7 +27,9 @@ public final class GgoWeaponStateAntiCheat {
     private static final String IGNORE_AMMO = "IgnoreAmmo";
     private static final int SAMPLE_EVERY_TICKS = 4;
     private static final int JOIN_GRACE_TICKS = 20 * 5;
+    private static final int REPORT_COOLDOWN_TICKS = 20 * 10;
     private static final Map<UUID, Integer> JOIN_TICK = new ConcurrentHashMap<>();
+    private static final Map<String, Integer> LAST_REPORT_TICK = new ConcurrentHashMap<>();
 
     private GgoWeaponStateAntiCheat() {}
 
@@ -40,7 +42,10 @@ public final class GgoWeaponStateAntiCheat {
 
     @SubscribeEvent
     public static void leave(PlayerEvent.PlayerLoggedOutEvent event) {
-        JOIN_TICK.remove(event.getEntity().getUUID());
+        UUID id = event.getEntity().getUUID();
+        JOIN_TICK.remove(id);
+        String prefix = id + ":";
+        LAST_REPORT_TICK.keySet().removeIf(key -> key.startsWith(prefix));
     }
 
     @SubscribeEvent
@@ -74,7 +79,7 @@ public final class GgoWeaponStateAntiCheat {
         if (tag == null) return;
 
         if (tag.getBoolean(IGNORE_AMMO)) {
-            record(player, 2.0D, key, slot, "forbidden ammo bypass flag present");
+            record(player, 2.0D, key, slot, "IGNORE_AMMO", "forbidden ammo bypass flag present");
         }
 
         WeaponDefinition def = GunnerArenaMod.RUNTIME.weapons().get(key.toString());
@@ -83,18 +88,26 @@ public final class GgoWeaponStateAntiCheat {
         int capacity = Math.max(1, def.magazineSize());
 
         if (ammo < 0) {
-            record(player, 1.5D, key, slot, "ammo below zero value=" + ammo);
+            record(player, 1.5D, key, slot, "NEGATIVE_AMMO", "ammo below zero value=" + ammo);
         } else if (ammo > capacity) {
-            record(player, 2.0D, key, slot, "magazine overflow ammo=" + ammo + " capacity=" + capacity);
+            record(player, 2.0D, key, slot, "MAGAZINE_OVERFLOW",
+                    "magazine overflow ammo=" + ammo + " capacity=" + capacity);
         }
     }
 
-    private static void record(ServerPlayer player, double weight, ResourceLocation weapon, int slot, String reason) {
+    private static void record(ServerPlayer player, double weight, ResourceLocation weapon, int slot,
+                               String condition, String reason) {
+        String dedupeKey = player.getUUID() + ":" + weapon + ":" + slot + ":" + condition;
+        int now = player.tickCount;
+        int last = LAST_REPORT_TICK.getOrDefault(dedupeKey, Integer.MIN_VALUE / 2);
+        if (now - last < REPORT_COOLDOWN_TICKS) return;
+        LAST_REPORT_TICK.put(dedupeKey, now);
+
         GgoAntiCheatEvidence.record(
                 player,
                 GgoAntiCheatEvidence.Kind.WEAPON_STATE,
                 weight,
-                "weapon=" + weapon + ";slot=" + slot + ";reason=" + reason
+                "condition=" + condition + ";weapon=" + weapon + ";slot=" + slot + ";reason=" + reason
         );
     }
 }
