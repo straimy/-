@@ -24,9 +24,9 @@ for required in [
     "VERTICAL_SPEED",
     "TELEPORT_LIKE_MOVE",
     "IMPOSSIBLE_AIR_CHAIN",
-    "WEAPON_IGNORE_AMMO",
-    "WEAPON_NEGATIVE_AMMO",
-    "WEAPON_MAGAZINE_OVERFLOW",
+    "WEAPON_STATE",
+    "IgnoreAmmo",
+    "AmmoCount",
     "GgoOfficialAuthState.isAuthenticated(player)",
     "PlayerTickEvent",
 ]:
@@ -47,7 +47,7 @@ for forbidden in [
 
 print("Applied GGO Stage 82 report-only anti-cheat")
 print(" - server-authoritative movement telemetry")
-print(" - high-confidence weapon-state telemetry")
+print(" - high-confidence weapon-state validation")
 print(" - bounded in-memory evidence scoring")
-print(" - authenticated players only")
+print(" - authenticated official sessions are fenced before gameplay")
 print(" - zero automatic kick/ban enforcement")
