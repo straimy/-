@@ -15,14 +15,15 @@ if ! id -u ggo-auth >/dev/null 2>&1; then
 fi
 
 install -m 0755 "$SRC_DIR/server.py" /opt/ggo-auth/server.py
+install -m 0755 "$SRC_DIR/secure_server.py" /opt/ggo-auth/secure_server.py
 install -m 0644 "$SRC_DIR/ggo-auth.service" /etc/systemd/system/ggo-auth.service
 chown -R ggo-auth:ggo-auth /var/lib/ggo-auth
 chmod 0750 /var/lib/ggo-auth
 
 systemctl daemon-reload
 systemctl enable ggo-auth.service
-# Always restart after replacing server.py. `enable --now` alone leaves an already
-# running process on the previous code and would skip DB migrations/features.
+# Always restart after replacing API code. `enable --now` alone leaves an already
+# running process on the previous version and would skip DB migrations/features.
 systemctl restart ggo-auth.service
 sleep 1
 systemctl --no-pager --full status ggo-auth.service || true
