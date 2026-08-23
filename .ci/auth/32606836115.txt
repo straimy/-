@@ -1,0 +1,13 @@
+workflow=GGO Auth Smoke
+run_id=32606836115
+run_attempt=1
+run_url=https://github.com/straimy/-/actions/runs/32606836115
+source_sha=adfe0eaa9d105762422a93999a074e6b93cca5e0
+syntax=success
+smoke=success
+ticket_contract=success
+unused_ticket_ttl_seconds=180
+replay_protected=true
+race_tested=true
+deploy=success
+result=success
