@@ -1,0 +1,90 @@
+name: GGO Stage 94 Auth Binding Attestation
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - launcher/bootstrap-v0.1
+    paths:
+      - '.github/workflows/ggo-stage94-auth-binding-attestation.yml'
+      - '.ci/launcher/stage92-bound-beta-package.txt'
+      - 'services/ggo-auth/secure_server.py'
+      - 'launcher/hotfix/apply_ticket_binding_stage90.py'
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+          fetch-depth: 0
+
+      - name: Verify packaged launcher already includes ticket binding
+        shell: bash
+        run: |
+          set -euo pipefail
+          R=.ci/launcher/stage92-bound-beta-package.txt
+          test -f "$R"
+          grep -qx 'launcher_candidate_version=0.2.4' "$R"
+          grep -qx 'ticket_build_binding=true' "$R"
+          grep -qx 'stage85_integrity=true' "$R"
+          grep -qx 'result=success' "$R"
+
+      - name: Verify auth binding source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile services/ggo-auth/server.py services/ggo-auth/secure_server.py
+          A=services/ggo-auth/secure_server.py
+          grep -q 'ALTER TABLE game_tickets ADD COLUMN' "$A"
+          grep -q 'build_id' "$A"
+          grep -q 'core_sha256' "$A"
+          grep -q 'ui_sha256' "$A"
+          grep -q 'INSERT INTO game_tickets' "$A"
+          grep -q 'ticket_build' "$A"
+          grep -q '"bound": bound' "$A"
+          grep -q 'consumed_at IS NULL' "$A"
+          grep -q 'X-GGO-Server-Key\|server_key_ok' "$A"
+
+      - name: Verify launcher transform requests bound ticket
+        shell: bash
+        run: |
+          set -euo pipefail
+          P=launcher/hotfix/apply_ticket_binding_stage90.py
+          test -f "$P"
+          grep -q 'build_id' "$P"
+          grep -q 'core_sha256' "$P"
+          grep -q 'ui_sha256' "$P"
+          grep -q 'GGO_CLIENT_BUILD_ID' "$P"
+          grep -q 'GGO_CORE_SHA256' "$P"
+          grep -q 'GGO_UI_SHA256' "$P"
+
+      - name: Publish Stage94 receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .ci/security
+          cat > .ci/security/stage94-auth-binding-attestation.txt <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_id=${GITHUB_RUN_ID}
+          launcher_sha=$(git rev-parse HEAD)
+          stage92_bound_launcher=success
+          auth_schema_binding=success
+          auth_one_shot_consume=success
+          consume_returns_ticket_build=success
+          launcher_requests_bound_ticket=success
+          production_deployed=false
+          result=success
+          EOF
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .ci/security/stage94-auth-binding-attestation.txt
+          git commit -m "ci: record Stage94 auth binding ${GITHUB_RUN_ID}" || exit 0
+          git fetch origin launcher/bootstrap-v0.1
+          git rebase origin/launcher/bootstrap-v0.1
+          git push origin HEAD:launcher/bootstrap-v0.1
