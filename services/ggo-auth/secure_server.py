@@ -2,10 +2,12 @@
 """Production entrypoint for the GGO Account API.
 
 Keeps the core API implementation in server.py while enforcing bootstrap-only owner identities,
-conservative per-client rate limits, hardened response headers, and an emergency session-revoke
-endpoint for compromised accounts.
+conservative per-client rate limits, hardened response headers, emergency session revocation and a
+small append-only security audit trail for privileged account actions.
 """
+import json
 import os
+import secrets
 import threading
 import time
 from collections import defaultdict, deque
@@ -69,8 +71,40 @@ def _rate_allowed(client_ip: str, path: str):
     return True, 0
 
 
+def init_security_db():
+    with core.connect() as db:
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS security_audit (
+              id TEXT PRIMARY KEY,
+              actor_user_id TEXT,
+              action TEXT NOT NULL,
+              target_user_id TEXT,
+              details TEXT NOT NULL DEFAULT '{}',
+              created_at INTEGER NOT NULL
+            )
+            """
+        )
+        db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_security_audit_created ON security_audit(created_at DESC)"
+        )
+        db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_security_audit_actor ON security_audit(actor_user_id,created_at DESC)"
+        )
+        db.commit()
+
+
+def _audit(db, actor_user_id, action, target_user_id=None, details=None):
+    # Append-only by API design: there is intentionally no update/delete endpoint for this table.
+    safe_details = json.dumps(details or {}, ensure_ascii=False, separators=(",", ":"))[:2000]
+    db.execute(
+        "INSERT INTO security_audit(id,actor_user_id,action,target_user_id,details,created_at) VALUES(?,?,?,?,?,?)",
+        (secrets.token_hex(12), actor_user_id, action, target_user_id, safe_details, core.now()),
+    )
+
+
 class SecureHandler(core.Handler):
-    server_version = "GGOAuth/1.3-secure"
+    server_version = "GGOAuth/1.4-secure"
 
     def json(self, status, payload, headers=None):
         hardened = {
@@ -94,6 +128,12 @@ class SecureHandler(core.Handler):
         )
         return True
 
+    def do_GET(self):
+        path = self.path.split("?", 1)[0]
+        if path == "/api/v1/admin/audit":
+            return self.get_security_audit()
+        return super().do_GET()
+
     def do_POST(self):
         if self._rate_limit():
             return
@@ -114,6 +154,60 @@ class SecureHandler(core.Handler):
             )
         return super().register(data)
 
+    def get_security_audit(self):
+        with core.connect() as db:
+            actor = self.require_admin(db)
+            if not actor:
+                return
+            rows = db.execute(
+                "SELECT id,actor_user_id,action,target_user_id,details,created_at "
+                "FROM security_audit ORDER BY created_at DESC LIMIT 200"
+            ).fetchall()
+            events = []
+            for row in rows:
+                try:
+                    details = json.loads(row["details"] or "{}")
+                except Exception:
+                    details = {}
+                events.append({
+                    "id": row["id"],
+                    "actor_user_id": row["actor_user_id"],
+                    "action": row["action"],
+                    "target_user_id": row["target_user_id"],
+                    "details": details,
+                    "created_at": row["created_at"],
+                })
+            return self.json(200, {"events": events})
+
+    def update_role(self, user_id, data):
+        if not self.same_origin_ok():
+            return self.json(403, {"error": "origin_rejected"})
+        role = str(data.get("role", "")).strip().lower()
+        if role not in core.ALLOWED_ROLES:
+            return self.json(400, {"error": "invalid_role"})
+        with core.connect() as db:
+            actor = self.require_admin(db)
+            if not actor:
+                return
+            target = db.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+            if not target:
+                return self.json(404, {"error": "user_not_found"})
+            if target["username_norm"] in core.OWNER_USERNAMES and role != "admin":
+                _audit(db, actor["id"], "role_change_rejected_owner_lock", user_id, {
+                    "requested_role": role,
+                })
+                db.commit()
+                return self.json(409, {"error": "owner_role_locked"})
+            old_role = target["role"]
+            db.execute("UPDATE users SET role=? WHERE id=?", (role, user_id))
+            _audit(db, actor["id"], "role_changed", user_id, {
+                "old_role": old_role,
+                "new_role": role,
+            })
+            db.commit()
+            updated = db.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+            return self.json(200, core.profile(updated))
+
     def logout_all_sessions(self):
         # Emergency containment for a stolen browser/launcher session. Bearer auth is accepted for
         # launcher recovery; cookie-based browser calls must come from the configured GGO origin.
@@ -133,6 +227,12 @@ class SecureHandler(core.Handler):
                 (user_id,),
             ).rowcount
             devices = db.execute("DELETE FROM device_flows WHERE user_id=?", (user_id,)).rowcount
+            _audit(db, user_id, "logout_all", user_id, {
+                "access_sessions": access,
+                "refresh_tokens": refresh,
+                "game_tickets": tickets,
+                "device_flows": devices,
+            })
             db.commit()
         cookie = "ggo_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0" + (
             "; Secure" if core.PUBLIC_URL.startswith("https://") else ""
@@ -154,6 +254,7 @@ class SecureHandler(core.Handler):
 
 if __name__ == "__main__":
     core.init_db()
+    init_security_db()
     print(
         f"[ggo-auth] secure entrypoint on http://{core.HOST}:{core.PORT} "
         f"public={core.PUBLIC_URL} db={core.DB_PATH}",
