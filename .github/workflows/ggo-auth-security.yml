@@ -47,6 +47,12 @@ jobs:
           grep -q 'X-Frame-Options' services/ggo-auth/secure_server.py
           grep -q 'Referrer-Policy' services/ggo-auth/secure_server.py
           grep -q 'Permissions-Policy' services/ggo-auth/secure_server.py
+          grep -q 'CREATE TABLE IF NOT EXISTS security_audit' services/ggo-auth/secure_server.py
+          grep -q '/api/v1/admin/audit' services/ggo-auth/secure_server.py
+          grep -q 'role_changed' services/ggo-auth/secure_server.py
+          grep -q 'logout_all' services/ggo-auth/secure_server.py
+          ! grep -q 'DELETE FROM security_audit' services/ggo-auth/secure_server.py
+          ! grep -q 'UPDATE security_audit' services/ggo-auth/secure_server.py
           ! grep -q 'GGO_ALLOW_OWNER_BOOTSTRAP=1' services/ggo-auth/ggo-auth.service
       - name: Publish auth security receipt
         if: always()
@@ -74,6 +80,8 @@ jobs:
           staff_roles_server_authoritative=true
           auth_rate_limits=true
           hardened_security_headers=true
+          privileged_audit_log=true
+          audit_log_append_only_api=true
           result=$result
           EOF
           git config user.name github-actions[bot]
