@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from pathlib import Path
 
+# This transform is intentionally rustfmt-clean; Stage84/81/87/88 all gate it.
 ROOT = Path(".") if Path("src-tauri/src/lib.rs").is_file() else Path("launcher")
 RUST = ROOT / "src-tauri/src/lib.rs"
 if not RUST.is_file():
