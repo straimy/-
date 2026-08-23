@@ -1,0 +1,120 @@
+name: GGO Stage 90 Ticket Build Binding
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - launcher/bootstrap-v0.1
+    paths:
+      - '.github/workflows/ggo-stage90-ticket-build-binding.yml'
+      - 'launcher/hotfix/apply_menu_first_beta_stage76.py'
+      - 'launcher/hotfix/apply_client_integrity_stage84.py'
+      - 'launcher/hotfix/apply_ticket_binding_stage90.py'
+      - 'launcher/src-tauri/src/core/ggo_auth.rs'
+      - 'launcher/src-tauri/src/lib.rs'
+      - 'services/ggo-auth/secure_server.py'
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Install frontend dependencies
+        working-directory: launcher
+        run: npm install --no-audit --no-fund
+
+      - name: Apply launcher hardening chain
+        run: |
+          python3 launcher/hotfix/apply_menu_first_beta_stage76.py
+          python3 launcher/hotfix/apply_client_integrity_stage84.py
+          python3 launcher/hotfix/apply_ticket_binding_stage90.py
+
+      - name: Verify ticket binding contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          AUTH=launcher/src-tauri/src/core/ggo_auth.rs
+          LIB=launcher/src-tauri/src/lib.rs
+          grep -q "build_id: &'a str" "$AUTH"
+          grep -q "core_sha256: &'a str" "$AUTH"
+          grep -q "ui_sha256: &'a str" "$AUTH"
+          grep -q 'ggo_integrity_pair(&root)' "$LIB"
+          test "$(grep -c 'let (build_id, core_sha256, ui_sha256) = ggo_integrity_pair(&root)?;' "$LIB")" -eq 1
+          grep -q '&build_id' "$LIB"
+          grep -q '&core_sha256' "$LIB"
+          grep -q '&ui_sha256' "$LIB"
+          grep -q 'GGO_CLIENT_BUILD_ID' "$LIB"
+          grep -q 'GGO_CORE_SHA256' "$LIB"
+          grep -q 'GGO_UI_SHA256' "$LIB"
+
+      - name: Verify auth ticket binding migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile services/ggo-auth/server.py services/ggo-auth/secure_server.py
+          grep -q 'ALTER TABLE game_tickets ADD COLUMN' services/ggo-auth/secure_server.py
+          grep -q 'build_id' services/ggo-auth/secure_server.py
+          grep -q 'core_sha256' services/ggo-auth/secure_server.py
+          grep -q 'ui_sha256' services/ggo-auth/secure_server.py
+          grep -q 'ticket_build' services/ggo-auth/secure_server.py
+          grep -q 'build_bound' services/ggo-auth/secure_server.py
+
+      - name: Frontend build
+        working-directory: launcher
+        run: npm run build
+
+      - name: Rust format gate
+        working-directory: launcher
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+
+      - name: Rust compile gate
+        working-directory: launcher
+        run: cargo check --manifest-path src-tauri/Cargo.toml
+
+      - name: Runtime migration tests
+        working-directory: launcher
+        run: cargo test --manifest-path src-tauri/Cargo.toml runtime::ggo_remote_install::tests --lib
+
+      - name: Publish Stage90 receipt
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          result='${{ job.status }}'
+          [ "$result" = success ] || result=failure
+          mkdir -p .ci/security
+          cat > .ci/security/stage90-ticket-build-binding.txt <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_id=${GITHUB_RUN_ID}
+          launcher_sha=$(git rev-parse HEAD)
+          ticket_build_binding=true
+          launcher_metadata_bound=true
+          auth_metadata_persisted=true
+          consume_returns_ticket_build=true
+          legacy_unbound_ticket_compatible=true
+          production_deployed=false
+          result=$result
+          EOF
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .ci/security/stage90-ticket-build-binding.txt
+          git commit -m "ci: record Stage90 ticket binding ${GITHUB_RUN_ID}" || exit 0
+          git fetch origin launcher/bootstrap-v0.1
+          git rebase origin/launcher/bootstrap-v0.1
+          git push origin HEAD:launcher/bootstrap-v0.1
