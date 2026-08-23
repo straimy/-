@@ -1,8 +1,8 @@
 workflow=GGO Auth Security
-run_id=32613660452
+run_id=32613984783
 run_attempt=1
-run_url=https://github.com/straimy/-/actions/runs/32613660452
-source_sha=a82d82bc0ef3c8efd46ddf87b39038b5ea29bd38
+run_url=https://github.com/straimy/-/actions/runs/32613984783
+source_sha=52279f5646b49e350eaccfc8c0cec69f1448790d
 compile=success
 account_support_smoke=success
 reserved_owner_security=success
