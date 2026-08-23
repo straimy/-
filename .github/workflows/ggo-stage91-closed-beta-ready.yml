@@ -57,6 +57,7 @@ jobs:
           set -euo pipefail
           R=candidate/.ci/security/stage94-auth-binding-attestation.txt
           test -f "$R"
+          grep -qx 'run_id=32634349736' "$R"
           grep -qx 'stage92_bound_launcher=success' "$R"
           grep -qx 'auth_schema_binding=success' "$R"
           grep -qx 'auth_one_shot_consume=success' "$R"
@@ -72,6 +73,7 @@ jobs:
           set -euo pipefail
           R=candidate/.ci/launcher/stage92-bound-beta-package.txt
           test -f "$R"
+          grep -qx 'run_id=32631622570' "$R"
           grep -qx 'launcher_candidate_version=0.2.4' "$R"
           grep -qx 'ticket_build_binding=true' "$R"
           grep -qx 'stage85_integrity=true' "$R"
@@ -86,6 +88,7 @@ jobs:
           set -euo pipefail
           R=server-candidate/ci-results/stage93-ticket-binding.txt
           test -f "$R"
+          grep -qx 'run_id=32633191926' "$R"
           grep -qx 'source_gate=success' "$R"
           grep -qx 'core_build=success' "$R"
           grep -qx 'artifact_payload=success' "$R"
