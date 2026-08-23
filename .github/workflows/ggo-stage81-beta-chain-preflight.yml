@@ -8,6 +8,7 @@ on:
     paths:
       - '.github/workflows/ggo-stage81-beta-chain-preflight.yml'
       - 'launcher/hotfix/apply_menu_first_beta_stage76.py'
+      - 'launcher/hotfix/apply_client_integrity_stage84.py'
       - 'launcher/src/App.tsx'
       - 'launcher/src-tauri/src/lib.rs'
       - 'site/verify-production.sh'
@@ -91,17 +92,25 @@ jobs:
           grep -q 'STAFF CONSOLE' "$ROOT/web/site/admin/index.html"
           grep -q 'НАПИСАТЬ В ПОДДЕРЖКУ' "$ROOT/web/site/support/index.html"
 
-      - name: Verify launcher menu-first transform
+      - name: Verify launcher menu-first and integrity transforms
         id: launcher
         shell: bash
         run: |
           set -euo pipefail
           python3 launcher/hotfix/apply_menu_first_beta_stage76.py
+          python3 launcher/hotfix/apply_client_integrity_stage84.py
           R=launcher/src-tauri/src/lib.rs
           A=launcher/src/App.tsx
           grep -q 'async fn launch_game(' "$R"
           grep -q 'options.connect_server = false;' "$R"
           grep -q 'GGO_GAME_TICKET_EXPIRES_AT' "$R"
+          grep -q 'fn ggo_integrity_pair(' "$R"
+          grep -q 'runtime-stage77' "$R"
+          grep -q 'GGO_CLIENT_BUILD_ID' "$R"
+          grep -q 'GGO_CORE_SHA256' "$R"
+          grep -q 'GGO_UI_SHA256' "$R"
+          grep -q 'Sha256::digest(core_bytes)' "$R"
+          grep -q 'Sha256::digest(ui_bytes)' "$R"
           ! grep -q 'async fn preview_minecraft_launch(' "$R"
           ! grep -q 'async fn launch_minecraft(' "$R"
           ! grep -q '            launch_training,' "$R"
@@ -142,11 +151,13 @@ jobs:
           stage79_run=${STAGE79_RUN}
           runtime_identity=$RUNTIME
           portal_integrity=$PORTAL
-          launcher_menu_first=$LAUNCHER
+          launcher_menu_first_integrity=$LAUNCHER
           production_unchanged=$PRODUCTION
           core_sha256=${EXPECTED_CORE_SHA}
           ui_sha256=${EXPECTED_UI_SHA}
           resource_pack_sha256=${EXPECTED_RP_SHA}
+          launcher_local_hashing=true
+          launcher_child_build_metadata=true
           no_auth_db_artifact=true
           client_server_core_identical=true
           result=$result
