@@ -1,5 +1,5 @@
 name: GGO Stage 90 Ticket Build Binding
-# Closed-beta binding verification; retriggered after Stage91/92 finalization.
+# Closed-beta binding verification; rerun after Stage92/Stage93 finalization.
 
 on:
   workflow_dispatch:
