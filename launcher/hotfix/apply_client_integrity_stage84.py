@@ -35,8 +35,9 @@ helper = r'''fn ggo_integrity_pair(root: &std::path::Path) -> Result<(String, St
         let core = mods.join(core_name);
         let ui = mods.join(ui_name);
         if core.is_file() && ui.is_file() {
-            let core_bytes = std::fs::read(&core)
-                .map_err(|error| format!("cannot read managed Core for integrity check: {error}"))?;
+            let core_bytes = std::fs::read(&core).map_err(|error| {
+                format!("cannot read managed Core for integrity check: {error}")
+            })?;
             let ui_bytes = std::fs::read(&ui)
                 .map_err(|error| format!("cannot read managed UI for integrity check: {error}"))?;
             return Ok((
