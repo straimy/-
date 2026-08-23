@@ -1,0 +1,17 @@
+workflow=GGO Stage 79 Portal Staff Beta
+run_id=32607462238
+run_attempt=1
+run_url=https://github.com/straimy/-/actions/runs/32607462238
+source_sha=946830940d0557f54886c616ec98771ce0186cd2
+auth_security=success
+portal_gates=success
+assemble=failure
+upload=skipped
+artifact=GunGloryOnline-Stage79-Portal-Staff-Beta
+support_ticket_ui=true
+staff_console=true
+support_role=server_authoritative
+admin_role=server_authoritative
+owner_registration_reserved=true
+auth_db_in_artifact=false
+result=failure
