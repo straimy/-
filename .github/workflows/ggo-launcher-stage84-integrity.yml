@@ -80,6 +80,8 @@ jobs:
           grep -q 'REMOTE_CORE_STAGE85' "$U"
           grep -q 'REMOTE_UI_STAGE85' "$U"
           grep -q 'stage85_ready' "$U"
+          grep -q '^version = "0.2.4"$' launcher/src-tauri/Cargo.toml
+          grep -q '"version": "0.2.4"' launcher/package.json
 
       - name: Build launcher web UI
         id: web
@@ -131,6 +133,7 @@ jobs:
           rustfmt=$FMT_OUTCOME
           rust_check=$RUST_OUTCOME
           updater_tests=$TESTS_OUTCOME
+          launcher_candidate_version=0.2.4
           local_core_sha256=true
           local_ui_sha256=true
           stage85_pair_supported=true
