@@ -26,6 +26,7 @@ jobs:
           fetch-depth: 0
 
       - name: Verify packaged launcher already includes ticket binding
+        id: packaged_launcher
         shell: bash
         run: |
           set -euo pipefail
@@ -37,6 +38,7 @@ jobs:
           grep -qx 'result=success' "$R"
 
       - name: Verify auth binding source
+        id: auth_binding
         shell: bash
         run: |
           set -euo pipefail
@@ -56,6 +58,7 @@ jobs:
           grep -q 'X-GGO-Server-Key\|server_key_ok' "$A"
 
       - name: Verify launcher transform requests bound ticket
+        id: launcher_binding
         shell: bash
         run: |
           set -euo pipefail
@@ -69,22 +72,31 @@ jobs:
           grep -q 'GGO_UI_SHA256' "$P"
 
       - name: Publish Stage94 receipt
+        if: always()
         shell: bash
+        env:
+          PACKAGED_OUTCOME: ${{ steps.packaged_launcher.outcome }}
+          AUTH_OUTCOME: ${{ steps.auth_binding.outcome }}
+          LAUNCHER_OUTCOME: ${{ steps.launcher_binding.outcome }}
         run: |
           set -euo pipefail
+          result=success
+          for v in "$PACKAGED_OUTCOME" "$AUTH_OUTCOME" "$LAUNCHER_OUTCOME"; do
+            [ "$v" = success ] || result=failure
+          done
           mkdir -p .ci/security
           cat > .ci/security/stage94-auth-binding-attestation.txt <<EOF
           workflow=${GITHUB_WORKFLOW}
           run_id=${GITHUB_RUN_ID}
           launcher_sha=$(git rev-parse HEAD)
-          stage92_bound_launcher=success
-          auth_schema_binding=success
-          auth_one_shot_consume=success
+          stage92_bound_launcher=$PACKAGED_OUTCOME
+          auth_schema_binding=$AUTH_OUTCOME
+          auth_one_shot_consume=$AUTH_OUTCOME
           ticket_ttl_seconds=180
-          consume_returns_ticket_build=success
-          launcher_requests_bound_ticket=success
+          consume_returns_ticket_build=$AUTH_OUTCOME
+          launcher_requests_bound_ticket=$LAUNCHER_OUTCOME
           production_deployed=false
-          result=success
+          result=$result
           EOF
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
