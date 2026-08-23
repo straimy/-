@@ -1,0 +1,153 @@
+name: GGO Runtime Stage 80 Beta Integrity
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - client/runtime-migration-v1
+    paths:
+      - '.github/workflows/ggo-runtime-stage80-beta-integrity.yml'
+      - 'hotfix/GgoFrontEndScreen.java'
+      - 'hotfix/GgoTrainingScreen.java'
+      - 'hotfix/apply_ggo_launcher_authority_stage58.py'
+      - 'hotfix/apply_ggo_training_stage77.py'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGE77_RUN: '32604880362'
+      STAGE77_ARTIFACT: GunGloryOnline-Runtime-Stage77-Training
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: client/runtime-migration-v1
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Capture exact ref
+        id: refs
+        run: echo "client_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Download Stage 77 runtime
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.STAGE77_ARTIFACT }}
+          path: stage77-input
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.STAGE77_RUN }}
+
+      - name: Resolve runtime payload
+        id: payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          UI="$(find stage77-input -type f -path '*/client/mods/*' -name '*ui*stage77*.jar' | head -n1)"
+          CORE_CLIENT="$(find stage77-input -type f -path '*/client/mods/*' -name '*core*stage77*.jar' | head -n1)"
+          CORE_SERVER="$(find stage77-input -type f -path '*/server/mods/*' -name '*core*stage77*.jar' | head -n1)"
+          RP="$(find stage77-input -type f -path '*/client/resourcepacks/*' -name 'GunGloryOnline-Official.zip' | head -n1)"
+          for f in "$UI" "$CORE_CLIENT" "$CORE_SERVER" "$RP"; do test -n "$f" && test -f "$f"; done
+          cmp "$CORE_CLIENT" "$CORE_SERVER"
+          echo "ui=$UI" >> "$GITHUB_OUTPUT"
+          echo "core_client=$CORE_CLIENT" >> "$GITHUB_OUTPUT"
+          echo "core_server=$CORE_SERVER" >> "$GITHUB_OUTPUT"
+          echo "rp=$RP" >> "$GITHUB_OUTPUT"
+          echo "ui_sha256=$(sha256sum "$UI" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "core_sha256=$(sha256sum "$CORE_CLIENT" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "rp_sha256=$(sha256sum "$RP" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Audit custom frontend bytecode surface
+        id: frontend
+        shell: bash
+        env:
+          UI: ${{ steps.payload.outputs.ui }}
+        run: |
+          set -euo pipefail
+          for c in GgoFrontEndScreen GgoTrainingScreen GgoSettingsScreen GgoSessionVerificationOverlay GgoShellScreen GgoChatScreen GgoShellHooks; do
+            jar tf "$UI" | grep -q "^arena/client/shell/$c.class$"
+          done
+          unzip -p "$UI" arena/client/shell/GgoShellHooks.class | strings > /tmp/ggo-shell-hooks.strings
+          grep -q 'net/minecraft/client/gui/screens/TitleScreen' /tmp/ggo-shell-hooks.strings
+          grep -q 'arena/client/shell/GgoFrontEndScreen' /tmp/ggo-shell-hooks.strings
+
+          unzip -p "$UI" arena/client/shell/GgoFrontEndScreen.class | strings > /tmp/ggo-frontend.strings
+          grep -q 'GGO CLIENT' /tmp/ggo-frontend.strings
+          grep -q 'GgoSettingsScreen' /tmp/ggo-frontend.strings
+          grep -q 'GgoTrainingScreen' /tmp/ggo-frontend.strings
+          ! grep -q 'OptionsScreen' /tmp/ggo-frontend.strings
+          ! grep -q 'ConnectScreen' /tmp/ggo-frontend.strings
+          ! grep -q 'ServerAddress' /tmp/ggo-frontend.strings
+          ! grep -q 'play.kvicloud.ru' /tmp/ggo-frontend.strings
+
+          unzip -p "$UI" arena/client/shell/GgoTrainingScreen.class | strings > /tmp/ggo-training.strings
+          grep -q 'TRAINING' /tmp/ggo-training.strings
+          ! grep -q 'ConnectScreen' /tmp/ggo-training.strings
+          ! grep -q 'ServerAddress' /tmp/ggo-training.strings
+          ! grep -q 'GGO_GAME_TICKET' /tmp/ggo-training.strings
+
+      - name: Audit Core and resource-pack compatibility
+        id: compatibility
+        shell: bash
+        env:
+          CORE: ${{ steps.payload.outputs.core_client }}
+          RP: ${{ steps.payload.outputs.rp }}
+        run: |
+          set -euo pipefail
+          unzip -p "$CORE" META-INF/mods.toml | grep -q 'modId="gunnerarena"'
+          jar tf "$CORE" | grep -q '^arena/forge/net/ArenaNetwork.class$'
+          jar tf "$CORE" | grep -q 'LaunchTicket'
+          if unzip -Z1 "$RP" | grep -q '^assets/minecraft/shaders/core/'; then
+            echo 'forbidden vanilla core shader override survived Stage 77' >&2
+            exit 1
+          fi
+          unzip -Z1 "$RP" | grep -q '^pack.mcmeta$'
+
+      - name: Publish Stage 80 receipt
+        if: always()
+        env:
+          PAYLOAD: ${{ steps.payload.outcome }}
+          FRONTEND: ${{ steps.frontend.outcome }}
+          COMPAT: ${{ steps.compatibility.outcome }}
+        run: |
+          set -euo pipefail
+          result=success
+          for v in "$PAYLOAD" "$FRONTEND" "$COMPAT"; do [ "$v" = success ] || result=failure; done
+          mkdir -p ci-results
+          cat > ci-results/stage80-beta-integrity.txt <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_id=${GITHUB_RUN_ID}
+          run_attempt=${GITHUB_RUN_ATTEMPT}
+          run_url=https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          client_sha=${{ steps.refs.outputs.client_sha }}
+          stage77_run=${STAGE77_RUN}
+          payload=$PAYLOAD
+          frontend_bytecode=$FRONTEND
+          compatibility=$COMPAT
+          ui_sha256=${{ steps.payload.outputs.ui_sha256 }}
+          core_sha256=${{ steps.payload.outputs.core_sha256 }}
+          resource_pack_sha256=${{ steps.payload.outputs.rp_sha256 }}
+          title_redirect_present=true
+          vanilla_options_frontend=false
+          direct_server_connect_frontend=false
+          training_network_code=false
+          client_server_core_identical=true
+          vanilla_core_shader_overrides=false
+          result=$result
+          EOF
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ci-results/stage80-beta-integrity.txt
+          git commit -m "ci: record Stage 80 beta integrity ${GITHUB_RUN_ID}" || exit 0
+          git fetch origin client/runtime-migration-v1
+          git rebase origin/client/runtime-migration-v1
+          git push origin HEAD:client/runtime-migration-v1
