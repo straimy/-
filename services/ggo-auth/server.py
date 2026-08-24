@@ -23,6 +23,9 @@ REFRESH_TTL = 30 * 24 * 60 * 60
 DEVICE_TTL = 10 * 60
 GAME_TICKET_TTL = 3 * 60
 USERNAME_RE = re.compile(r"^[A-Za-z0-9_]{3,16}$")
+NEWS_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{2,63}$")
+NEWS_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+NEWS_SEED_PATH = Path(os.environ.get("GGO_NEWS_SEED_PATH", str(Path(__file__).resolve().parents[2] / "site/content/api/news.json")))
 ALLOWED_SKINS = {"ggo", "microsoft", "default"}
 ALLOWED_LANGS = {"ru", "en", "uk"}
 ALLOWED_REGIONS = {"eu", "eeu", "na", "sa", "apac", "other"}
@@ -129,6 +132,18 @@ def init_db():
               body TEXT NOT NULL,
               created_at INTEGER NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS news_items (
+              id TEXT PRIMARY KEY,
+              date TEXT NOT NULL,
+              title_en TEXT NOT NULL,
+              title_ru TEXT NOT NULL,
+              title_uk TEXT NOT NULL,
+              body_en TEXT NOT NULL,
+              body_ru TEXT NOT NULL,
+              body_uk TEXT NOT NULL,
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL
+            );
             CREATE INDEX IF NOT EXISTS idx_access_user ON access_sessions(user_id);
             CREATE INDEX IF NOT EXISTS idx_refresh_user ON refresh_tokens(user_id);
             CREATE INDEX IF NOT EXISTS idx_device_expiry ON device_flows(expires_at);
@@ -137,6 +152,7 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_support_ticket_user ON support_tickets(user_id);
             CREATE INDEX IF NOT EXISTS idx_support_ticket_status ON support_tickets(status,updated_at);
             CREATE INDEX IF NOT EXISTS idx_support_message_ticket ON support_messages(ticket_id,created_at);
+            CREATE INDEX IF NOT EXISTS idx_news_date ON news_items(date DESC,created_at DESC);
             """
         )
         columns = {row["name"] for row in db.execute("PRAGMA table_info(users)")}
@@ -144,6 +160,27 @@ def init_db():
             db.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'")
         for owner in OWNER_USERNAMES:
             db.execute("UPDATE users SET role='admin' WHERE username_norm=?", (owner,))
+        if NEWS_SEED_PATH.is_file():
+            try:
+                seed = json.loads(NEWS_SEED_PATH.read_text(encoding="utf-8"))
+                ts = now()
+                for item in seed.get("items", []):
+                    title = item.get("title") or {}
+                    body = item.get("body") or {}
+                    item_id = str(item.get("id", "")).strip().lower()
+                    item_date = str(item.get("date", "")).strip()
+                    if not NEWS_ID_RE.fullmatch(item_id) or not NEWS_DATE_RE.fullmatch(item_date):
+                        continue
+                    values = [str(title.get(lang, "")).strip() for lang in ("en", "ru", "uk")]
+                    values += [str(body.get(lang, "")).strip() for lang in ("en", "ru", "uk")]
+                    if not all(values):
+                        continue
+                    db.execute(
+                        "INSERT OR IGNORE INTO news_items(id,date,title_en,title_ru,title_uk,body_en,body_ru,body_uk,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                        (item_id, item_date, *values, ts, ts),
+                    )
+            except Exception as exc:
+                print(f"[ggo-auth] news seed skipped: {exc}", flush=True)
         db.commit()
 
 
@@ -289,6 +326,23 @@ class Handler(BaseHTTPRequestHandler):
             return None
         return user
 
+    def require_owner(self, db):
+        user = self.require_admin(db)
+        if not user:
+            return None
+        if user["username_norm"] not in OWNER_USERNAMES:
+            self.json(403, {"error": "owner_required"})
+            return None
+        return user
+
+    def news_payload(self, row):
+        return {
+            "id": row["id"],
+            "date": row["date"],
+            "title": {"en": row["title_en"], "ru": row["title_ru"], "uk": row["title_uk"]},
+            "body": {"en": row["body_en"], "ru": row["body_ru"], "uk": row["body_uk"]},
+        }
+
     def ticket_payload(self, db, ticket):
         owner = db.execute("SELECT * FROM users WHERE id=?", (ticket["user_id"],)).fetchone()
         messages = db.execute(
@@ -335,7 +389,17 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
         query = urllib.parse.parse_qs(parsed.query)
         if path == "/api/v1/health":
-            return self.json(200, {"ok": True, "service": "ggo-auth", "version": 3, "game_tickets": True, "support_tickets": True, "staff_roles": True})
+            return self.json(200, {"ok": True, "service": "ggo-auth", "version": 4, "game_tickets": True, "support_tickets": True, "staff_roles": True, "news": True})
+        if path == "/api/v1/news":
+            with connect() as db:
+                rows = db.execute("SELECT * FROM news_items ORDER BY date DESC,created_at DESC LIMIT 100").fetchall()
+                return self.json(200, {"schemaVersion": 1, "items": [self.news_payload(row) for row in rows]})
+        if path == "/api/v1/admin/news":
+            with connect() as db:
+                if not self.require_owner(db):
+                    return
+                rows = db.execute("SELECT * FROM news_items ORDER BY date DESC,created_at DESC LIMIT 100").fetchall()
+                return self.json(200, {"schemaVersion": 1, "items": [self.news_payload(row) for row in rows]})
         if path in ("/api/v1/me", "/api/v1/auth/session"):
             with connect() as db:
                 cleanup(db)
@@ -424,6 +488,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.game_ticket(data)
         if path == "/api/v1/auth/game-ticket/consume":
             return self.consume_game_ticket(data)
+        if path == "/api/v1/admin/news":
+            return self.create_news(data)
         if path == "/api/v1/support/tickets":
             return self.create_ticket(data)
         if path.startswith("/api/v1/support/tickets/") and path.endswith("/messages"):
@@ -445,10 +511,18 @@ class Handler(BaseHTTPRequestHandler):
             return self.update_profile(data)
         if path == "/api/v1/me/identities/minecraft":
             return self.json(501, {"error": "minecraft_link_not_enabled", "message": "Minecraft identity verification is not enabled yet."})
+        if path.startswith("/api/v1/admin/news/"):
+            return self.update_news(path.rsplit("/", 1)[-1], data)
         if path.startswith("/api/v1/admin/users/") and path.endswith("/role"):
             return self.update_role(path.split("/")[-2], data)
         if path.startswith("/api/v1/staff/tickets/") and path.endswith("/status"):
             return self.staff_ticket_status(path.split("/")[-2], data)
+        return self.json(404, {"error": "not_found"})
+
+    def do_DELETE(self):
+        path = urllib.parse.urlparse(self.path).path
+        if path.startswith("/api/v1/admin/news/"):
+            return self.delete_news(path.rsplit("/", 1)[-1])
         return self.json(404, {"error": "not_found"})
 
     def register(self, data):
@@ -760,6 +834,80 @@ class Handler(BaseHTTPRequestHandler):
             db.commit()
             updated = db.execute("SELECT * FROM support_tickets WHERE id=?", (ticket_id,)).fetchone()
             return self.json(200, self.ticket_payload(db, updated))
+
+    def parse_news(self, data, forced_id=None):
+        item_id = str(forced_id or data.get("id", "")).strip().lower()
+        item_date = str(data.get("date", "")).strip()
+        title = data.get("title") if isinstance(data.get("title"), dict) else {}
+        body = data.get("body") if isinstance(data.get("body"), dict) else {}
+        if not NEWS_ID_RE.fullmatch(item_id):
+            return None, "invalid_news_id"
+        if not NEWS_DATE_RE.fullmatch(item_date):
+            return None, "invalid_news_date"
+        titles = {lang: str(title.get(lang, "")).strip() for lang in ("en", "ru", "uk")}
+        bodies = {lang: str(body.get(lang, "")).strip() for lang in ("en", "ru", "uk")}
+        if any(not value or len(value) > 160 for value in titles.values()):
+            return None, "invalid_news_title"
+        if any(not value or len(value) > 8000 for value in bodies.values()):
+            return None, "invalid_news_body"
+        return (item_id, item_date, titles, bodies), None
+
+    def create_news(self, data):
+        if not self.same_origin_ok():
+            return self.json(403, {"error": "origin_rejected"})
+        parsed, error = self.parse_news(data)
+        if error:
+            return self.json(400, {"error": error})
+        item_id, item_date, title, body = parsed
+        with connect() as db:
+            if not self.require_owner(db):
+                return
+            ts = now()
+            try:
+                db.execute(
+                    "INSERT INTO news_items(id,date,title_en,title_ru,title_uk,body_en,body_ru,body_uk,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                    (item_id, item_date, title["en"], title["ru"], title["uk"], body["en"], body["ru"], body["uk"], ts, ts),
+                )
+            except sqlite3.IntegrityError:
+                return self.json(409, {"error": "news_id_exists"})
+            db.commit()
+            row = db.execute("SELECT * FROM news_items WHERE id=?", (item_id,)).fetchone()
+            return self.json(201, self.news_payload(row))
+
+    def update_news(self, item_id, data):
+        if not self.same_origin_ok():
+            return self.json(403, {"error": "origin_rejected"})
+        parsed, error = self.parse_news(data, item_id)
+        if error:
+            return self.json(400, {"error": error})
+        item_id, item_date, title, body = parsed
+        with connect() as db:
+            if not self.require_owner(db):
+                return
+            if not db.execute("SELECT 1 FROM news_items WHERE id=?", (item_id,)).fetchone():
+                return self.json(404, {"error": "news_not_found"})
+            db.execute(
+                "UPDATE news_items SET date=?,title_en=?,title_ru=?,title_uk=?,body_en=?,body_ru=?,body_uk=?,updated_at=? WHERE id=?",
+                (item_date, title["en"], title["ru"], title["uk"], body["en"], body["ru"], body["uk"], now(), item_id),
+            )
+            db.commit()
+            row = db.execute("SELECT * FROM news_items WHERE id=?", (item_id,)).fetchone()
+            return self.json(200, self.news_payload(row))
+
+    def delete_news(self, item_id):
+        if not self.same_origin_ok():
+            return self.json(403, {"error": "origin_rejected"})
+        item_id = str(item_id).strip().lower()
+        if not NEWS_ID_RE.fullmatch(item_id):
+            return self.json(400, {"error": "invalid_news_id"})
+        with connect() as db:
+            if not self.require_owner(db):
+                return
+            cursor = db.execute("DELETE FROM news_items WHERE id=?", (item_id,))
+            if cursor.rowcount == 0:
+                return self.json(404, {"error": "news_not_found"})
+            db.commit()
+            return self.json(200, {"ok": True, "id": item_id})
 
     def update_role(self, user_id, data):
         if not self.same_origin_ok():
