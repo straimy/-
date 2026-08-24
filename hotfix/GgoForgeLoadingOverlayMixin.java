@@ -9,11 +9,12 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * Covers Forge's early red loading presentation with the GGO startup surface.
+ * Covers Forge's early loading presentation with the GGO startup surface.
  *
- * The injection deliberately runs at TAIL and never cancels Forge's render method:
- * Forge still owns reload completion, error propagation and fade timing. We only
- * replace the pixels presented to the player while ForgeLoadingOverlay is active.
+ * Forge still owns reload completion, error propagation and fade timing. The TAIL overlay only
+ * replaces presentation pixels, but it resets the pose first: Forge leaves transforms active while
+ * rendering its logo and those transforms previously made the GGO cover occupy only part of the
+ * framebuffer on scaled Linux desktops.
  */
 @Mixin(value = ForgeLoadingOverlay.class, remap = false)
 public abstract class GgoForgeLoadingOverlayMixin {
@@ -26,37 +27,39 @@ public abstract class GgoForgeLoadingOverlayMixin {
         CallbackInfo ci
     ) {
         Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft == null || minecraft.font == null) {
-            return;
+        if (minecraft == null || minecraft.font == null) return;
+
+        int width = graphics.guiWidth();
+        int height = graphics.guiHeight();
+        if (width <= 0 || height <= 0) return;
+
+        graphics.pose().pushPose();
+        try {
+            // Do not inherit Forge/Mojang logo transforms. Draw in canonical GUI coordinates.
+            graphics.pose().last().pose().identity();
+            graphics.pose().translate(0.0F, 0.0F, 1000.0F);
+
+            graphics.fill(0, 0, width, height, 0xFF08090C);
+            graphics.fill(0, 0, width, Math.max(3, height / 120), 0xFFC72F3C);
+
+            int centerX = width / 2;
+            int centerY = height / 2;
+            graphics.drawCenteredString(minecraft.font, "GUNGLORYONLINE", centerX, centerY - 18, 0xFFF1F1F1);
+            graphics.drawCenteredString(minecraft.font, "INITIALIZING GGO", centerX, centerY + 4, 0xFFD24A57);
+
+            int barWidth = Math.min(260, Math.max(120, width / 4));
+            int left = centerX - barWidth / 2;
+            int top = centerY + 32;
+            graphics.fill(left, top, left + barWidth, top + 3, 0xFF24262C);
+
+            long now = System.currentTimeMillis();
+            int pulseWidth = Math.max(28, barWidth / 5);
+            int travel = Math.max(1, barWidth - pulseWidth);
+            int pulse = (int) ((now / 8L) % (travel * 2L));
+            if (pulse > travel) pulse = travel * 2 - pulse;
+            graphics.fill(left + pulse, top, left + pulse + pulseWidth, top + 3, 0xFFE4E5E8);
+        } finally {
+            graphics.pose().popPose();
         }
-
-        int width = minecraft.getWindow().getGuiScaledWidth();
-        int height = minecraft.getWindow().getGuiScaledHeight();
-        if (width <= 0 || height <= 0) {
-            return;
-        }
-
-        graphics.fill(0, 0, width, height, 0xFF08090C);
-
-        int centerX = width / 2;
-        int centerY = height / 2;
-        graphics.drawCenteredString(minecraft.font, "GUNGLORYONLINE", centerX, centerY - 12, 0xFFF1F1F1);
-        graphics.drawCenteredString(minecraft.font, "INITIALIZING GAME", centerX, centerY + 8, 0xFF9A9DA5);
-
-        int barWidth = Math.min(220, Math.max(96, width / 4));
-        int left = centerX - barWidth / 2;
-        int top = centerY + 28;
-        graphics.fill(left, top, left + barWidth, top + 2, 0xFF24262C);
-
-        // A restrained moving pulse communicates activity without reading Forge's
-        // private progress state or coupling GGO to its internal loading protocol.
-        long now = System.currentTimeMillis();
-        int pulseWidth = Math.max(24, barWidth / 5);
-        int travel = Math.max(1, barWidth - pulseWidth);
-        int pulse = (int) ((now / 8L) % (travel * 2L));
-        if (pulse > travel) {
-            pulse = travel * 2 - pulse;
-        }
-        graphics.fill(left + pulse, top, left + pulse + pulseWidth, top + 2, 0xFFD7D7DA);
     }
 }
