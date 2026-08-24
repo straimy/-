@@ -1,0 +1,154 @@
+name: GGO Runtime Stage 100 OST Branding
+
+on:
+  workflow_dispatch:
+    inputs:
+      ost_source_url:
+        description: URL to a ZIP containing the six verified GGO OST tracks
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      STAGE99_RUN: '32709722074'
+      STAGE99_ARTIFACT: GunGloryOnline-Runtime-Stage99-Clean-Hub
+      CORE_SHA256: c3c580b456ad5bd17144188a557d6d50ce2d3c23eee5685f7fdf28b632c1f2a1
+      UI_SHA256: 75259d89f12e0f36add0bd82f02674aaad3313e7f807ae38ef2791026ca9e4fc
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: client/runtime-migration-v1
+          fetch-depth: 0
+
+      - name: Capture exact ref
+        id: refs
+        run: echo "client_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Download exact GREEN Stage99 runtime
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.STAGE99_ARTIFACT }}
+          path: stage99-input
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.STAGE99_RUN }}
+
+      - name: Verify Stage99 branding baseline
+        id: baseline
+        run: |
+          set -euo pipefail
+          CORE="$(find stage99-input -type f -name 'gungloryonline-core-runtime-v1-stage99-clean-hub.jar' | head -n1)"
+          UI="$(find stage99-input -type f -name 'gungloryonline-ui-runtime-v1-stage99-clean-hub.jar' | head -n1)"
+          RP="$(find stage99-input -type f -name 'GunGloryOnline-Official.zip' | head -n1)"
+          test -f "$CORE" && test -f "$UI" && test -f "$RP"
+          test "$(sha256sum "$CORE" | awk '{print $1}')" = "$CORE_SHA256"
+          test "$(sha256sum "$UI" | awk '{print $1}')" = "$UI_SHA256"
+          jar tf "$UI" | grep -q '^arena/client/shell/GgoWindowIconClient.class$'
+          jar tf "$UI" | grep -q '^arena/mixin/GgoWindowTitleMixin.class$'
+          jar tf "$UI" | grep -q '^assets/ggo/icon.png$'
+          unzip -p "$UI" ggo-startup.mixins.json | grep -q 'GgoWindowTitleMixin'
+          echo "core=$CORE" >> "$GITHUB_OUTPUT"
+          echo "ui=$UI" >> "$GITHUB_OUTPUT"
+          echo "rp=$RP" >> "$GITHUB_OUTPUT"
+
+      - name: Download OST source
+        id: source
+        env:
+          OST_SOURCE_URL: ${{ inputs.ost_source_url }}
+        run: |
+          set -euo pipefail
+          test -n "$OST_SOURCE_URL"
+          curl -fL --retry 3 --retry-delay 2 -o ost-source.zip "$OST_SOURCE_URL"
+          unzip -tq ost-source.zip >/dev/null
+          echo "sha256=$(sha256sum ost-source.zip | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Restore verified OST
+        id: ost
+        run: |
+          set -euo pipefail
+          mkdir -p stage100/client/mods stage100/client/resourcepacks
+          python3 hotfix/restore_ggo_ost_stage100.py \
+            --base '${{ steps.baseline.outputs.rp }}' \
+            --source ost-source.zip \
+            --output stage100/client/resourcepacks/GunGloryOnline-Official.zip | tee stage100-ost.log
+          RP_SHA="$(sha256sum stage100/client/resourcepacks/GunGloryOnline-Official.zip | awk '{print $1}')"
+          echo "rp_sha256=$RP_SHA" >> "$GITHUB_OUTPUT"
+          grep -q 'track=digital_horizon sha256=1f09224c33c8e3de5ff6838352cb7c7fa66585d1c3e3f1625e8f8860b0a473b9' stage100-ost.log
+          grep -q 'track=red_skyline sha256=854005622845355187588e8a87c87bc38f48bd83d2e93e4aada7761cdeec805a' stage100-ost.log
+          grep -q 'track=lost_signal sha256=a1dd994c93852f4166ce0b6da19dbe4d31dbceeadb6172dfa80ff13540d5b41c' stage100-ost.log
+          grep -q 'track=ggo_track_04 sha256=eb7ef5655e653bc542862e8a38eb7d314ed109fb8820ff27a1cc150a6c64046d' stage100-ost.log
+          grep -q 'track=afterglow_protocol sha256=3bd0c7d836ebc436abb040f0c93b41effba5312727ee247f76a20e33ecc814a9' stage100-ost.log
+          grep -q 'track=distant_current sha256=54cba3c8382e7d956548535e84f88c685e65c7ef8d549f7a3d9eb9fec6a7aad7' stage100-ost.log
+
+      - name: Assemble Stage100 candidate
+        id: assemble
+        run: |
+          set -euo pipefail
+          cp '${{ steps.baseline.outputs.core }}' stage100/client/mods/gungloryonline-core-runtime-v1-stage100-ost-branding.jar
+          cp '${{ steps.baseline.outputs.ui }}' stage100/client/mods/gungloryonline-ui-runtime-v1-stage100-ost-branding.jar
+          (cd stage100 && sha256sum client/mods/*.jar client/resourcepacks/GunGloryOnline-Official.zip > SHA256SUMS)
+          test "$(sha256sum stage100/client/mods/gungloryonline-core-runtime-v1-stage100-ost-branding.jar | awk '{print $1}')" = "$CORE_SHA256"
+          test "$(sha256sum stage100/client/mods/gungloryonline-ui-runtime-v1-stage100-ost-branding.jar | awk '{print $1}')" = "$UI_SHA256"
+
+      - name: Upload Stage100 candidate
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-Runtime-Stage100-OST-Branding
+          path: stage100/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish Stage100 receipt
+        if: always()
+        env:
+          BASELINE_OUTCOME: ${{ steps.baseline.outcome }}
+          SOURCE_OUTCOME: ${{ steps.source.outcome }}
+          OST_OUTCOME: ${{ steps.ost.outcome }}
+          ASSEMBLE_OUTCOME: ${{ steps.assemble.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+        run: |
+          set -euo pipefail
+          result=success
+          for v in "$BASELINE_OUTCOME" "$SOURCE_OUTCOME" "$OST_OUTCOME" "$ASSEMBLE_OUTCOME" "$UPLOAD_OUTCOME"; do
+            [ "$v" = success ] || result=failure
+          done
+          mkdir -p ci-results
+          cat > ci-results/stage100-ost-branding.txt <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_id=${GITHUB_RUN_ID}
+          client_sha=${{ steps.refs.outputs.client_sha }}
+          protocol=3
+          build_id=runtime-stage100
+          stage99_run=${STAGE99_RUN}
+          core_sha256=${CORE_SHA256}
+          ui_sha256=${UI_SHA256}
+          ost_source_sha256=${{ steps.source.outputs.sha256 }}
+          resource_pack_sha256=${{ steps.ost.outputs.rp_sha256 }}
+          clean_hub=true
+          startup_brand=true
+          native_window_title=true
+          native_window_icon=true
+          ost_restored=true
+          baseline=$BASELINE_OUTCOME
+          source=$SOURCE_OUTCOME
+          ost=$OST_OUTCOME
+          assemble=$ASSEMBLE_OUTCOME
+          upload=$UPLOAD_OUTCOME
+          result=$result
+          EOF
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add ci-results/stage100-ost-branding.txt
+          git commit -m "ci: record Stage100 OST branding ${GITHUB_RUN_ID}" || exit 0
+          git fetch origin client/runtime-migration-v1
+          git rebase origin/client/runtime-migration-v1
+          git push origin HEAD:client/runtime-migration-v1
