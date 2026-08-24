@@ -106,7 +106,7 @@ public final class GgoSettingsScreen extends Screen {
         Minecraft mc = Minecraft.getInstance();
         return new GgoSlider(x, y, w, label, clamp01(mc.options.getSoundSourceVolume(source)),
             GgoSettingsScreen::percent,
-            value -> mc.options.setSoundCategoryVolume(source, (float)clamp01(value)));
+            value -> mc.options.getSoundSourceOptionInstance(source).set(clamp01(value)));
     }
 
     private Button toggle(String label, boolean initial, int x, int y, int w, java.util.function.Consumer<Boolean> setter) {
@@ -199,7 +199,7 @@ public final class GgoSettingsScreen extends Screen {
         }
 
         @Override
-        protected void renderWidget(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+        public void renderWidget(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
             int x = getX();
             int y = getY();
             int w = getWidth();
