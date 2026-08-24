@@ -10,9 +10,8 @@ import net.minecraft.client.gui.screens.options.VideoSettingsScreen;
 import net.minecraft.network.chat.Component;
 
 /**
- * GGO settings hub. Player-facing categories open real Minecraft option screens instead of
- * decorative buttons, so changes are applied immediately and persisted by the vanilla Options
- * system while the GGO shell remains the navigation root.
+ * GGO settings hub. Categories open the real Minecraft option screens instead of decorative
+ * buttons, so sliders/toggles apply immediately and persist through the vanilla Options system.
  */
 public final class GgoSettingsScreen extends Screen {
     private final Screen parent;
@@ -27,27 +26,23 @@ public final class GgoSettingsScreen extends Screen {
         Minecraft mc = Minecraft.getInstance();
         int buttonWidth = Math.min(360, Math.max(260, width / 3));
         int x = width / 2 - buttonWidth / 2;
-        int y = Math.max(130, height / 2 - 115);
-        int gap = 42;
+        int y = Math.max(145, height / 2 - 95);
+        int gap = 46;
 
         addRenderableWidget(Button.builder(Component.literal("AUDIO"), button ->
                 mc.setScreen(new SoundOptionsScreen(this, mc.options)))
-            .bounds(x, y, buttonWidth, 30).build());
+            .bounds(x, y, buttonWidth, 32).build());
 
         addRenderableWidget(Button.builder(Component.literal("VIDEO"), button ->
                 mc.setScreen(new VideoSettingsScreen(this, mc.options)))
-            .bounds(x, y + gap, buttonWidth, 30).build());
+            .bounds(x, y + gap, buttonWidth, 32).build());
 
         addRenderableWidget(Button.builder(Component.literal("CONTROLS"), button ->
                 mc.setScreen(new ControlsScreen(this, mc.options)))
-            .bounds(x, y + gap * 2, buttonWidth, 30).build());
-
-        addRenderableWidget(Button.builder(Component.literal("GAMEPLAY  •  GGO"), button ->
-                mc.setScreen(new GgoGameplaySettingsScreen(this)))
-            .bounds(x, y + gap * 3, buttonWidth, 30).build());
+            .bounds(x, y + gap * 2, buttonWidth, 32).build());
 
         addRenderableWidget(Button.builder(Component.literal("BACK"), button -> onClose())
-            .bounds(x, y + gap * 4 + 10, buttonWidth, 30).build());
+            .bounds(x, y + gap * 3 + 14, buttonWidth, 32).build());
     }
 
     @Override
@@ -64,7 +59,8 @@ public final class GgoSettingsScreen extends Screen {
         int top = Math.max(28, height / 18);
         g.drawString(font, "GUNGLORYONLINE", margin, top, 0xFFF3F5F7, false);
         g.drawString(font, "SETTINGS", margin, top + 24, 0xFFB74350, false);
-        g.drawCenteredString(font, Component.literal("Choose a category"), width / 2, top + 70, 0xFF8C96A6);
+        g.drawCenteredString(font, Component.literal("Choose a category"), width / 2, top + 72, 0xFF8C96A6);
+        g.drawCenteredString(font, Component.literal("Audio includes Master, Music, Players, Blocks, Weather and more"), width / 2, top + 92, 0xFF697587);
         super.render(g, mouseX, mouseY, partialTick);
     }
 
