@@ -108,7 +108,7 @@ export default function App(){
   return <div className="app-shell">
     <aside className="sidebar">
       <button className="brand-button" onClick={()=>setPage("home")}><span className="brand-g">G</span><span><b>GunGlory</b><small>ONLINE</small></span></button>
-      <nav>{(["home","accounts","servers","library","logs","news","settings"] as Page[]).map(item=><button key={item} className={page===item?"active":""} onClick={()=>setPage(item)}>{t[item]}</button>)}</nav>
+      <nav>{(["home","accounts","news","settings"] as Page[]).map(item=><button key={item} className={page===item?"active":""} onClick={()=>setPage(item)}>{t[item]}</button>)}</nav>
       <div className="sidebar-footer"><span>{identityLabel}</span><small>{info.gameVersion} · {info.channel}</small></div>
     </aside>
     <main className="main-area">
