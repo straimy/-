@@ -3,6 +3,7 @@ from pathlib import Path
 ROOT = Path("ga-build") if Path("ga-build").exists() else Path(".")
 UI = ROOT / "client-ui/src/main/java/arena/client/ui"
 SHELL = ROOT / "client-ui/src/main/java/arena/client/shell/GgoShellScreen.java"
+HOOKS = ROOT / "client-ui/src/main/java/arena/client/shell/GgoShellHooks.java"
 UI.mkdir(parents=True, exist_ok=True)
 
 bridge = r'''package arena.client.ui;
@@ -26,6 +27,37 @@ public final class GgoLegacyUiBridge {
 '''
 (UI / "GgoLegacyUiBridge.java").write_text(bridge)
 
+# Keep the server-driven route protocol, but make /menu (route MAIN/default) land in the new GGO Hub.
+opener = r'''package arena.client.ui;
+
+import arena.client.net.ArenaClientNetwork;
+import arena.client.shell.GgoShellScreen;
+import net.minecraft.client.Minecraft;
+
+public final class ClientUiOpener {
+    private ClientUiOpener() {}
+
+    public static void open(int route) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null || mc.level == null) return;
+        ArenaClientNetwork.requestSnapshot();
+        switch (route) {
+            case 1 -> {
+                ArenaClientNetwork.requestCatalog();
+                mc.setScreen(new ShopScreen());
+            }
+            case 2 -> mc.setScreen(new ProfileScreen());
+            case 3 -> {
+                ArenaClientNetwork.requestSkillTree();
+                mc.setScreen(new SkillsScreen());
+            }
+            default -> mc.setScreen(new GgoShellScreen(GgoShellScreen.Page.HOME));
+        }
+    }
+}
+'''
+(UI / "ClientUiOpener.java").write_text(opener)
+
 s = SHELL.read_text()
 s = s.replace(
     'import net.minecraft.client.Minecraft;\n',
@@ -44,12 +76,22 @@ s = s.replace(
     'addRenderableWidget(Button.builder(Component.literal("OPEN SKILLS / PROGRESSION"), b -> runClientCommand("skills")).bounds(x, y, w, 28).build());',
     'addRenderableWidget(Button.builder(Component.literal("OPEN SKILLS / PROGRESSION"), b -> GgoLegacyUiBridge.openSkills()).bounds(x, y, w, 28).build());',
 )
-# The HOME buttons enter the new hub pages first; the retained screens are then opened from those pages.
-# This keeps server-driven snapshots, purchases and progression intact while removing KVICloud/GUNNER ARENA
-# from the primary navigation surface.
 SHELL.write_text(s)
+
+# M is now literally the server /menu route. J keeps Activities as the separate local shortcut.
+h = HOOKS.read_text()
+h = h.replace(
+    'if (event.getKey() == GLFW.GLFW_KEY_M) {\n            mc.setScreen(new GgoShellScreen(GgoShellScreen.Page.HOME));',
+    'if (event.getKey() == GLFW.GLFW_KEY_M) {\n            mc.player.connection.sendCommand("menu");',
+)
+HOOKS.write_text(h)
 
 assert 'GgoLegacyUiBridge.openShop()' in s
 assert 'GgoLegacyUiBridge.openProfile()' in s
 assert 'GgoLegacyUiBridge.openSkills()' in s
+assert 'sendCommand("menu")' in h
+assert 'new GgoShellScreen(GgoShellScreen.Page.HOME)' in opener
 print('Stage101 retained UI routes bridged')
+print(' - M sends /menu')
+print(' - /menu route MAIN opens canonical GGO Hub')
+print(' - Shop/Profile/Skills remain real server-driven screens')
