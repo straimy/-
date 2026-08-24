@@ -20,7 +20,7 @@ import java.util.Locale;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
-/** OP-only admin tools + shared safe credit mutator for server-owned rewards. */
+/** OP-only GGO admin mode + shared safe economy mutators. */
 @Mod.EventBusSubscriber(modid="gunnerarena",bus=Mod.EventBusSubscriber.Bus.FORGE)
 public final class AdminToolsCommands {
     public static final String ADMIN_BUILD_TAG="ggo_admin_build_mode";
@@ -28,13 +28,52 @@ public final class AdminToolsCommands {
     private AdminToolsCommands(){}
 
     @SubscribeEvent public static void commands(RegisterCommandsEvent e){
-        e.getDispatcher().register(Commands.literal("gm").requires(s->s.hasPermission(2)).then(Commands.argument("mode",IntegerArgumentType.integer(0,3)).executes(ctx->{
-            int mode=IntegerArgumentType.getInteger(ctx,"mode");if(mode==2){ctx.getSource().sendFailure(Component.literal("[GGO] Используй /gm 0, /gm 1 или /gm 3."));return 0;}
-            ServerPlayer p=ctx.getSource().getPlayerOrException();p.removeTag(ADMIN_BUILD_TAG);p.removeTag(ADMIN_SPECTATOR_TAG);
-            GameType type=GameType.ADVENTURE;if(mode==1){type=GameType.CREATIVE;p.addTag(ADMIN_BUILD_TAG);}else if(mode==3){type=GameType.SPECTATOR;p.addTag(ADMIN_SPECTATOR_TAG);}p.setGameMode(type);
-            p.sendSystemMessage(Component.literal("[GGO] Режим: "+(mode==1?"Креатив • админ-строительство":mode==3?"Спектатор • админ":"Игровой (Adventure)")));return 1;})));
+        // Canonical GGO administration mode.  The old /gm alias is intentionally
+        // not registered anymore, so there is one obvious entry point for staff.
+        e.getDispatcher().register(Commands.literal("admin").requires(s->s.hasPermission(2))
+            .executes(ctx->showAdminMode(ctx.getSource().getPlayerOrException()))
+            .then(Commands.argument("mode",IntegerArgumentType.integer(0,2)).executes(ctx->{
+                ServerPlayer p=ctx.getSource().getPlayerOrException();
+                int mode=IntegerArgumentType.getInteger(ctx,"mode");
+                return setAdminMode(p,mode);
+            })));
+
         e.getDispatcher().register(Commands.literal("crystals").requires(s->s.hasPermission(2)).then(Commands.literal("give").then(Commands.argument("player",EntityArgument.player()).then(Commands.argument("amount",LongArgumentType.longArg(1,1_000_000L)).executes(ctx->{ServerPlayer target=EntityArgument.getPlayer(ctx,"player");long amount=LongArgumentType.getLong(ctx,"amount");if(!grantCrystals(target,amount))return 0;ctx.getSource().sendSuccess(()->Component.literal("[GGO] +"+amount+" ◆ → "+target.getGameProfile().getName()).withStyle(ChatFormatting.AQUA),true);return 1;})))));
         registerCredits(e,"credits");registerCredits(e,"credit");
+    }
+
+    private static int setAdminMode(ServerPlayer p,int mode){
+        p.removeTag(ADMIN_BUILD_TAG);
+        p.removeTag(ADMIN_SPECTATOR_TAG);
+        switch(mode){
+            case 1 -> {
+                p.addTag(ADMIN_BUILD_TAG);
+                p.setGameMode(GameType.CREATIVE);
+                p.sendSystemMessage(Component.literal("[GGO] ADMIN 1 • BUILD MODE").withStyle(ChatFormatting.AQUA));
+                p.sendSystemMessage(Component.literal("Creative inventory, flight, block placement/breaking enabled. Use /admin 0 to return to normal play.").withStyle(ChatFormatting.GRAY));
+            }
+            case 2 -> {
+                p.addTag(ADMIN_SPECTATOR_TAG);
+                p.setGameMode(GameType.SPECTATOR);
+                p.sendSystemMessage(Component.literal("[GGO] ADMIN 2 • SPECTATOR").withStyle(ChatFormatting.LIGHT_PURPLE));
+                p.sendSystemMessage(Component.literal("Free spectator camera enabled. Use /admin 0 to return to normal play.").withStyle(ChatFormatting.GRAY));
+            }
+            default -> {
+                // GGO's ordinary protected player state. OP permission itself is
+                // deliberately retained; only the explicit admin gameplay mode ends.
+                p.setGameMode(GameType.ADVENTURE);
+                p.sendSystemMessage(Component.literal("[GGO] ADMIN 0 • PLAYER MODE").withStyle(ChatFormatting.GREEN));
+                p.sendSystemMessage(Component.literal("Returned to normal GGO gameplay; operator permissions are unchanged.").withStyle(ChatFormatting.GRAY));
+            }
+        }
+        return 1;
+    }
+
+    private static int showAdminMode(ServerPlayer p){
+        String mode=p.getTags().contains(ADMIN_BUILD_TAG)?"1 • BUILD":p.getTags().contains(ADMIN_SPECTATOR_TAG)?"2 • SPECTATOR":"0 • PLAYER";
+        p.sendSystemMessage(Component.literal("[GGO] Current admin mode: "+mode).withStyle(ChatFormatting.AQUA));
+        p.sendSystemMessage(Component.literal("/admin 0 = player   /admin 1 = build   /admin 2 = spectator").withStyle(ChatFormatting.GRAY));
+        return 1;
     }
 
     public static boolean grantCrystals(ServerPlayer target,long amount){if(target==null||amount<=0||GunnerArenaMod.RUNTIME==null)return false;var r=GunnerArenaMod.RUNTIME;var profile=r.players().profile(target);if(profile==null)return false;profile.crystals=profile.crystals>Long.MAX_VALUE-amount?Long.MAX_VALUE:profile.crystals+amount;r.profiles().markDirty(target.getUUID());return true;}
