@@ -1,6 +1,6 @@
 workflow=GGO Stage 92 Ticket-Bound Beta Package
-run_id=32691206140
-launcher_sha=450db910024a1a90d178f09a8deccbeb346c5fe4
+run_id=32691325046
+launcher_sha=1f2e5ecacb0451e9541d3f3d5f76f9a24b50d4ab
 launcher_candidate_version=0.2.4
 ticket_build_binding=true
 stage96_integrity=true
