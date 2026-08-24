@@ -76,7 +76,7 @@ fn highest_complete_dynamic_stage(mods_dir: &Path) -> Result<Option<u32>, io::Er
             None => {}
         }
     }
-    Ok(core_stages.intersection(&ui_stages).next_back().copied())
+    Ok(core_stages.intersection(&ui_stages).last().copied())
 }
 
 fn remove_legacy_managed_jars(mods_dir: &Path) -> Result<(), io::Error> {
