@@ -125,10 +125,10 @@
       "kind": "mod"
     },
     {
-      "path": "mods/gungloryonline-ui-runtime-v1-stage100-ost-branding.jar",
-      "url": "https://ggo.kvicloud.ru/content/files/v100/gungloryonline-ui-runtime-v1-stage100-ost-branding.jar",
-      "sha256": "75259d89f12e0f36add0bd82f02674aaad3313e7f807ae38ef2791026ca9e4fc",
-      "size": 209288,
+      "path": "mods/gungloryonline-ui-runtime-v1-stage100-title-hotfix.jar",
+      "url": "https://ggo.kvicloud.ru/content/files/v100/gungloryonline-ui-runtime-v1-stage100-title-hotfix.jar",
+      "sha256": "cb1eec3cac32078a01c9081360d71702cb325c34f2f3b20d5f9cfb271a47b869",
+      "size": 208690,
       "required": true,
       "side": "client",
       "version": "v100-candidate",
