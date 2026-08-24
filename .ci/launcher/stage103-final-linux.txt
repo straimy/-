@@ -1,0 +1,17 @@
+workflow=GGO Launcher Stage103 Final Linux
+run_id=32750306370
+source_sha=c604c016d2212cc23e908db0e2a0a2f87e50f3b7
+launcher_version=0.2.7
+game_version=v103-candidate
+manifest=beta-stage103-candidate.json
+stale_session_validation=true
+dual_character_art=true
+appimage_sha256=
+appimage_bytes=
+source_gate=success
+frontend=success
+rust=failure
+package=skipped
+verify=skipped
+upload=skipped
+result=failure
