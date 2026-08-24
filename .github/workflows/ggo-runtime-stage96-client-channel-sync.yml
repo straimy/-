@@ -100,12 +100,17 @@ jobs:
               python3 "hotfix/$patch"
           done
 
-          # Stage6/66 copy these current hotfix sources. Assert the new functional settings/music fence survived.
+          # Stage6 still emits its historical decorative settings implementation. Overlay the
+          # current reviewed functional settings source after the legacy patch chain so Stage96
+          # packages the real Minecraft option screens without rewriting historical patches.
           SETTINGS=ga-build/client-ui/src/main/java/arena/client/shell/GgoSettingsScreen.java
           FENCE=ga-build/client-ui/src/main/java/arena/client/shell/GgoVanillaRuntimeFence.java
+          cp hotfix/GgoSettingsScreen.java "$SETTINGS"
+          cp hotfix/GgoVanillaRuntimeFence.java "$FENCE"
           grep -q 'SoundOptionsScreen' "$SETTINGS"
           grep -q 'VideoSettingsScreen' "$SETTINGS"
           grep -q 'ControlsScreen' "$SETTINGS"
+          grep -q 'options.save()' "$SETTINGS"
           grep -q 'getMusicManager().stopPlaying()' "$FENCE"
 
           cp /tmp/ggo-mdk/gradlew ga-build/client-ui/gradlew
