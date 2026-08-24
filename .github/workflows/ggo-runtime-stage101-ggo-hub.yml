@@ -8,6 +8,7 @@ on:
     paths:
       - '.github/workflows/ggo-runtime-stage101-ggo-hub.yml'
       - 'hotfix/apply_ggo_hub_stage101.py'
+      - 'hotfix/GgoWindowIconClient.java'
 
 permissions:
   contents: write
@@ -19,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: client/runtime-migration-v1
+          ref: ${{ github.sha }}
           fetch-depth: 0
       - uses: actions/setup-java@v5
         with:
@@ -60,6 +61,7 @@ jobs:
           cp hotfix/GgoTrainingScreen.java "$SHELL/GgoTrainingScreen.java"
           cp hotfix/GgoSettingsScreen.java "$SHELL/GgoSettingsScreen.java"
           cp hotfix/GgoVanillaRuntimeFence.java "$SHELL/GgoVanillaRuntimeFence.java"
+          cp hotfix/GgoWindowIconClient.java "$SHELL/GgoWindowIconClient.java"
           cp /tmp/ggo-mdk/gradlew ga-build/client-ui/gradlew
           cp /tmp/ggo-mdk/gradlew.bat ga-build/client-ui/gradlew.bat
           rm -rf ga-build/client-ui/gradle && cp -a /tmp/ggo-mdk/gradle ga-build/client-ui/gradle
@@ -78,6 +80,7 @@ jobs:
           unzip -p "$UI" arena/client/shell/GgoShellScreen.class | strings | grep -q 'ENTER GGO / ACTIVITIES'
           ! unzip -p "$UI" arena/client/shell/GgoShellScreen.class | strings | grep -qi 'KVICloud'
           ! unzip -p "$UI" arena/client/shell/GgoShellScreen.class | strings | grep -qi 'GUNNER ARENA'
+          unzip -p "$UI" arena/client/shell/GgoWindowIconClient.class | strings | grep -q 'GunGloryOnline'
           mkdir -p stage101-hub
           cp "$UI" stage101-hub/gungloryonline-ui-runtime-v1-stage101-ggo-hub.jar
           sha256sum stage101-hub/gungloryonline-ui-runtime-v1-stage101-ggo-hub.jar > stage101-hub/SHA256SUMS.txt
