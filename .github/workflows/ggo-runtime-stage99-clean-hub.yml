@@ -12,6 +12,7 @@ on:
       - 'hotfix/GgoSettingsScreen.java'
       - 'hotfix/GgoVanillaRuntimeFence.java'
       - 'hotfix/apply_ggo_training_stage77.py'
+      - 'hotfix/apply_ggo_launcher_authority_stage58.py'
       - 'hotfix/GgoForgeLoadingOverlayMixin.java'
       - 'hotfix/ggo-startup.mixins.json'
       - 'hotfix/apply_ggo_startup_brand_stage98.py'
