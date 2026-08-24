@@ -1,10 +1,10 @@
 workflow=GGO Entry UX Stage 57 Client Compile
-run_id=32553603030
+run_id=32758104696
 run_attempt=1
-run_url=https://github.com/straimy/-/actions/runs/32553603030
-source_sha=77d5094dd0b36c870fc6744b67999428fc71641f
+run_url=https://github.com/straimy/-/actions/runs/32758104696
+source_sha=0d592742272df62fcddafc66097dd64ea71262b6
 apply=success
 bootstrap=success
-compile=success
-verify=success
-result=success
+compile=failure
+verify=skipped
+result=failure
