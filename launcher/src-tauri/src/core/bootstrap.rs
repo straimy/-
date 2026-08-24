@@ -34,7 +34,9 @@ impl BootstrapInfo {
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(ToOwned::to_owned)
-            .unwrap_or_else(|| format!("{content_base_url}/manifests/beta-stage100-candidate.json"));
+            .unwrap_or_else(|| {
+                format!("{content_base_url}/manifests/beta-stage100-candidate.json")
+            });
 
         Self {
             launcher_version: env!("CARGO_PKG_VERSION"),
