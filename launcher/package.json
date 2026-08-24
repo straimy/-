@@ -1,10 +1,10 @@
 {
   "name": "gungloryonline-launcher",
   "private": true,
-  "version": "0.2.6",
+  "version": "0.2.7",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host 127.0.0.1",
     "build": "tsc && vite build",
     "build:windows": "tauri build --bundles nsis,msi",
     "build:linux": "tauri build --bundles appimage,deb,rpm",
