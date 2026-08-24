@@ -18,11 +18,8 @@ pub struct BootstrapInfo {
 
 impl BootstrapInfo {
     pub fn current() -> Self {
-        // Closed-beta launchers must work out of the box. The old bootstrap only
-        // exposed remote install when GGO_CONTENT_BASE_URL happened to be set at
-        // build time, which made INSTALL silently fall back to a local v40 ZIP.
-        // Keep env overrides for staging while providing the official beta
-        // channel as a safe default.
+        // Closed-beta launchers must work out of the box. Keep env overrides for
+        // staging while providing the current official candidate as the default.
         let content_base_url = option_env!("GGO_CONTENT_BASE_URL")
             .map(str::trim)
             .filter(|value| !value.is_empty())
@@ -37,11 +34,11 @@ impl BootstrapInfo {
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(ToOwned::to_owned)
-            .unwrap_or_else(|| format!("{content_base_url}/manifests/beta-stage85-candidate.json"));
+            .unwrap_or_else(|| format!("{content_base_url}/manifests/beta-stage96-candidate.json"));
 
         Self {
             launcher_version: env!("CARGO_PKG_VERSION"),
-            game_version: "v85-candidate",
+            game_version: "v96-candidate",
             channel: "beta",
             runtime: "minecraft-forge",
             server: "play.kvicloud.ru:24842",
