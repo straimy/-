@@ -1,0 +1,15 @@
+workflow=GGO Runtime Stage104 Shell Lock
+run_id=32758523438
+client_sha=8127d86ed698837400e32edda5c93c1f1bf82c41
+build_id=runtime-stage104
+ui_sha256=4254806eeb082b1164d4430507ec64afb9286ad8a9006cbd215c9e4d30736b97
+vanilla_title_fenced=true
+vanilla_options_fenced=true
+vanilla_world_browser_fenced=true
+vanilla_server_browser_fenced=true
+vanilla_pause_fenced=true
+intentional_disconnect_coordinated=true
+startup_transform_reset=true
+ui_build=success
+upload=success
+result=success
