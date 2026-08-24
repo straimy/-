@@ -1,5 +1,6 @@
 name: GGO Launcher Stage100 Final Linux
 
+# Controlled Stage100 0.2.5 packaging gate.
 on:
   workflow_dispatch:
   push:
