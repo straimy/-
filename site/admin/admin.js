@@ -23,7 +23,6 @@ async function boot() {
     $('#staff-panel').classList.remove('hidden');
     if (me.role === 'admin') {
       $('#admin-users').classList.remove('hidden');
-      $('#admin-news').classList.remove('hidden');
       $('#admin-audit').classList.remove('hidden');
     }
     await Promise.all([
@@ -67,7 +66,17 @@ async function loadUsers() {
 }
 
 async function loadNews() {
-  const data = await api('/api/v1/news');
+  let data;
+  try {
+    data = await api('/api/v1/admin/news');
+  } catch (error) {
+    if (error.status === 403) {
+      $('#admin-news').classList.add('hidden');
+      return;
+    }
+    throw error;
+  }
+  $('#admin-news').classList.remove('hidden');
   newsCache = data.items || [];
   const list = $('#news-list');
   if (!newsCache.length) { list.innerHTML = '<div class="empty-state">Новостей пока нет.</div>'; return; }

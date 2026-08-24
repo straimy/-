@@ -157,9 +157,22 @@ async fn fetch_server_catalog(url: String) -> Result<ServerCatalog, String> {
 #[tauri::command]
 async fn fetch_news_feed(url: String) -> Result<NewsFeed, String> {
     let http = updater::client().map_err(|error| error.to_string())?;
-    remote_content::fetch_news(&http, &url)
-        .await
-        .map_err(|error| error.to_string())
+    match remote_content::fetch_news(&http, &url).await {
+        Ok(feed) => Ok(feed),
+        Err(primary_error) => {
+            let Some(site_url) = url.strip_suffix("/api/v1/news") else {
+                return Err(primary_error.to_string());
+            };
+            let fallback_url = format!("{site_url}/content/api/news.json");
+            remote_content::fetch_news(&http, &fallback_url)
+                .await
+                .map_err(|fallback_error| {
+                    format!(
+                        "dynamic news failed ({primary_error}); static fallback failed ({fallback_error})"
+                    )
+                })
+        }
+    }
 }
 
 #[tauri::command]
