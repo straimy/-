@@ -9,6 +9,7 @@ on:
       - 'launcher/hotfix/apply_menu_first_beta_stage76.py'
       - 'launcher/hotfix/apply_client_integrity_stage84.py'
       - 'launcher/hotfix/apply_ticket_binding_stage90.py'
+      - 'launcher/hotfix/apply_launcher_surface_stage99.py'
   workflow_dispatch:
 
 permissions:
@@ -28,11 +29,13 @@ jobs:
         run: |
           set -euo pipefail
           python3 hotfix/apply_menu_first_beta_stage76.py
+          python3 hotfix/apply_launcher_surface_stage99.py
           grep -q 'play:"PLAY"' src/App.tsx
           ! grep -q 'play:"PLAY ONLINE"' src/App.tsx
           ! grep -q 'onClick={()=>void launch(true)}' src/App.tsx
           grep -q '?t.install:updateAvailable?t.updateGame:t.play' src/App.tsx
           grep -q 'setGameInstalled(plan.files.length===0)' src/App.tsx
+          grep -q '(["home","accounts","news","settings"] as Page[])' src/App.tsx
           grep -q 'async fn launch_game(' src-tauri/src/lib.rs
 
       - name: Persist canonical source
@@ -45,7 +48,7 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add launcher/src launcher/src-tauri/src
-          git commit -m 'fix(launcher): persist one-button canonical source'
+          git commit -m 'fix(launcher): persist simplified canonical source'
           git fetch origin launcher/bootstrap-v0.1
           git rebase origin/launcher/bootstrap-v0.1
           git push origin HEAD:launcher/bootstrap-v0.1
