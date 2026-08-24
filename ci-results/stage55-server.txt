@@ -1,10 +1,10 @@
 workflow=GGO Official Auth Stage 55 Server Compile
-run_id=32627386601
+run_id=32742437916
 run_attempt=1
-run_url=https://github.com/straimy/-/actions/runs/32627386601
-source_sha=c8a9537949540e9fcd0872138a477173562381df
-apply=success
-bootstrap=success
-compile=failure
+run_url=https://github.com/straimy/-/actions/runs/32742437916
+source_sha=b52f572b983b6cdba96e6ade5a507e1d766fa15f
+apply=failure
+bootstrap=skipped
+compile=skipped
 verify=skipped
 result=failure
