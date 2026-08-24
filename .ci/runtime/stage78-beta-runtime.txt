@@ -1,7 +1,7 @@
 workflow=GGO Stage 78 Beta Runtime Bundle
-run_id=32619023997
-run_url=https://github.com/straimy/-/actions/runs/32619023997
-launcher_sha=81e2e07a80cf0e26a2c779e28069f01ff9a064a7
+run_id=32690191971
+run_url=https://github.com/straimy/-/actions/runs/32690191971
+launcher_sha=2e69c09b1f58476308481802d61b493d086a60c6
 stage77_run=32604880362
 assemble=success
 gates=success
