@@ -84,10 +84,24 @@ new = '''    let (build_id, core_sha256, ui_sha256) = ggo_integrity_pair(&root)?
         ("GGO_CORE_SHA256".to_string(), core_sha256),
         ("GGO_UI_SHA256".to_string(), ui_sha256),
     ];'''
-if old not in rust and new not in rust:
-    raise SystemExit("Stage76 child environment block missing")
+
+# Older package workflows may call Stage84 explicitly after the canonical Stage76 entrypoint,
+# which now already runs Stage84 and Stage90. After Stage90, the local integrity tuple is moved
+# before ticket issuance, so the exact `new` block above no longer exists. Treat the transform as
+# already applied when the helper and all child identity variables are present.
+already_applied = all(
+    token in rust
+    for token in (
+        "fn ggo_integrity_pair(",
+        '"GGO_CLIENT_BUILD_ID"',
+        '"GGO_CORE_SHA256"',
+        '"GGO_UI_SHA256"',
+    )
+)
 if old in rust:
     rust = rust.replace(old, new, 1)
+elif new not in rust and not already_applied:
+    raise SystemExit("Stage76 child environment block missing")
 
 for token in [
     "fn ggo_integrity_pair(",
@@ -110,4 +124,5 @@ print("Applied GGO Stage84 launcher integrity metadata")
 print(" - hashes installed managed Core/UI immediately before Java launch")
 print(" - passes bounded build id + SHA-256 values to the child process")
 print(" - supports Stage97/96 channel-sync and legacy managed runtime pairs")
+print(" - repeated Stage84 application is safe after Stage90 ticket binding")
 print(" - fails closed on an incomplete managed GGO pair")
