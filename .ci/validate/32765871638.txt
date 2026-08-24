@@ -1,0 +1,13 @@
+workflow=GunGloryOnline Launcher CI
+run_id=32765871638
+run_attempt=1
+run_url=https://github.com/straimy/-/actions/runs/32765871638
+source_sha=e61cc043cea6a029145fe47fa43c3a371d1f8bc7
+vds=success
+deps=success
+install=success
+frontend=skipped
+format=skipped
+rust_check=skipped
+rust_tests=skipped
+result=failure
