@@ -17,10 +17,11 @@ front = (ROOT / "GgoFrontEndScreen.java").read_text(encoding="utf-8")
 practice = (ROOT / "GgoTrainingScreen.java").read_text(encoding="utf-8")
 
 for required in [
-    'Component.literal("PLAY ONLINE")',
+    'PLAY ONLINE',
     'PRACTICE · COMING SOON',
     'SETTINGS',
     'OFFICIAL_SERVER = "play.kvicloud.ru:24842"',
+    'GgoLaunchTicketClient.canStartOnline()',
 ]:
     if required not in front:
         raise SystemExit(f"Stage 77 frontend missing: {required}")
@@ -53,4 +54,5 @@ if 'GgoShellScreen(GgoShellScreen.Page.ACTIVITIES)' in front:
 print("Applied GGO Stage 77 practice branch")
 print(" - old decorative Aim / Movement / Loadout buttons removed")
 print(" - Practice is explicitly marked coming soon")
+print(" - Online label may reflect launcher ticket state")
 print(" - no server route or ticket handling in practice surface")
