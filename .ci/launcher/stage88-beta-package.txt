@@ -1,8 +1,8 @@
 workflow=GGO Launcher Stage 88 Beta Package
-run_id=32714957031
+run_id=32720329345
 run_attempt=1
-run_url=https://github.com/straimy/-/actions/runs/32714957031
-launcher_sha=b7e94d68ed0f36963ffe450dba38f4fead24e072
+run_url=https://github.com/straimy/-/actions/runs/32720329345
+launcher_sha=08f1c1f82972cbb28b059487c7d7407d5e691e2a
 launcher_candidate_version=0.2.4
 stage85_integrity=true
 menu_first=true
