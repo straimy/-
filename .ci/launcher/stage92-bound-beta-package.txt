@@ -1,6 +1,6 @@
 workflow=GGO Stage 92 Ticket-Bound Beta Package
-run_id=32696993313
-launcher_sha=d89a7da1022260c27e67837d453926c5378444c2
+run_id=32698267850
+launcher_sha=b333e6e70ef9673e9c5da2b6ba51b470293e7d8b
 launcher_candidate_version=0.2.4
 ticket_build_binding=true
 stage96_integrity=true
@@ -13,4 +13,4 @@ launch_autoconnect=false
 production_published=false
 windows_artifact=GunGloryOnline-Launcher-0.2.4-Beta-Bound-Windows
 linux_artifact=GunGloryOnline-Launcher-0.2.4-Beta-Bound-Linux
-result=success
+result=failure
