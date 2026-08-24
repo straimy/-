@@ -13,18 +13,16 @@ if not SRC.is_file():
 shutil.copy2(SRC, DST)
 
 text = DST.read_text(encoding="utf-8")
-# Stage58 owns launcher authority and trusted online routing. Do not pin this guard to
-# historical visual copy such as "GGO CLIENT • BETA"/"ACTIVITIES": later frontend revisions
-# are allowed to change presentation while preserving these security/flow invariants.
+# Stage58 owns launcher authority and trusted online routing. Presentation may evolve,
+# but Online must remain gated by the launcher ticket and locked to the official server.
 for required in [
     "PLAY ONLINE",
-    "TRAINING",
+    "PRACTICE · COMING SOON",
     "GgoLaunchTicketClient.isOfficialLaunch()",
     "GgoLaunchTicketClient.canStartOnline()",
     "ConnectScreen.startConnecting",
     "ServerAddress.parseString(OFFICIAL_SERVER)",
     'OFFICIAL_SERVER = "play.kvicloud.ru:24842"',
-    "RETURN TO GGO LAUNCHER",
     "new GgoSettingsScreen(this)",
 ]:
     if required not in text:
@@ -35,14 +33,16 @@ for forbidden in [
     "MultiplayerScreen",
     "ENTER GGO",
     "OptionsScreen",
+    "LAUNCHER REQUIRED",
+    "RETURN TO GGO LAUNCHER",
     "sendCommand(\"login",
     "sendCommand(\"register",
 ]:
     if forbidden in text:
-        raise SystemExit(f"stage58 unsafe/vanilla online entry leak: {forbidden}")
+        raise SystemExit(f"stage58 unsafe/legacy online entry leak: {forbidden}")
 
-print("Applied GGO Stage 58 launcher-authenticated menu-first entry")
+print("Applied GGO Stage 58 launcher-authenticated clean entry")
 print(" - launcher owns authentication and short-lived session credential")
-print(" - GGO client owns final Online / Training activity choice")
+print(" - client exposes Online plus a clearly disabled future Practice surface")
 print(" - Online uses only the trusted official route; no server browser or manual address")
 print(" - settings stay inside first-party GGO UI")
