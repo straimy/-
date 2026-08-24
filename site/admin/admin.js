@@ -12,6 +12,8 @@ const roleLabel = r => ({admin:'Администратор',support:'Тех. П�
 const badge = r => `<span class="role-badge ${esc(r)}">${roleLabel(r)}</span>`;
 const statusText = s => ({open:'Открыт',pending:'Ожидает',closed:'Закрыт'}[s] || s);
 let me = null;
+let newsEditingId = null;
+let newsCache = [];
 
 async function boot() {
   try {
@@ -21,12 +23,14 @@ async function boot() {
     $('#staff-panel').classList.remove('hidden');
     if (me.role === 'admin') {
       $('#admin-users').classList.remove('hidden');
+      $('#admin-news').classList.remove('hidden');
       $('#admin-audit').classList.remove('hidden');
     }
     await Promise.all([
       loadStats(),
       loadTickets(),
       me.role === 'admin' ? loadUsers() : Promise.resolve(),
+      me.role === 'admin' ? loadNews() : Promise.resolve(),
       me.role === 'admin' ? loadAudit() : Promise.resolve()
     ]);
   } catch (error) {
@@ -60,6 +64,46 @@ async function loadUsers() {
   const q = $('#user-search').value.trim();
   const data = await api(`/api/v1/admin/users${q ? `?q=${encodeURIComponent(q)}` : ''}`);
   $('#user-list').innerHTML = data.users.map(u => `<div class="user-role-row" data-user="${esc(u.id)}"><div><strong>${esc(u.display_name)}</strong>${badge(u.role)}</div><select class="compact-select" data-role><option value="user" ${u.role==='user'?'selected':''}>Игрок</option><option value="support" ${u.role==='support'?'selected':''}>Тех. Поддержка</option><option value="admin" ${u.role==='admin'?'selected':''}>Администратор</option></select></div>`).join('');
+}
+
+async function loadNews() {
+  const data = await api('/api/v1/news');
+  newsCache = data.items || [];
+  const list = $('#news-list');
+  if (!newsCache.length) { list.innerHTML = '<div class="empty-state">Новостей пока нет.</div>'; return; }
+  list.innerHTML = newsCache.map(item => `<article class="ticket-card" data-news="${esc(item.id)}"><div class="ticket-card-head"><div><div class="ticket-meta"><span>${esc(item.date)}</span><span>#${esc(item.id)}</span></div><h3>${esc(item.title.ru)}</h3></div><div><button class="ghost-button" type="button" data-news-action="edit">Изменить</button> <button class="ghost-button" type="button" data-news-action="delete">Удалить</button></div></div><div class="ticket-text">${esc(item.body.ru).replace(/\n/g,'<br>')}</div></article>`).join('');
+}
+
+function resetNewsForm() {
+  newsEditingId = null;
+  $('#news-form').reset();
+  $('#news-id').disabled = false;
+  $('#news-submit').textContent = 'Опубликовать';
+  $('#news-date').value = new Date().toISOString().slice(0,10);
+}
+
+function editNews(item) {
+  newsEditingId = item.id;
+  $('#news-id').value = item.id;
+  $('#news-id').disabled = true;
+  $('#news-date').value = item.date;
+  $('#news-title-ru').value = item.title.ru;
+  $('#news-title-en').value = item.title.en;
+  $('#news-title-uk').value = item.title.uk;
+  $('#news-body-ru').value = item.body.ru;
+  $('#news-body-en').value = item.body.en;
+  $('#news-body-uk').value = item.body.uk;
+  $('#news-submit').textContent = 'Сохранить';
+  $('#news-form').scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function newsPayload() {
+  return {
+    id: $('#news-id').value.trim(),
+    date: $('#news-date').value,
+    title: {ru:$('#news-title-ru').value.trim(), en:$('#news-title-en').value.trim(), uk:$('#news-title-uk').value.trim()},
+    body: {ru:$('#news-body-ru').value.trim(), en:$('#news-body-en').value.trim(), uk:$('#news-body-uk').value.trim()}
+  };
 }
 
 async function loadAudit() {
@@ -98,10 +142,38 @@ $('#user-list').addEventListener('change', async e => {
   try { await api(`/api/v1/admin/users/${row.dataset.user}/role`, {method:'PUT', body:JSON.stringify({role:select.value})}); await Promise.all([loadUsers(), loadAudit()]); }
   catch (error) { showError(error); await loadUsers(); } finally { select.disabled = false; }
 });
+$('#news-reset').addEventListener('click', resetNewsForm);
+$('#news-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const button = $('#news-submit'); button.disabled = true;
+  try {
+    const payload = newsPayload();
+    if (newsEditingId) await api(`/api/v1/admin/news/${encodeURIComponent(newsEditingId)}`, {method:'PUT', body:JSON.stringify(payload)});
+    else await api('/api/v1/admin/news', {method:'POST', body:JSON.stringify(payload)});
+    resetNewsForm();
+    await Promise.all([loadNews(), loadAudit()]);
+  } catch (error) { showError(error); } finally { button.disabled = false; }
+});
+$('#news-list').addEventListener('click', async e => {
+  const action = e.target.closest('[data-news-action]'); if (!action) return;
+  const card = action.closest('[data-news]');
+  const item = newsCache.find(value => value.id === card.dataset.news); if (!item) return;
+  if (action.dataset.newsAction === 'edit') { editNews(item); return; }
+  if (action.dataset.newsAction === 'delete') {
+    action.disabled = true;
+    try { await api(`/api/v1/admin/news/${encodeURIComponent(item.id)}`, {method:'DELETE'}); if (newsEditingId === item.id) resetNewsForm(); await Promise.all([loadNews(), loadAudit()]); }
+    catch (error) { showError(error); } finally { action.disabled = false; }
+  }
+});
 $('#audit-refresh').addEventListener('click', () => loadAudit().catch(showError));
 function showError(error) {
   const box = $('#staff-denied');
-  box.textContent = error.data?.error === 'owner_role_locked' ? 'Роль владельца проекта защищена и не может быть снята.' : error.message;
+  const special = {
+    owner_role_locked:'Роль владельца проекта защищена и не может быть снята.',
+    owner_required:'Публиковать новости может только владелец GGO.'
+  };
+  box.textContent = special[error.data?.error] || error.message;
   box.classList.remove('hidden'); setTimeout(() => box.classList.add('hidden'), 5000);
 }
+resetNewsForm();
 boot();
