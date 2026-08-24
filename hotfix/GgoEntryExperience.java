@@ -13,6 +13,7 @@ import net.minecraftforge.fml.common.Mod;
 
 import java.lang.reflect.Field;
 import java.util.Locale;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Owns the visible launcher-to-world transition while vanilla networking stays an implementation detail. */
 @Mod.EventBusSubscriber(value = Dist.CLIENT, bus = Mod.EventBusSubscriber.Bus.FORGE)
@@ -21,12 +22,22 @@ public final class GgoEntryExperience {
     private static final int ACCENT_2 = 0xFF9F6CFF;
     private static final int TEXT = 0xFFF2F5F8;
     private static final int MUTED = 0xFF8B96A7;
+    private static final AtomicBoolean RETURNING_TO_FRONTEND = new AtomicBoolean(false);
 
     private GgoEntryExperience() {}
+
+    /** Marks a user-requested server exit so disconnect recovery cannot race the GGO frontend. */
+    public static void requestReturnToFrontend() {
+        RETURNING_TO_FRONTEND.set(true);
+    }
 
     @SubscribeEvent
     public static void onScreenOpening(ScreenEvent.Opening event) {
         if (!(event.getNewScreen() instanceof DisconnectedScreen disconnected)) return;
+        if (RETURNING_TO_FRONTEND.getAndSet(false)) {
+            event.setNewScreen(new GgoFrontEndScreen());
+            return;
+        }
         event.setNewScreen(new GgoEntryDisconnectedScreen(readDisconnectReason(disconnected)));
     }
 
