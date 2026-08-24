@@ -1,0 +1,12 @@
+workflow=GGO Stage97 Candidate CDN Payload
+run_id=32699306796
+launcher_sha=af56bcc3e668172c3f05e315e2bb1b7deb7cde9d
+source_client_run=32697877231
+build_id=runtime-stage97
+core_sha256=c3c580b456ad5bd17144188a557d6d50ce2d3c23eee5685f7fdf28b632c1f2a1
+ui_sha256=fed175cb342b9bc45e612ea724ace16ca325d7b02ebcaa76b13157f2f54bab1d
+resource_pack_sha256=ec3c1e83d59195ba5a8fb2a90a0a41b7439f3b98f10970bfc9c359d0f7a22dae
+assemble=success
+upload=success
+production_deployed=false
+result=success
