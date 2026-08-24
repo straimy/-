@@ -12,6 +12,7 @@ on:
       - 'launcher/hotfix/apply_launcher_surface_stage99.py'
       - 'launcher/hotfix/apply_session_validation_stage104.py'
       - 'launcher/hotfix/apply_character_art_stage104.py'
+      - 'launcher/hotfix/apply_unified_lifecycle_stage105.py'
   workflow_dispatch:
 
 permissions:
@@ -34,6 +35,7 @@ jobs:
           python3 hotfix/apply_launcher_surface_stage99.py
           python3 hotfix/apply_session_validation_stage104.py
           python3 hotfix/apply_character_art_stage104.py
+          python3 hotfix/apply_unified_lifecycle_stage105.py
           grep -Fq 'play:"PLAY"' src/App.tsx
           ! grep -Fq 'play:"PLAY ONLINE"' src/App.tsx
           ! grep -Fq 'onClick={()=>void launch(true)}' src/App.tsx
@@ -46,6 +48,13 @@ jobs:
           grep -Fq 'ggo-hero-headphones.webp' src/App.tsx
           grep -Fq 'ggo-hero-lantern.webp' src/App.tsx
           grep -Fq "img-src 'self' data: https://ggo.kvicloud.ru" src-tauri/tauri.conf.json
+          grep -Fq 'pub struct GameProcessStatus' src-tauri/src/runtime/minecraft_launch.rs
+          grep -Fq 'child.wait()' src-tauri/src/runtime/minecraft_launch.rs
+          grep -Fq 'fn game_process_status() -> GameProcessStatus' src-tauri/src/lib.rs
+          grep -Fq 'invoke<GameProcessStatus>("game_process_status")' src/App.tsx
+          grep -Fq 'getCurrentWindow().hide()' src/App.tsx
+          grep -Fq 'window.show()' src/App.tsx
+          grep -Fq 'window.setFocus()' src/App.tsx
 
       - name: Persist canonical source
         run: |
@@ -57,7 +66,7 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add launcher/src launcher/src-tauri/src launcher/src-tauri/tauri.conf.json
-          git commit -m 'fix(launcher): persist Stage104 canonical source'
+          git commit -m 'fix(launcher): persist Stage105 unified lifecycle'
           git fetch origin launcher/bootstrap-v0.1
           git rebase origin/launcher/bootstrap-v0.1
           git push origin HEAD:launcher/bootstrap-v0.1
