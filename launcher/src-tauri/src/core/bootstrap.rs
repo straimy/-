@@ -18,8 +18,7 @@ pub struct BootstrapInfo {
 
 impl BootstrapInfo {
     pub fn current() -> Self {
-        // Closed-beta launchers must work out of the box. Keep env overrides for
-        // staging while providing the current official candidate as the default.
+        // Stage103 is the current closed-beta candidate; env overrides remain available for staging.
         let content_base_url = option_env!("GGO_CONTENT_BASE_URL")
             .map(str::trim)
             .filter(|value| !value.is_empty())
