@@ -166,7 +166,7 @@ fn has_complete_staged_runtime_pair(mods_dir: &Path) -> Result<bool, io::Error> 
             _ => {}
         }
     }
-    Ok(cores.intersection(&uis).next_back().is_some())
+    Ok(cores.intersection(&uis).last().is_some())
 }
 
 fn require_file(path: &Path) -> Result<(), LocalInstallError> {
