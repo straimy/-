@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "build": "runtime-stage102",
+  "roles": {
+    "training": {
+      "id": "training",
+      "source": "current-primary-world",
+      "status": "retain"
+    },
+    "hub": {
+      "id": "hub",
+      "source": "world_3",
+      "status": "preferred"
+    },
+    "battle_royale": [
+      {
+        "id": "br_drop_point",
+        "source": "Точка Высадки",
+        "archive": "Точка Высадки(1).zip",
+        "import_root": "saves/Точка Высадки/",
+        "status": "validated-source"
+      },
+      {
+        "id": "br_mini_pubg",
+        "source": "Mini PUBG minecraft map",
+        "archive": "MINI PUBG MINECRAF MAP(1).zip",
+        "import_root": "saves/Mini PUBG minecraft map/",
+        "status": "validated-source",
+        "ignore_archive_paths": ["mods/", "config/", "options.txt"]
+      }
+    ]
+  },
+  "logical_world_count": 4,
+  "notes": [
+    "The two uploaded BR archives are separate Minecraft save folders and are not copied wholesale into the production server.",
+    "MINI PUBG bundled client mods/config are intentionally excluded from GGO.",
+    "BR saves must be imported as managed GGO map instances/dimensions before runtime selection is enabled."
+  ]
+}
