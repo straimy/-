@@ -93,6 +93,8 @@ jobs:
           grep -q "build_id: &'a str" src-tauri/src/core/ggo_auth.rs
           grep -q "core_sha256: &'a str" src-tauri/src/core/ggo_auth.rs
           grep -q "ui_sha256: &'a str" src-tauri/src/core/ggo_auth.rs
+          grep -q 'setGameInstalled(plan.files.length===0)' src/App.tsx
+          ! grep -q 'setGameInstalled(plan.checkedFiles>0&&plan.files.length===0)' src/App.tsx
           grep -q 'options.connect_server = false;' src-tauri/src/lib.rs
           ! grep -q 'async fn launch_minecraft(' src-tauri/src/lib.rs
           ! grep -q 'async fn preview_minecraft_launch(' src-tauri/src/lib.rs
