@@ -1,6 +1,6 @@
 name: GGO Launcher Stage100 Final Linux
 
-# Controlled Stage100 0.2.5 packaging gate.
+# Controlled Stage100 0.2.6 packaging gate.
 on:
   workflow_dispatch:
   push:
@@ -9,6 +9,9 @@ on:
     paths:
       - '.github/workflows/ggo-launcher-stage100-final-linux.yml'
       - 'launcher/src-tauri/src/core/bootstrap.rs'
+      - 'launcher/src-tauri/Cargo.toml'
+      - 'launcher/src-tauri/tauri.conf.json'
+      - 'launcher/package.json'
 
 permissions:
   contents: write
@@ -44,9 +47,9 @@ jobs:
         run: |
           set -euo pipefail
           python3 hotfix/apply_menu_first_beta_stage76.py
-          grep -Fq '"version": "0.2.5"' package.json
-          grep -Fq 'version = "0.2.5"' src-tauri/Cargo.toml
-          grep -Fq '"version": "0.2.5"' src-tauri/tauri.conf.json
+          grep -Fq '"version": "0.2.6"' package.json
+          grep -Fq 'version = "0.2.6"' src-tauri/Cargo.toml
+          grep -Fq '"version": "0.2.6"' src-tauri/tauri.conf.json
           grep -Fq 'beta-stage100-candidate.json' src-tauri/src/core/bootstrap.rs
           grep -Fq 'game_version: "v100-candidate"' src-tauri/src/core/bootstrap.rs
           grep -Fq 'managed_stage_from_name' src-tauri/src/lib.rs
@@ -77,7 +80,7 @@ jobs:
           APP="$(find src-tauri/target/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage' | head -n1)"
           test -n "$APP" && test -f "$APP"
           case "$(basename "$APP")" in
-            *0.2.5*) ;;
+            *0.2.6*) ;;
             *) echo "unexpected launcher filename: $APP" >&2; exit 1 ;;
           esac
           sha256sum "$APP"
@@ -88,7 +91,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         id: upload
         with:
-          name: GunGloryOnline-Linux-Stage100-Final-0.2.5
+          name: GunGloryOnline-Linux-Stage100-Final-0.2.6
           path: launcher/src-tauri/target/release/bundle/appimage/*.AppImage
           if-no-files-found: error
           retention-days: 30
@@ -108,7 +111,7 @@ jobs:
           workflow=${GITHUB_WORKFLOW}
           run_id=${GITHUB_RUN_ID}
           source_sha=${GITHUB_SHA}
-          launcher_version=0.2.5
+          launcher_version=0.2.6
           game_version=v100-candidate
           manifest=beta-stage100-candidate.json
           appimage_sha256=${{ steps.verify.outputs.sha256 }}
