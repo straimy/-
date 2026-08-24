@@ -1,0 +1,116 @@
+name: GGO Launcher Stage100 Final Linux
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - launcher/bootstrap-v0.1
+    paths:
+      - '.github/workflows/ggo-launcher-stage100-final-linux.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: launcher
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+          fetch-depth: 0
+
+      - name: Install Linux prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        run: npm install
+
+      - name: Apply canonical launcher chain
+        run: |
+          set -euo pipefail
+          python3 hotfix/apply_menu_first_beta_stage76.py
+          grep -Fq 'beta-stage100-candidate.json' src-tauri/src/core/bootstrap.rs
+          grep -Fq 'game_version: "v100-candidate"' src-tauri/src/core/bootstrap.rs
+          grep -Fq 'runtime-stage' src-tauri/src/lib.rs
+          grep -Fq 'stage_number' src-tauri/src/lib.rs
+          grep -Fq 'play:"PLAY"' src/App.tsx
+          ! grep -Fq 'play:"PLAY ONLINE"' src/App.tsx
+          grep -Fq '(["home","accounts","news","settings"] as Page[])' src/App.tsx
+
+      - name: Frontend build
+        run: npm run build
+
+      - name: Rust format/check/test
+        run: |
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+          cargo check --manifest-path src-tauri/Cargo.toml
+          cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Generate platform icons
+        run: npm run tauri icon src-tauri/icons/icon.png
+
+      - name: Build Stage100 AppImage
+        run: npm run tauri build -- --bundles appimage
+
+      - name: Verify AppImage exists
+        id: verify
+        run: |
+          set -euo pipefail
+          APP="$(find src-tauri/target/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage' | head -n1)"
+          test -n "$APP" && test -f "$APP"
+          sha256sum "$APP"
+          echo "app=$APP" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(sha256sum "$APP" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "bytes=$(stat -c%s "$APP")" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        id: upload
+        with:
+          name: GunGloryOnline-Linux-Stage100-Final
+          path: launcher/src-tauri/target/release/bundle/appimage/*.AppImage
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish receipt
+        if: always()
+        env:
+          VERIFY: ${{ steps.verify.outcome }}
+          UPLOAD: ${{ steps.upload.outcome }}
+        working-directory: .
+        run: |
+          set -euo pipefail
+          result=failure
+          [ "$VERIFY" = success ] && [ "$UPLOAD" = success ] && result=success
+          mkdir -p .ci/launcher
+          cat > .ci/launcher/stage100-final-linux.txt <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_id=${GITHUB_RUN_ID}
+          source_sha=${GITHUB_SHA}
+          game_version=v100-candidate
+          manifest=beta-stage100-candidate.json
+          appimage_sha256=${{ steps.verify.outputs.sha256 }}
+          appimage_bytes=${{ steps.verify.outputs.bytes }}
+          verify=$VERIFY
+          upload=$UPLOAD
+          result=$result
+          EOF
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .ci/launcher/stage100-final-linux.txt
+          git commit -m "ci: record Stage100 final Linux launcher ${GITHUB_RUN_ID}" || exit 0
+          git fetch origin launcher/bootstrap-v0.1
+          git rebase origin/launcher/bootstrap-v0.1
+          git push origin HEAD:launcher/bootstrap-v0.1
