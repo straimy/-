@@ -97,6 +97,9 @@ jobs:
           ! grep -q 'async fn preview_minecraft_launch(' src-tauri/src/lib.rs
           grep -q 'https://ggo.kvicloud.ru/content' src-tauri/src/core/bootstrap.rs
           grep -q 'beta-stage85-candidate.json' src-tauri/src/core/bootstrap.rs
+          grep -q 'Mozilla/5.0 (X11; Linux x86_64)' src-tauri/src/core/updater.rs
+          grep -q 'GunGloryOnline-Launcher/0.2.4' src-tauri/src/core/updater.rs
+          grep -q 'ACCEPT_LANGUAGE' src-tauri/src/core/updater.rs
           test -s src-tauri/icons/icon.ico
 
       - name: Frontend build
@@ -175,6 +178,7 @@ jobs:
           ticket_build_binding=true
           stage85_integrity=true
           remote_content_default=true
+          cloudflare_ua_compat=true
           menu_first=true
           launch_autoconnect=false
           production_published=false
