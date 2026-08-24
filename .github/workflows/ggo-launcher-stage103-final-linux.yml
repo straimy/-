@@ -71,7 +71,6 @@ jobs:
       - name: Rust format/check/test
         id: rust
         run: |
-          cargo fmt --manifest-path src-tauri/Cargo.toml --all
           cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
           cargo check --manifest-path src-tauri/Cargo.toml
           cargo test --manifest-path src-tauri/Cargo.toml
