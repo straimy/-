@@ -1,6 +1,6 @@
 workflow=GGO Stage 94 Auth Binding Attestation
-run_id=32634349736
-launcher_sha=b9d10e1d9fe25a98762ed39f965d2f1d0e8f6da7
+run_id=32679587676
+launcher_sha=6b079de972e5d1e93499725b34addd87a5f0223d
 stage92_bound_launcher=success
 auth_schema_binding=success
 auth_one_shot_consume=success
