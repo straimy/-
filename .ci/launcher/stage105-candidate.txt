@@ -1,0 +1,11 @@
+workflow=GGO Launcher Stage105 Candidate
+run_id=32761207941
+source_sha=7c7c6268d43880748d789b73f113da08fb7b8c1f
+launcher_version=0.2.8
+game_version=v105-candidate
+manifest=https://ggo.kvicloud.ru/content/manifests/beta-stage105-candidate.json
+unified_lifecycle=true
+appimage_sha256=145849e75adf2ad341fd05136a7470a0606fc0b910a6bbc0f7ab125caacad3c4
+stage=success
+upload=success
+result=success
