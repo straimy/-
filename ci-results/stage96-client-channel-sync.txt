@@ -1,0 +1,15 @@
+workflow=GGO Runtime Stage 96 Client Channel Sync
+run_id=32681608848
+client_sha=e5b8b6a910d8c9052dec65cda7fb313130cb9567
+stage93_run=32633191926
+protocol=3
+core_sha256=
+ui_sha256=
+resource_pack_sha256=
+functional_settings=true
+vanilla_menu_music_suppressed=true
+ui_build=failure
+core_sync=skipped
+assemble=skipped
+upload=skipped
+result=failure
