@@ -13,9 +13,10 @@ import net.minecraft.sounds.SoundSource;
 /**
  * GGO-native settings screen backed directly by Minecraft Options.
  *
+ * Replaces the previous SoundOptionsScreen / VideoSettingsScreen / ControlsScreen hand-off with
+ * first-party GGO controls while preserving the same live Options backend and options.save().
  * The controls are not decorative: sliders and toggles update the live Options instance and
- * values are persisted on close. This keeps Minecraft's proven settings backend while removing
- * the vanilla options-screen surface from the normal GGO flow.
+ * values are persisted on close.
  */
 public final class GgoSettingsScreen extends Screen {
     private enum Page { AUDIO, VIDEO, CONTROLS }
