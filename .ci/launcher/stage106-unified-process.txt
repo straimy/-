@@ -1,6 +1,6 @@
 workflow=GGO Launcher Stage106 Unified Process
-run_id=32766744438
-source_sha=7b4a7c303f48d4bc9ec7c386c685326c7797087f
+run_id=32769374307
+source_sha=e053be9ee8e1a92faa7a0f47a858618eddeb59bb
 launcher_version=0.2.8
 game_version=v106-candidate
 manifest=beta-stage106-candidate.json
@@ -11,7 +11,7 @@ child_process_reaped=true
 launcher_restores_after_exit=true
 linux_child_wm_class=true
 linux_child_wm_class_value=gungloryonline-launcher
-appimage_sha256=f920da10f36ce9c6ac85562f8571b75dcd5bbafdce5ebffd62e9977b4457b11f
+appimage_sha256=307ab8f46e36293d0e18d57fb20cce0fc47f0b34e2ee896ceaff1ebf0c16928c
 appimage_bytes=83360248
 patch=success
 source_gate=success
