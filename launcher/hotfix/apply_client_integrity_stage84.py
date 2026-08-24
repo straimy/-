@@ -13,57 +13,73 @@ anchor = "#[tauri::command]\nasync fn launch_game("
 if anchor not in rust:
     raise SystemExit("launch_game anchor missing; apply Stage76 first")
 
-helper = r'''fn ggo_integrity_pair(root: &std::path::Path) -> Result<(String, String, String), String> {
+helper = r'''fn managed_stage_from_name(name: &str, prefix: &str) -> Option<u32> {
+    let rest = name.strip_prefix(prefix)?;
+    let rest = rest.strip_prefix("stage")?;
+    let digits: String = rest.chars().take_while(|ch| ch.is_ascii_digit()).collect();
+    if digits.is_empty() {
+        return None;
+    }
+    digits.parse().ok()
+}
+
+fn ggo_integrity_pair(root: &std::path::Path) -> Result<(String, String, String), String> {
+    use std::collections::{BTreeMap, BTreeSet};
+
     let mods = root.join("mods");
-    let candidates = [
-        (
-            "runtime-stage97",
-            "gungloryonline-core-runtime-v1-stage97-channel-sync.jar",
-            "gungloryonline-ui-runtime-v1-stage97.jar",
-        ),
-        (
-            "runtime-stage96",
-            "gungloryonline-core-runtime-v1-stage96-channel-sync.jar",
-            "gungloryonline-ui-runtime-v1-stage96.jar",
-        ),
-        (
-            "runtime-stage85",
-            "gungloryonline-core-runtime-v1-stage85.jar",
-            "gungloryonline-ui-runtime-v1-stage85.jar",
-        ),
-        (
-            "runtime-stage77",
-            "gungloryonline-core-runtime-v1-stage77.jar",
-            "gungloryonline-ui-runtime-v1-stage77.jar",
-        ),
-        (
-            "runtime-stage68-69",
-            "gungloryonline-core-runtime-v1-stage68.jar",
-            "gungloryonline-ui-runtime-v1-stage69.jar",
-        ),
-    ];
-    for (build_id, core_name, ui_name) in candidates {
-        let core = mods.join(core_name);
-        let ui = mods.join(ui_name);
-        if core.is_file() && ui.is_file() {
-            let core_bytes = std::fs::read(&core).map_err(|error| {
-                format!("cannot read managed Core for integrity check: {error}")
-            })?;
-            let ui_bytes = std::fs::read(&ui)
-                .map_err(|error| format!("cannot read managed UI for integrity check: {error}"))?;
-            return Ok((
-                build_id.to_string(),
-                hex::encode(Sha256::digest(core_bytes)),
-                hex::encode(Sha256::digest(ui_bytes)),
-            ));
+    let entries = std::fs::read_dir(&mods)
+        .map_err(|error| format!("cannot inspect managed GGO mods: {error}"))?;
+    let mut cores = BTreeMap::<u32, std::path::PathBuf>::new();
+    let mut uis = BTreeMap::<u32, std::path::PathBuf>::new();
+
+    for entry in entries {
+        let entry = entry.map_err(|error| format!("cannot inspect managed GGO mod: {error}"))?;
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
+            continue;
+        };
+        if let Some(stage) = managed_stage_from_name(name, "gungloryonline-core-runtime-v1-") {
+            cores.insert(stage, path.clone());
+        }
+        if let Some(stage) = managed_stage_from_name(name, "gungloryonline-ui-runtime-v1-") {
+            uis.insert(stage, path);
         }
     }
+
+    let core_stages: BTreeSet<u32> = cores.keys().copied().collect();
+    let ui_stages: BTreeSet<u32> = uis.keys().copied().collect();
+    if let Some(stage) = core_stages.intersection(&ui_stages).last().copied() {
+        let core = cores.get(&stage).expect("complete Core stage must exist");
+        let ui = uis.get(&stage).expect("complete UI stage must exist");
+        let core_bytes = std::fs::read(core)
+            .map_err(|error| format!("cannot read managed Core for integrity check: {error}"))?;
+        let ui_bytes = std::fs::read(ui)
+            .map_err(|error| format!("cannot read managed UI for integrity check: {error}"))?;
+        return Ok((
+            format!("runtime-stage{stage}"),
+            hex::encode(Sha256::digest(core_bytes)),
+            hex::encode(Sha256::digest(ui_bytes)),
+        ));
+    }
+
     Err("GGO managed Core/UI pair is incomplete. Repair the game before launching.".to_string())
 }
 
 '''
 
-if "fn ggo_integrity_pair(" not in rust:
+start = rust.find("fn ggo_integrity_pair(")
+if start != -1:
+    end = rust.find(anchor, start)
+    if end == -1:
+        raise SystemExit("launch_game anchor missing after integrity helper")
+    helper_start = rust.rfind("fn managed_stage_from_name(", 0, start)
+    if helper_start != -1:
+        start = helper_start
+    rust = rust[:start] + helper + rust[end:]
+else:
     rust = rust.replace(anchor, helper + anchor, 1)
 
 old = '''    let child_environment = vec![
@@ -85,10 +101,6 @@ new = '''    let (build_id, core_sha256, ui_sha256) = ggo_integrity_pair(&root)?
         ("GGO_UI_SHA256".to_string(), ui_sha256),
     ];'''
 
-# Older package workflows may call Stage84 explicitly after the canonical Stage76 entrypoint,
-# which now already runs Stage84 and Stage90. After Stage90, the local integrity tuple is moved
-# before ticket issuance, so the exact `new` block above no longer exists. Treat the transform as
-# already applied when the helper and all child identity variables are present.
 already_applied = all(
     token in rust
     for token in (
@@ -104,25 +116,22 @@ elif new not in rust and not already_applied:
     raise SystemExit("Stage76 child environment block missing")
 
 for token in [
+    "fn managed_stage_from_name(",
     "fn ggo_integrity_pair(",
-    '"runtime-stage97"',
-    '"runtime-stage96"',
-    '"runtime-stage85"',
-    '"runtime-stage77"',
-    '"runtime-stage68-69"',
+    'format!("runtime-stage{stage}")',
     '"GGO_CLIENT_BUILD_ID"',
     '"GGO_CORE_SHA256"',
     '"GGO_UI_SHA256"',
     "Sha256::digest(core_bytes)",
     "Sha256::digest(ui_bytes)",
+    "intersection(&ui_stages).last().copied()",
 ]:
     if token not in rust:
         raise SystemExit(f"Stage84 launcher integrity requirement missing: {token}")
 
 RUST.write_text(rust, encoding="utf-8")
 print("Applied GGO Stage84 launcher integrity metadata")
-print(" - hashes installed managed Core/UI immediately before Java launch")
-print(" - passes bounded build id + SHA-256 values to the child process")
-print(" - supports Stage97/96 channel-sync and legacy managed runtime pairs")
-print(" - repeated Stage84 application is safe after Stage90 ticket binding")
-print(" - fails closed on an incomplete managed GGO pair")
+print(" - dynamically selects the highest complete same-stage managed Core/UI pair")
+print(" - supports Stage100 and future stageNN runtime names without hard-coded ceilings")
+print(" - hashes installed managed Core/UI immediately before ticket issuance")
+print(" - fails closed on incomplete managed GGO runtime")
