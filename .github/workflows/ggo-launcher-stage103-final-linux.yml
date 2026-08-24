@@ -119,6 +119,11 @@ jobs:
           set -euo pipefail
           result=failure
           [ "$SOURCE_GATE" = success ] && [ "$FRONTEND" = success ] && [ "$RUST" = success ] && [ "$PACKAGE" = success ] && [ "$VERIFY" = success ] && [ "$UPLOAD" = success ] && result=success
+
+          # Tauri icon generation may rewrite tracked icon files. They are build-time
+          # outputs here and must not block the immutable receipt commit/rebase.
+          git reset --hard HEAD
+
           mkdir -p .ci/launcher
           cat > .ci/launcher/stage103-final-linux.txt <<EOF
           workflow=${GITHUB_WORKFLOW}
