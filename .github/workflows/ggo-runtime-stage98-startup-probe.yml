@@ -1,0 +1,81 @@
+name: GGO Runtime Stage 98 Startup Probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - client/runtime-migration-v1
+    paths:
+      - '.github/workflows/ggo-runtime-stage98-startup-probe.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: client/runtime-migration-v1
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Inspect current UI mixin wiring
+        id: wiring
+        run: |
+          set -euo pipefail
+          rm -rf probe-src && mkdir probe-src
+          unzip -q "$SOURCE_ZIP" -d probe-src
+          {
+            echo '=== MIXIN FILES ==='
+            find probe-src -type f \( -name '*mixins*.json' -o -name 'MANIFEST.MF' -o -name 'mods.toml' \) -print
+            echo '=== MIXIN REFERENCES ==='
+            grep -RniE 'MixinConfigs|mixins\.json|gunnerarena\.mixins' probe-src/client-ui 2>/dev/null || true
+            echo '=== RESOURCE MIXIN CONFIG ==='
+            find probe-src/client-ui/src/main/resources -type f -name '*mixins*.json' -exec sh -c 'echo --- $1; cat "$1"' _ {} \; 2>/dev/null || true
+            echo '=== MANIFEST / MODS TOML ==='
+            find probe-src/client-ui/src/main/resources -type f \( -name 'MANIFEST.MF' -o -name 'mods.toml' \) -exec sh -c 'echo --- $1; cat "$1"' _ {} \; 2>/dev/null || true
+          } | tee wiring.txt
+          test -s wiring.txt
+
+      - name: Probe Forge 47.4.10 loading overlay bytecode
+        id: forge
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 -o forge-universal.jar https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-universal.jar
+          jar tf forge-universal.jar | grep 'ForgeLoadingOverlay.class' | tee overlay-class.txt
+          test -s overlay-class.txt
+          javap -classpath forge-universal.jar -p -s net.minecraftforge.client.loading.ForgeLoadingOverlay | tee forge-loading-overlay-javap.txt
+          grep -q 'render' forge-loading-overlay-javap.txt
+
+      - name: Publish probe receipt
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p ci-results
+          {
+            echo "workflow=${GITHUB_WORKFLOW}"
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "client_sha=$(git rev-parse HEAD)"
+            echo '--- wiring ---'
+            cat wiring.txt 2>/dev/null || true
+            echo '--- overlay class ---'
+            cat overlay-class.txt 2>/dev/null || true
+            echo '--- javap ---'
+            cat forge-loading-overlay-javap.txt 2>/dev/null || true
+          } > ci-results/stage98-startup-probe.txt
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add ci-results/stage98-startup-probe.txt
+          git commit -m "ci: record Stage98 startup probe ${GITHUB_RUN_ID}" || exit 0
+          git fetch origin client/runtime-migration-v1
+          git rebase origin/client/runtime-migration-v1
+          git push origin HEAD:client/runtime-migration-v1
