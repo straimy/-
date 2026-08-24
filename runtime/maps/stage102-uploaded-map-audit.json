@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "audit": "stage102-uploaded-br-maps",
+  "maps": [
+    {
+      "id": "br_drop_point",
+      "source": "Точка Высадки(1).zip",
+      "world_root": "saves/Точка Высадки/",
+      "overworld_region_files": 16,
+      "overworld_entity_region_files": 16,
+      "overworld_poi_region_files": 16,
+      "datapacks": 2,
+      "detected_chunk_namespaces": {
+        "minecraft": "dominant",
+        "framedblocks": "heavy",
+        "chiselsandbits": "heavy",
+        "unusual_furniture": "present",
+        "biomesoplenty": "present",
+        "tacz": "minor",
+        "lrtactical": "minor",
+        "lrarmor": "minor",
+        "daffas_arsenal": "minor"
+      },
+      "compatibility": "migration-required",
+      "policy": "Do not copy bundled mods into GGO. Convert/replace unsupported structural blocks before production import."
+    },
+    {
+      "id": "br_mini_pubg",
+      "source": "MINI PUBG MINECRAF MAP(1).zip",
+      "world_root": "saves/Mini PUBG minecraft map/",
+      "overworld_region_files": 12,
+      "overworld_entity_region_files": 10,
+      "overworld_poi_region_files": 8,
+      "datapacks": 0,
+      "detected_chunk_namespaces": {
+        "minecraft": "dominant",
+        "tacz": "present",
+        "lrarmor": "minor",
+        "grenadevariety": "minor"
+      },
+      "compatibility": "adaptation-required",
+      "policy": "Import only the save folder; exclude bundled mods/config/options. Replace legacy weapon/armor/grenade content with GGO-owned equivalents where necessary."
+    }
+  ]
+}
