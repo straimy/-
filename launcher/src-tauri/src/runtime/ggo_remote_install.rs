@@ -4,6 +4,8 @@ use super::{
 };
 use std::{collections::BTreeSet, fs, io, path::Path};
 
+const REMOTE_CORE_STAGE97: &str = "gungloryonline-core-runtime-v1-stage97-channel-sync.jar";
+const REMOTE_UI_STAGE97: &str = "gungloryonline-ui-runtime-v1-stage97.jar";
 const REMOTE_CORE_STAGE96: &str = "gungloryonline-core-runtime-v1-stage96-channel-sync.jar";
 const REMOTE_UI_STAGE96: &str = "gungloryonline-ui-runtime-v1-stage96.jar";
 const REMOTE_CORE_STAGE85: &str = "gungloryonline-core-runtime-v1-stage85.jar";
@@ -84,11 +86,10 @@ fn remove_legacy_managed_jars(mods_dir: &Path) -> Result<(), io::Error> {
         return Ok(());
     }
 
-    // Atomic managed-runtime preference. Keep exact known production pairs first, but also
-    // understand a complete GGO `stageNN` Core/UI pair dynamically. The dynamic fallback is
-    // important for candidate artifacts whose filename gains a suffix (for example channel-sync)
-    // without changing its stage number. A partial newer download must never destroy the last
-    // complete working pair.
+    // Atomic managed-runtime preference. A partial newer download must never destroy the last
+    // complete working pair. Exact production pairs are preferred, while the dynamic stage
+    // fallback protects candidate suffixes and future complete stageNN pairs.
+    let stage97_ready = pair_exists(mods_dir, REMOTE_CORE_STAGE97, REMOTE_UI_STAGE97);
     let stage96_ready = pair_exists(mods_dir, REMOTE_CORE_STAGE96, REMOTE_UI_STAGE96);
     let stage85_ready = pair_exists(mods_dir, REMOTE_CORE_STAGE85, REMOTE_UI_STAGE85);
     let stage77_ready = pair_exists(mods_dir, REMOTE_CORE_STAGE77, REMOTE_UI_STAGE77);
@@ -114,7 +115,13 @@ fn remove_legacy_managed_jars(mods_dir: &Path) -> Result<(), io::Error> {
             continue;
         }
 
-        let current = if stage96_ready {
+        let current = if stage97_ready {
+            matches!(name, REMOTE_CORE_STAGE97 | REMOTE_UI_STAGE97)
+        } else if dynamic_stage.is_some_and(|stage| stage > 96) {
+            staged_runtime(name)
+                .map(|(_, file_stage)| Some(file_stage) == dynamic_stage)
+                .unwrap_or(false)
+        } else if stage96_ready {
             matches!(name, REMOTE_CORE_STAGE96 | REMOTE_UI_STAGE96)
         } else if let Some(stage) = dynamic_stage {
             staged_runtime(name)
@@ -140,8 +147,8 @@ fn remove_legacy_managed_jars(mods_dir: &Path) -> Result<(), io::Error> {
 mod tests {
     use super::{
         finalize_remote_install, REMOTE_CORE_STAGE68, REMOTE_CORE_STAGE77, REMOTE_CORE_STAGE85,
-        REMOTE_CORE_STAGE96, REMOTE_UI_STAGE69, REMOTE_UI_STAGE77, REMOTE_UI_STAGE85,
-        REMOTE_UI_STAGE96,
+        REMOTE_CORE_STAGE96, REMOTE_CORE_STAGE97, REMOTE_UI_STAGE69, REMOTE_UI_STAGE77,
+        REMOTE_UI_STAGE85, REMOTE_UI_STAGE96, REMOTE_UI_STAGE97,
     };
     use crate::runtime::official_resource_pack::OFFICIAL_PACK_FILE;
 
@@ -284,6 +291,46 @@ mod tests {
         assert!(mods.join(REMOTE_UI_STAGE96).is_file());
         assert!(!mods.join(REMOTE_CORE_STAGE85).exists());
         assert!(!mods.join(REMOTE_UI_STAGE85).exists());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn finalizer_preserves_stage96_until_stage97_pair_is_complete() {
+        let root = std::env::temp_dir().join(format!(
+            "ggo-remote-stage97-partial-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let mods = root.join("mods");
+        std::fs::create_dir_all(&mods).unwrap();
+        std::fs::write(mods.join(REMOTE_CORE_STAGE96), b"old-core").unwrap();
+        std::fs::write(mods.join(REMOTE_UI_STAGE96), b"old-ui").unwrap();
+        std::fs::write(mods.join(REMOTE_CORE_STAGE97), b"new-core").unwrap();
+
+        super::remove_legacy_managed_jars(&mods).unwrap();
+
+        assert!(mods.join(REMOTE_CORE_STAGE96).is_file());
+        assert!(mods.join(REMOTE_UI_STAGE96).is_file());
+        assert!(!mods.join(REMOTE_CORE_STAGE97).exists());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn finalizer_switches_to_stage97_atomically() {
+        let root =
+            std::env::temp_dir().join(format!("ggo-remote-stage97-{}", uuid::Uuid::new_v4()));
+        let mods = root.join("mods");
+        std::fs::create_dir_all(&mods).unwrap();
+        std::fs::write(mods.join(REMOTE_CORE_STAGE96), b"old-core").unwrap();
+        std::fs::write(mods.join(REMOTE_UI_STAGE96), b"old-ui").unwrap();
+        std::fs::write(mods.join(REMOTE_CORE_STAGE97), b"new-core").unwrap();
+        std::fs::write(mods.join(REMOTE_UI_STAGE97), b"new-ui").unwrap();
+
+        super::remove_legacy_managed_jars(&mods).unwrap();
+
+        assert!(mods.join(REMOTE_CORE_STAGE97).is_file());
+        assert!(mods.join(REMOTE_UI_STAGE97).is_file());
+        assert!(!mods.join(REMOTE_CORE_STAGE96).exists());
+        assert!(!mods.join(REMOTE_UI_STAGE96).exists());
         let _ = std::fs::remove_dir_all(root);
     }
 
