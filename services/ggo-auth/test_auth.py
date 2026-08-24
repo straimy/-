@@ -32,8 +32,10 @@ class AuthSmoke(unittest.TestCase):
             "GGO_AUTH_DB": str(Path(cls.temp.name) / "auth.db"),
             "GGO_SERVER_KEY": SERVER_KEY,
             "GGO_OWNER_USERNAMES": "kvi_nella",
+            "GGO_ALLOW_OWNER_BOOTSTRAP": "1",
+            "GGO_NEWS_SEED": str(Path(__file__).with_name("news_seed.json")),
         })
-        cls.proc = subprocess.Popen([sys.executable, str(Path(__file__).with_name("server.py"))], env=env)
+        cls.proc = subprocess.Popen([sys.executable, str(Path(__file__).with_name("secure_server.py"))], env=env)
         for _ in range(50):
             try:
                 status, _, _ = cls.req("GET", "/api/v1/health")
@@ -258,6 +260,63 @@ class AuthSmoke(unittest.TestCase):
         )
         self.assertEqual(status, 409)
         self.assertEqual(locked["error"], "owner_role_locked")
+
+    def test_news_seed_public_feed_and_owner_only_crud(self):
+        status, feed, _ = self.req("GET", "/api/v1/news")
+        self.assertEqual(status, 200)
+        self.assertEqual(feed["schemaVersion"], 1)
+        self.assertGreaterEqual(len(feed["items"]), 8)
+        self.assertTrue(any(item["id"] == "ggo-v01-alpha" for item in feed["items"]))
+        self.assertTrue(any(item["id"] == "ggo-v08-beta" for item in feed["items"]))
+
+        owner, owner_cookie = self.register_user("NewsOwner")
+        player, player_cookie = self.register_user("NewsPlayer")
+        # CI owner list is kvi_nella, so an ordinary admin/user cannot publish.
+        self.assertEqual(owner["profile"]["role"], "user")
+        sample = {
+            "id": "ggo-ci-news",
+            "date": "2026-08-24",
+            "title": {"en": "CI News", "ru": "CI Новость", "uk": "CI Новина"},
+            "body": {"en": "English body", "ru": "Русский текст", "uk": "Український текст"},
+        }
+        status, denied, _ = self.req("POST", "/api/v1/admin/news", sample, headers={"Cookie": player_cookie})
+        self.assertEqual(status, 403)
+        self.assertEqual(denied["error"], "admin_required")
+
+        status, real_owner, headers = self.req("POST", "/api/v1/auth/login", {
+            "username": "kvi_nella",
+            "password": "correct-horse-123",
+        })
+        if status == 401:
+            _, real_owner_cookie = self.register_user("kvi_nella")
+        else:
+            self.assertEqual(status, 200)
+            real_owner_cookie = headers.get("Set-Cookie", "").split(";", 1)[0]
+            self.assertTrue(real_owner_cookie)
+
+        status, created, _ = self.req("POST", "/api/v1/admin/news", sample, headers={"Cookie": real_owner_cookie})
+        self.assertEqual(status, 201)
+        self.assertEqual(created["id"], "ggo-ci-news")
+        self.assertEqual(created["title"]["ru"], "CI Новость")
+
+        updated = dict(sample)
+        updated["title"] = {"en": "CI News 2", "ru": "CI Новость 2", "uk": "CI Новина 2"}
+        status, changed, _ = self.req("PUT", "/api/v1/admin/news/ggo-ci-news", updated, headers={"Cookie": real_owner_cookie})
+        self.assertEqual(status, 200)
+        self.assertEqual(changed["title"]["en"], "CI News 2")
+
+        status, feed, _ = self.req("GET", "/api/v1/news")
+        self.assertEqual(status, 200)
+        row = next(item for item in feed["items"] if item["id"] == "ggo-ci-news")
+        self.assertEqual(row["title"]["uk"], "CI Новина 2")
+
+        status, deleted, _ = self.req("DELETE", "/api/v1/admin/news/ggo-ci-news", headers={"Cookie": real_owner_cookie})
+        self.assertEqual(status, 200)
+        self.assertTrue(deleted["ok"])
+
+        status, feed, _ = self.req("GET", "/api/v1/news")
+        self.assertEqual(status, 200)
+        self.assertFalse(any(item["id"] == "ggo-ci-news" for item in feed["items"]))
 
 
 if __name__ == "__main__":
