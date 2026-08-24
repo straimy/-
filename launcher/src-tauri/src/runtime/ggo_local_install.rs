@@ -2,6 +2,7 @@ use super::official_resource_pack;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::{
+    collections::BTreeSet,
     fs::{self, File},
     io::{self, Read, Write},
     path::{Path, PathBuf},
@@ -104,9 +105,68 @@ pub fn install_local(
 }
 
 pub fn is_installed(install_dir: &Path) -> Result<bool, LocalInstallError> {
-    let core = install_dir.join("mods").join(CORE_FILE_NAME);
-    let ui = install_dir.join("mods").join(UI_FILE_NAME);
-    Ok(valid_existing(&core, CORE_SIZE, CORE_SHA256)? && valid_existing(&ui, UI_SIZE, UI_SHA256)?)
+    let mods = install_dir.join("mods");
+    let core = mods.join(CORE_FILE_NAME);
+    let ui = mods.join(UI_FILE_NAME);
+    if valid_existing(&core, CORE_SIZE, CORE_SHA256)? && valid_existing(&ui, UI_SIZE, UI_SHA256)? {
+        return Ok(true);
+    }
+
+    // Remote installs are manifest-verified by check_game. This function is also used as the
+    // offline/failure fallback by the frontend, so do not report a successfully finalized staged
+    // runtime as "not installed" merely because it is newer than the legacy v40 local package.
+    Ok(has_complete_staged_runtime_pair(&mods)?)
+}
+
+fn staged_runtime(name: &str) -> Option<(&'static str, u32)> {
+    let lower = name.to_ascii_lowercase();
+    if !lower.ends_with(".jar") {
+        return None;
+    }
+    let kind = if lower.starts_with("gungloryonline-core-") {
+        "core"
+    } else if lower.starts_with("gungloryonline-ui-") {
+        "ui"
+    } else {
+        return None;
+    };
+    let marker = lower.rfind("stage")?;
+    let digits = lower[marker + "stage".len()..]
+        .chars()
+        .take_while(|value| value.is_ascii_digit())
+        .collect::<String>();
+    if digits.is_empty() {
+        return None;
+    }
+    digits.parse::<u32>().ok().map(|stage| (kind, stage))
+}
+
+fn has_complete_staged_runtime_pair(mods_dir: &Path) -> Result<bool, io::Error> {
+    if !mods_dir.is_dir() {
+        return Ok(false);
+    }
+    let mut cores = BTreeSet::new();
+    let mut uis = BTreeSet::new();
+    for entry in fs::read_dir(mods_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
+            continue;
+        };
+        match staged_runtime(name) {
+            Some(("core", stage)) => {
+                cores.insert(stage);
+            }
+            Some(("ui", stage)) => {
+                uis.insert(stage);
+            }
+            _ => {}
+        }
+    }
+    Ok(cores.intersection(&uis).next_back().is_some())
 }
 
 fn require_file(path: &Path) -> Result<(), LocalInstallError> {
@@ -287,7 +347,7 @@ fn relative_label(path: &Path) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{CORE_SHA256, GGO_VERSION, UI_SHA256};
+    use super::{has_complete_staged_runtime_pair, CORE_SHA256, GGO_VERSION, UI_SHA256};
 
     #[test]
     fn pinned_hashes_are_sha256() {
@@ -298,5 +358,42 @@ mod tests {
     #[test]
     fn current_version_is_v40() {
         assert_eq!(GGO_VERSION, "v40");
+    }
+
+    #[test]
+    fn staged_runtime_pair_is_a_valid_offline_install_fallback() {
+        let root = std::env::temp_dir().join(format!(
+            "ggo-local-stage96-fallback-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("gungloryonline-core-runtime-v1-stage96-channel-sync.jar"),
+            b"core",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("gungloryonline-ui-runtime-v1-stage96.jar"),
+            b"ui",
+        )
+        .unwrap();
+        assert!(has_complete_staged_runtime_pair(&root).unwrap());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn partial_staged_runtime_is_not_installed() {
+        let root = std::env::temp_dir().join(format!(
+            "ggo-local-stage96-partial-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("gungloryonline-core-runtime-v1-stage96-channel-sync.jar"),
+            b"core",
+        )
+        .unwrap();
+        assert!(!has_complete_staged_runtime_pair(&root).unwrap());
+        let _ = std::fs::remove_dir_all(root);
     }
 }
