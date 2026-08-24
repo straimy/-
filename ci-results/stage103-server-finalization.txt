@@ -1,0 +1,14 @@
+workflow=GGO Runtime Stage103 Server Finalization
+run_id=32742502633
+server_sha=0e445afe32684c6d827dd326f15fa53ee05fa2b3
+build_id=runtime-stage103-server
+source_gate=success
+core_build=failure
+artifact_upload=skipped
+core_sha256=
+core_bytes=
+launcher_only_auth=true
+legacy_login_register=false
+canonical_admin_command=true
+legacy_gm_alias=false
+result=failure
