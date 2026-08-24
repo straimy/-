@@ -47,8 +47,8 @@ jobs:
           grep -Fq '"version": "0.2.5"' src-tauri/tauri.conf.json
           grep -Fq 'beta-stage100-candidate.json' src-tauri/src/core/bootstrap.rs
           grep -Fq 'game_version: "v100-candidate"' src-tauri/src/core/bootstrap.rs
-          grep -Fq 'runtime-stage' src-tauri/src/lib.rs
-          grep -Fq 'stage_number' src-tauri/src/lib.rs
+          grep -Fq 'managed_stage_from_name' src-tauri/src/lib.rs
+          grep -Fq 'format!("runtime-stage{stage}")' src-tauri/src/lib.rs
           grep -Fq 'play:"PLAY"' src/App.tsx
           ! grep -Fq 'play:"PLAY ONLINE"' src/App.tsx
           grep -Fq '(["home","accounts","news","settings"] as Page[])' src/App.tsx
