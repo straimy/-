@@ -1,0 +1,15 @@
+workflow=GGO Launcher Windows Verify
+run_id=32702543556
+run_attempt=1
+run_url=https://github.com/straimy/-/actions/runs/32702543556
+source_sha=1534ebf06a6400ec5a350a01c7ba34de6efedf18
+install=success
+icons=success
+frontend=success
+rust_fmt=success
+rust_check=success
+runtime_tests=success
+package=success
+verify=success
+installers=GunGloryOnline-Launcher-Windows.exe,GunGloryOnline-Launcher-Windows.msi,GunGloryOnline-Launcher-Windows-Portable.zip
+result=success
