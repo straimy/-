@@ -14,6 +14,7 @@ on:
       - 'hotfix/apply_ggo_training_stage77.py'
       - 'hotfix/apply_ggo_launcher_authority_stage58.py'
       - 'hotfix/GgoForgeLoadingOverlayMixin.java'
+      - 'hotfix/GgoWindowTitleMixin.java'
       - 'hotfix/ggo-startup.mixins.json'
       - 'hotfix/apply_ggo_startup_brand_stage98.py'
 
@@ -94,7 +95,9 @@ jobs:
           UI="$(find ga-build/client-ui/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
           test -n "$UI" && test -f "$UI"
           jar tf "$UI" | grep -q '^arena/mixin/GgoForgeLoadingOverlayMixin.class$'
+          jar tf "$UI" | grep -q '^arena/mixin/GgoWindowTitleMixin.class$'
           jar tf "$UI" | grep -q '^ggo-startup.mixins.json$'
+          unzip -p "$UI" ggo-startup.mixins.json | grep -q 'GgoWindowTitleMixin'
           unzip -p "$UI" META-INF/MANIFEST.MF | grep -q 'MixinConfigs: ggo-startup.mixins.json'
           mkdir -p stage99/client/mods stage99/client/resourcepacks
           cp "$UI" stage99/client/mods/gungloryonline-ui-runtime-v1-stage99-clean-hub.jar
@@ -162,6 +165,7 @@ jobs:
           clean_hub=true
           practice_placeholder=true
           startup_brand=true
+          native_window_title=true
           ost_restored=false
           ui_build=$UI_OUTCOME
           core_sync=$CORE_OUTCOME
