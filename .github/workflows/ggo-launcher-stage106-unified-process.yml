@@ -54,8 +54,12 @@ jobs:
           grep -Fq 'ggo-boot-cover' src/App.tsx
           grep -Fq 'setAlwaysOnTop(true)' src/App.tsx
           ! grep -Fq 'setClientRunning(true);await getCurrentWindow().hide()' src/App.tsx
+          grep -Fq 'GGO_LINUX_RESOURCE_NAME' src-tauri/src/runtime/minecraft_process.rs
+          grep -Fq '"RESOURCE_NAME".to_string()' src-tauri/src/runtime/minecraft_process.rs
+          grep -Fq '"GunGloryOnline"' src-tauri/src/runtime/minecraft_process.rs
           grep -Fq 'version = "0.2.8"' src-tauri/Cargo.toml
           grep -Fq '"version": "0.2.8"' src-tauri/tauri.conf.json
+          grep -Fq '"version": "0.2.8"' package.json
       - name: Frontend build
         id: frontend
         run: npm run build
@@ -113,6 +117,7 @@ jobs:
           waits_for_client_ready=true
           child_process_reaped=true
           launcher_restores_after_exit=true
+          linux_child_wm_class=true
           appimage_sha256=${{ steps.verify.outputs.sha256 }}
           appimage_bytes=${{ steps.verify.outputs.bytes }}
           patch=$PATCH
