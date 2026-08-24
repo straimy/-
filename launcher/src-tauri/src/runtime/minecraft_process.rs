@@ -9,7 +9,9 @@ use super::{
 };
 
 const FORGE_JAVA_COMPAT: &str = "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED";
-const GGO_LINUX_RESOURCE_NAME: &str = "GunGloryOnline";
+// Must match the StartupWMClass emitted by the Tauri AppImage desktop entry so GNOME groups
+// the Java/Forge render window with the GunGloryOnline application instead of Minecraft/Java.
+const GGO_LINUX_RESOURCE_NAME: &str = "gungloryonline-launcher";
 
 pub fn launch_with_natives(
     install_dir: &Path,
@@ -65,10 +67,9 @@ pub fn launch_with_natives_environment(
     child_environment.push(("JDK_JAVA_OPTIONS".to_string(), combined));
 
     // GLFW creates Forge's early native window before normal GGO client hooks are loaded.
-    // On X11 it uses RESOURCE_NAME as the WM_CLASS instance when present, so set this only on
-    // the Java child. This lets GNOME group even the earliest engine window as GunGloryOnline
-    // instead of exposing a Minecraft/Java application identity. Wayland still receives the
-    // later GLFW title/icon branding from the GGO client UI.
+    // On X11 it uses RESOURCE_NAME as the WM_CLASS instance when present. The Tauri AppImage
+    // advertises StartupWMClass=gungloryonline-launcher, so using the same value on the child
+    // makes GNOME associate the render window with the existing GGO desktop/icon identity.
     #[cfg(target_os = "linux")]
     child_environment.push((
         "RESOURCE_NAME".to_string(),
@@ -106,11 +107,11 @@ mod tests {
     }
 
     #[test]
-    fn linux_game_identity_is_child_scoped() {
+    fn linux_game_identity_is_child_scoped_and_matches_appimage() {
         let source = include_str!("minecraft_process.rs");
         let runtime_source = source.split("#[cfg(test)]").next().unwrap_or(source);
         assert!(runtime_source.contains("RESOURCE_NAME"));
-        assert!(runtime_source.contains("GunGloryOnline"));
+        assert!(runtime_source.contains("gungloryonline-launcher"));
         assert!(runtime_source.contains("cfg(target_os = \"linux\")"));
     }
 }
