@@ -106,8 +106,8 @@ jobs:
           done
           unzip -p "$CORE" arena/forge/AdminToolsCommands.class | strings | grep -q 'ADMIN 1'
           ! unzip -p "$CORE" arena/forge/AdminToolsCommands.class | strings | grep -q '^gm$'
-          unzip -p "$CORE" arena/forge/AuthSecurityGuard.class | strings | grep -q 'отдельная регистрация на сервере отключена'
           unzip -p "$CORE" arena/forge/AuthSecurityGuard.class | strings | grep -q 'official launcher authentication is not enabled'
+          unzip -p "$CORE" arena/forge/AuthSecurityGuard.class | strings | grep -q 'PLAY ONLINE'
           mkdir -p stage103-server
           cp "$CORE" stage103-server/gungloryonline-core-runtime-stage103-server-finalization.jar
           sha256sum stage103-server/gungloryonline-core-runtime-stage103-server-finalization.jar > stage103-server/SHA256SUMS.txt
