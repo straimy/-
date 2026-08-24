@@ -1,0 +1,208 @@
+name: GGO Runtime Stage 96 Client Channel Sync
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - client/runtime-migration-v1
+    paths:
+      - '.github/workflows/ggo-runtime-stage96-client-channel-sync.yml'
+      - 'hotfix/GgoSettingsScreen.java'
+      - 'hotfix/GgoVanillaRuntimeFence.java'
+      - 'hotfix/GgoFrontEndScreen.java'
+      - 'hotfix/GgoLaunchTicketClient.java'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+      STAGE93_RUN: '32633191926'
+      STAGE93_ARTIFACT: GunGloryOnline-Stage93-Ticket-Bound-Server-Core
+      STAGE93_CORE_SHA256: c3c580b456ad5bd17144188a557d6d50ce2d3c23eee5685f7fdf28b632c1f2a1
+      CLEAN_RP_RUN: '32602317959'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: client/runtime-migration-v1
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Capture exact ref
+        id: refs
+        run: echo "client_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare Forge wrapper
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/ggo-mdk /tmp/ggo-mdk.zip
+          curl -fL --retry 3 -o /tmp/ggo-mdk.zip https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-mdk.zip
+          mkdir -p /tmp/ggo-mdk
+          unzip -q /tmp/ggo-mdk.zip 'gradlew' 'gradlew.bat' 'gradle/*' -d /tmp/ggo-mdk
+
+      - name: Build current GGO UI
+        id: ui
+        run: |
+          set -euo pipefail
+          rm -rf ga-build stage96 && mkdir ga-build
+          unzip -q "$SOURCE_ZIP" -d ga-build
+          for patch in \
+            apply_ggo_ui_shell_stage1.py \
+            apply_ggo_ui_shell_stage2.py \
+            apply_ggo_ui_shell_stage3.py \
+            apply_ggo_hud_stage4.py \
+            apply_ggo_frontend_stage5.py \
+            apply_ggo_settings_stage6.py \
+            apply_ggo_identity_minimap_stage7.py \
+            apply_ggo_weapon_navigation_stage8.py \
+            apply_ggo_ping_stage9.py \
+            apply_ggo_navigation_zoom_stage10.py \
+            apply_ggo_squad_ping_stage11.py \
+            apply_ggo_ping_wheel_stage12.py \
+            apply_ggo_tab_squad_stage13.py \
+            apply_ggo_objective_squad_stage15.py \
+            apply_ggo_runtime_network_stage17.py \
+            apply_ggo_jeg_telemetry_stage18.py \
+            apply_ggo_squad_map_stage19.py \
+            apply_ggo_server_hud_stage20.py \
+            apply_ggo_br_hud_stage21.py \
+            apply_ggo_contracts_stage23.py \
+            apply_ggo_br_map_client_stage24.py \
+            apply_ggo_contract_map_stage27_fixed.py \
+            apply_ggo_contract_session_stage35.py \
+            apply_ggo_contract_reward_ui_stage37.py \
+            apply_ggo_client_compile_baseline_stage28.py \
+            apply_ggo_deminecraft_client_stage40.py \
+            apply_ggo_inventory_stage42.py \
+            apply_ggo_input_fence_stage45.py \
+            apply_ggo_combat_hud_stage47.py \
+            apply_ggo_death_recap_stage48.py \
+            apply_ggo_inventory_stage50.py \
+            apply_ggo_launch_ticket_stage55.py \
+            apply_ggo_entry_ux_stage57.py \
+            apply_ggo_launcher_authority_stage58.py \
+            apply_ggo_session_verification_stage61.py \
+            apply_ggo_ui_packets_stage65.py \
+            apply_ggo_surface_fence_stage66.py \
+            apply_ggo_chat_shell_stage67.py \
+            apply_ggo_brand_leak_cleanup_stage68.py \
+            apply_ggo_training_stage77.py; do
+              python3 "hotfix/$patch"
+          done
+
+          # Stage6/66 copy these current hotfix sources. Assert the new functional settings/music fence survived.
+          SETTINGS=ga-build/client-ui/src/main/java/arena/client/shell/GgoSettingsScreen.java
+          FENCE=ga-build/client-ui/src/main/java/arena/client/shell/GgoVanillaRuntimeFence.java
+          grep -q 'SoundOptionsScreen' "$SETTINGS"
+          grep -q 'VideoSettingsScreen' "$SETTINGS"
+          grep -q 'ControlsScreen' "$SETTINGS"
+          grep -q 'getMusicManager().stopPlaying()' "$FENCE"
+
+          cp /tmp/ggo-mdk/gradlew ga-build/client-ui/gradlew
+          cp /tmp/ggo-mdk/gradlew.bat ga-build/client-ui/gradlew.bat
+          rm -rf ga-build/client-ui/gradle && cp -a /tmp/ggo-mdk/gradle ga-build/client-ui/gradle
+          chmod +x ga-build/client-ui/gradlew
+          (cd ga-build/client-ui && ./gradlew --no-daemon clean build --stacktrace)
+
+          UI="$(find ga-build/client-ui/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          test -n "$UI" && test -f "$UI"
+          mkdir -p stage96/client/mods stage96/client/resourcepacks
+          cp "$UI" stage96/client/mods/gungloryonline-ui-runtime-v1-stage96.jar
+          echo "ui_sha256=$(sha256sum "$UI" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Download exact Stage93 protocol-3 Core
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.STAGE93_ARTIFACT }}
+          path: stage93-input
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.STAGE93_RUN }}
+
+      - name: Validate and install protocol-3 client Core
+        id: core
+        run: |
+          set -euo pipefail
+          CORE="$(find stage93-input -type f -name 'gungloryonline-core-runtime-v1-stage93-ticket-binding.jar' | head -n1)"
+          test -n "$CORE" && test -f "$CORE"
+          test "$(sha256sum "$CORE" | awk '{print $1}')" = "$STAGE93_CORE_SHA256"
+          jar tf "$CORE" | grep -q '^arena/forge/GgoLaunchTicketNetwork.class$'
+          jar tf "$CORE" | grep -q '^arena/forge/GgoClientBuildPolicy.class$'
+          cp "$CORE" stage96/client/mods/gungloryonline-core-runtime-v1-stage96-channel-sync.jar
+          echo "core_sha256=$(sha256sum "$CORE" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Download clean official resource pack
+        uses: actions/download-artifact@v4
+        with:
+          name: GunGloryOnline-Runtime-Stage72-CustomFrontend
+          path: clean-rp-input
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.CLEAN_RP_RUN }}
+
+      - name: Assemble client candidate
+        id: assemble
+        run: |
+          set -euo pipefail
+          RP="$(find clean-rp-input -type f -name 'GunGloryOnline-Official.zip' | head -n1)"
+          test -n "$RP" && test -f "$RP"
+          cp "$RP" stage96/client/resourcepacks/GunGloryOnline-Official.zip
+          (cd stage96 && sha256sum client/mods/*.jar client/resourcepacks/GunGloryOnline-Official.zip > SHA256SUMS)
+          grep -q "$STAGE93_CORE_SHA256" stage96/SHA256SUMS
+          echo "rp_sha256=$(sha256sum "$RP" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        id: upload
+        if: success()
+        with:
+          name: GunGloryOnline-Runtime-Stage96-Client-Channel-Sync
+          path: stage96/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish Stage96 receipt
+        if: always()
+        env:
+          UI_OUTCOME: ${{ steps.ui.outcome }}
+          CORE_OUTCOME: ${{ steps.core.outcome }}
+          ASSEMBLE_OUTCOME: ${{ steps.assemble.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+        run: |
+          set -euo pipefail
+          result=success
+          for v in "$UI_OUTCOME" "$CORE_OUTCOME" "$ASSEMBLE_OUTCOME" "$UPLOAD_OUTCOME"; do [ "$v" = success ] || result=failure; done
+          mkdir -p ci-results
+          cat > ci-results/stage96-client-channel-sync.txt <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_id=${GITHUB_RUN_ID}
+          client_sha=${{ steps.refs.outputs.client_sha }}
+          stage93_run=${STAGE93_RUN}
+          protocol=3
+          core_sha256=${{ steps.core.outputs.core_sha256 }}
+          ui_sha256=${{ steps.ui.outputs.ui_sha256 }}
+          resource_pack_sha256=${{ steps.assemble.outputs.rp_sha256 }}
+          functional_settings=true
+          vanilla_menu_music_suppressed=true
+          ui_build=$UI_OUTCOME
+          core_sync=$CORE_OUTCOME
+          assemble=$ASSEMBLE_OUTCOME
+          upload=$UPLOAD_OUTCOME
+          result=$result
+          EOF
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add ci-results/stage96-client-channel-sync.txt
+          git commit -m "ci: record Stage96 client channel sync ${GITHUB_RUN_ID}" || exit 0
+          git fetch origin client/runtime-migration-v1
+          git rebase origin/client/runtime-migration-v1
+          git push origin HEAD:client/runtime-migration-v1
