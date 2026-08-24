@@ -2,6 +2,16 @@
   "schemaVersion": 1,
   "items": [
     {
+      "id": "ggo-v09-beta-runtime-migration",
+      "date": "2026-08-24",
+      "title": {"en":"GGO v0.9 Beta · Runtime Migration","ru":"GGO v0.9 Beta · Runtime Migration","uk":"GGO v0.9 Beta · Runtime Migration"},
+      "body": {
+        "en":"Closed-beta runtime integration moved to Stage96: automatic full client install/update, launcher v96-candidate, ticket-bound GGO authentication, the unified GGO frontend and protocol-3 client/server synchronization. The launcher → frontend → online path is being finalized for the first complete launcher smoke test.",
+        "ru":"Closed Beta перешла на Stage96 runtime: автоматическая полная установка и обновление клиента, launcher v96-candidate, ticket-bound GGO-auth, единый GGO frontend и синхронизация client/server protocol-3. Завершается путь launcher → frontend → online для первого полноценного launcher smoke-test.",
+        "uk":"Closed Beta перейшла на Stage96 runtime: автоматичне повне встановлення й оновлення клієнта, launcher v96-candidate, ticket-bound GGO-auth, єдиний GGO frontend і синхронізація client/server protocol-3. Завершується шлях launcher → frontend → online для першого повного launcher smoke-test."
+      }
+    },
+    {
       "id": "ggo-v08-beta",
       "date": "2026-08-22",
       "title": {"en":"GGO v0.8 Beta","ru":"GGO v0.8 Beta","uk":"GGO v0.8 Beta"},
