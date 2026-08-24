@@ -9,9 +9,21 @@ import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.client.multiplayer.resolver.ServerAddress;
 import net.minecraft.network.chat.Component;
 
-/** Player-facing GGO entry surface. Vanilla title/server selection is intentionally not exposed. */
+/**
+ * GunGloryOnline player entry surface.
+ *
+ * The launcher starts the game into this screen. Mode selection belongs here, not on the
+ * desktop launcher. Vanilla title/server-selection surfaces are intentionally not exposed.
+ */
 public final class GgoFrontEndScreen extends Screen {
     private static final String OFFICIAL_SERVER = "play.kvicloud.ru:24842";
+    private static final int ACCENT = 0xFFC83245;
+    private static final int ACCENT_DARK = 0xFF6D1D2A;
+    private static final int TEXT = 0xFFF2F4F7;
+    private static final int MUTED = 0xFF8792A3;
+    private static final int SOFT = 0xFFBAC2CD;
+    private static final int READY = 0xFF72C391;
+    private static final int WARN = 0xFFE26A73;
 
     public GgoFrontEndScreen() {
         super(Component.literal("GunGloryOnline"));
@@ -19,45 +31,42 @@ public final class GgoFrontEndScreen extends Screen {
 
     @Override
     protected void init() {
-        int rightWidth = Math.min(320, Math.max(250, width / 4));
-        int x = Math.max(width / 2 + 70, width - rightWidth - 52);
-        int y = Math.max(170, height / 2 - 54);
-        boolean connected = minecraft != null && minecraft.getConnection() != null && minecraft.player != null;
+        Minecraft mc = Minecraft.getInstance();
+        boolean connected = mc.getConnection() != null && mc.player != null;
         boolean officialLaunch = GgoLaunchTicketClient.isOfficialLaunch();
         boolean canStartOnline = GgoLaunchTicketClient.canStartOnline();
 
+        int cardW = Math.min(356, Math.max(280, width / 4));
+        int cardX = width - cardW - Math.max(44, width / 24);
+        int buttonX = cardX + 22;
+        int buttonW = cardW - 44;
+        int firstY = Math.max(210, height / 2 - 72);
+        int gap = 42;
+
         if (connected) {
-            addRenderableWidget(Button.builder(Component.literal("CONTINUE GGO"), button -> minecraft.setScreen(null))
-                .bounds(x, y, rightWidth, 30).build());
+            addRenderableWidget(Button.builder(Component.literal("CONTINUE"), button -> mc.setScreen(null))
+                .bounds(buttonX, firstY, buttonW, 32).build());
         } else if (officialLaunch) {
             Button online = Button.builder(
                     Component.literal(canStartOnline ? "PLAY ONLINE" : "ONLINE SESSION EXPIRED"),
                     button -> connectOfficial())
-                .bounds(x, y, rightWidth, 30).build();
+                .bounds(buttonX, firstY, buttonW, 32).build();
             online.active = canStartOnline;
             addRenderableWidget(online);
         } else {
-            addRenderableWidget(Button.builder(Component.literal("RETURN TO GGO LAUNCHER"), button -> minecraft.stop())
-                .bounds(x, y, rightWidth, 30).build());
+            addRenderableWidget(Button.builder(Component.literal("RETURN TO GGO LAUNCHER"), button -> mc.stop())
+                .bounds(buttonX, firstY, buttonW, 32).build());
         }
 
+        int row = 1;
         if (!connected) {
             addRenderableWidget(Button.builder(Component.literal("TRAINING"), button -> openTraining())
-                .bounds(x, y + 40, rightWidth, 26).build());
+                .bounds(buttonX, firstY + gap * row++, buttonW, 30).build());
         }
-
-        int settingsY = connected ? y + 40 : y + 76;
-        addRenderableWidget(Button.builder(Component.literal("SETTINGS"), button -> minecraft.setScreen(new GgoSettingsScreen(this)))
-            .bounds(x, settingsY, rightWidth, 26).build());
-        if (officialLaunch && !connected && !canStartOnline) {
-            addRenderableWidget(Button.builder(Component.literal("REFRESH SESSION IN GGO LAUNCHER"), button -> minecraft.stop())
-                .bounds(x, settingsY + 36, rightWidth, 26).build());
-            addRenderableWidget(Button.builder(Component.literal("EXIT"), button -> minecraft.stop())
-                .bounds(x, settingsY + 72, rightWidth, 26).build());
-        } else {
-            addRenderableWidget(Button.builder(Component.literal("EXIT"), button -> minecraft.stop())
-                .bounds(x, settingsY + 36, rightWidth, 26).build());
-        }
+        addRenderableWidget(Button.builder(Component.literal("SETTINGS"), button -> mc.setScreen(new GgoSettingsScreen(this)))
+            .bounds(buttonX, firstY + gap * row++, buttonW, 30).build());
+        addRenderableWidget(Button.builder(Component.literal("EXIT"), button -> mc.stop())
+            .bounds(buttonX, firstY + gap * row, buttonW, 30).build());
     }
 
     private void connectOfficial() {
@@ -76,74 +85,89 @@ public final class GgoFrontEndScreen extends Screen {
 
     @Override
     public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-        g.fill(0, 0, width, height, 0xFF050609);
-        g.fill(0, 0, width, Math.max(3, height / 110), 0xFF9A2532);
-        g.fill(0, height - 2, width, height, 0xFF311017);
-
         Minecraft mc = Minecraft.getInstance();
         boolean connected = mc.getConnection() != null && mc.player != null;
         boolean officialLaunch = GgoLaunchTicketClient.isOfficialLaunch();
         boolean canStartOnline = GgoLaunchTicketClient.canStartOnline();
-        String account = mc.getUser() == null ? "GGO ACCOUNT" : mc.getUser().getName();
+        String account = mc.getUser() == null ? "GGO PLAYER" : mc.getUser().getName();
 
-        int margin = Math.max(28, width / 35);
-        int top = Math.max(28, height / 18);
-        int leftW = Math.min(310, Math.max(230, width / 5));
-        int rightW = Math.min(360, Math.max(280, width / 4));
-        int rightX = width - rightW - margin;
-        int centerX = margin + leftW + 22;
-        int centerW = Math.max(220, rightX - centerX - 22);
-        int panelBottom = height - Math.max(34, height / 20);
+        // Dark neutral base with a restrained GGO red glow. No faux Minecraft panels or
+        // placeholder operator silhouette: the entry screen should read as a game frontend.
+        g.fill(0, 0, width, height, 0xFF05070B);
+        g.fill(0, 0, width, 3, ACCENT);
 
-        g.fill(margin, top + 58, margin + leftW, panelBottom, 0xD90B0E13);
-        g.fill(margin, top + 58, margin + 3, panelBottom, 0xFF9A2532);
-        g.drawString(font, "GGO ACCOUNT", margin + 18, top + 78, 0xFF8C96A6, false);
-        g.drawString(font, account, margin + 18, top + 100, 0xFFF1F3F6, false);
-        g.drawString(font, "OPERATOR PROFILE", margin + 18, top + 134, 0xFFB44A56, false);
-        g.drawString(font, "Rank  •  Recruit", margin + 18, top + 157, 0xFFCBD2DC, false);
-        g.drawString(font, "Progress  •  Beta season", margin + 18, top + 178, 0xFF737F90, false);
-        g.fill(margin + 18, top + 201, margin + leftW - 18, top + 205, 0xFF242B35);
-        g.fill(margin + 18, top + 201, margin + 92, top + 205, 0xFF9A2532);
-        g.drawString(font, "WARDROBE", margin + 18, top + 234, 0xFF8C96A6, false);
-        g.drawString(font, "GGO appearance active", margin + 18, top + 255, 0xFFC2CAD5, false);
-        g.drawString(font, "Account-owned operator appearance", margin + 18, top + 276, 0xFF697587, false);
+        int glowW = Math.max(260, width / 3);
+        g.fill(0, 3, glowW, height, 0x351D0710);
+        g.fill(glowW, 3, glowW + Math.max(120, width / 8), height, 0x160D070B);
 
-        g.fill(centerX, top + 58, centerX + centerW, panelBottom, 0x8C090B0F);
-        int bodyCx = centerX + centerW / 2;
-        int bodyTop = top + 104;
-        int bodyBottom = Math.min(panelBottom - 46, bodyTop + Math.max(240, height / 2));
-        g.fill(bodyCx - 42, bodyTop + 58, bodyCx + 42, bodyBottom, 0xFF151A21);
-        g.fill(bodyCx - 28, bodyTop + 8, bodyCx + 28, bodyTop + 66, 0xFF1B2028);
-        g.fill(bodyCx - 68, bodyTop + 76, bodyCx - 42, bodyBottom - 28, 0xFF12171D);
-        g.fill(bodyCx + 42, bodyTop + 76, bodyCx + 68, bodyBottom - 28, 0xFF12171D);
-        g.fill(bodyCx - 40, bodyBottom, bodyCx - 8, panelBottom - 16, 0xFF11161C);
-        g.fill(bodyCx + 8, bodyBottom, bodyCx + 40, panelBottom - 16, 0xFF11161C);
-        g.drawCenteredString(font, Component.literal("OPERATOR"), bodyCx, panelBottom - 34, 0xFF6F7B8D);
+        int marginX = Math.max(46, width / 18);
+        int top = Math.max(54, height / 12);
+        int cardW = Math.min(356, Math.max(280, width / 4));
+        int cardX = width - cardW - Math.max(44, width / 24);
+        int cardTop = Math.max(116, height / 6);
+        int cardBottom = Math.min(height - 60, cardTop + 420);
 
-        g.fill(rightX, top + 58, width - margin, panelBottom, 0xD90B0E13);
-        g.fill(rightX, top + 58, rightX + 3, panelBottom, 0xFF9A2532);
-        g.drawString(font, "ACTIVITIES", rightX + 20, top + 78, 0xFFF0F3F6, false);
-        String state = connected ? "ONLINE SESSION READY" : officialLaunch && canStartOnline ? "SECURE ENTRY READY" : officialLaunch ? "ONLINE SESSION EXPIRED" : "LAUNCHER REQUIRED";
-        int stateColor = connected || (officialLaunch && canStartOnline) ? 0xFF78B994 : 0xFFD05A64;
-        g.drawString(font, state, rightX + 20, top + 101, stateColor, false);
-        g.drawString(font, "Official shard", rightX + 20, top + 125, 0xFF7B8798, false);
-        g.drawString(font, "Automatic route  •  GGO network", rightX + 20, top + 145, 0xFFB8C0CB, false);
-        g.drawString(font, "Training", rightX + 20, top + 174, 0xFF7B8798, false);
-        g.drawString(font, "Offline drills  •  no online rewards", rightX + 20, top + 194, 0xFFB8C0CB, false);
-        if (officialLaunch && canStartOnline && !connected) {
-            g.drawString(font, "Secure session  •  " + GgoLaunchTicketClient.menuSecondsRemaining() + "s", rightX + 20, top + 222, 0xFF9B6B72, false);
+        // Brand block.
+        g.drawString(font, "GUN GLORY ONLINE", marginX, top, TEXT, false);
+        g.drawString(font, "CLOSED BETA  /  RUNTIME STAGE96", marginX, top + 22, ACCENT, false);
+
+        int heroY = Math.max(top + 100, height / 2 - 110);
+        g.drawString(font, "WELCOME BACK,", marginX, heroY, MUTED, false);
+        g.drawString(font, account.toUpperCase(), marginX, heroY + 28, TEXT, false);
+        g.fill(marginX, heroY + 58, marginX + 72, heroY + 61, ACCENT);
+
+        String headline;
+        String detail;
+        int statusColor;
+        if (connected) {
+            headline = "SESSION ACTIVE";
+            detail = "You are connected to GunGloryOnline.";
+            statusColor = READY;
+        } else if (officialLaunch && canStartOnline) {
+            headline = "READY TO DEPLOY";
+            detail = "Secure launcher session is ready for the official shard.";
+            statusColor = READY;
+        } else if (officialLaunch) {
+            headline = "SESSION EXPIRED";
+            detail = "Return to the launcher and press PLAY again.";
+            statusColor = WARN;
+        } else {
+            headline = "LAUNCHER SESSION REQUIRED";
+            detail = "Start GunGloryOnline from the official GGO Launcher.";
+            statusColor = WARN;
         }
 
-        g.drawString(font, "GUN GLORY ONLINE", margin, top, 0xFFF3F5F7, false);
-        g.drawString(font, "GGO CLIENT  •  BETA", margin, top + 22, 0xFFB74350, false);
-        g.drawString(font, "ACCOUNT  /  OPERATOR  /  ACTIVITIES", width - margin - 215, top + 8, 0xFF697587, false);
+        g.drawString(font, headline, marginX, heroY + 94, statusColor, false);
+        g.drawString(font, detail, marginX, heroY + 116, SOFT, false);
+        g.drawString(font, "Official network  •  " + OFFICIAL_SERVER, marginX, heroY + 146, MUTED, false);
+        g.drawString(font, "Training is offline and grants no online rewards.", marginX, heroY + 168, MUTED, false);
+        if (officialLaunch && canStartOnline && !connected) {
+            g.drawString(font,
+                "Secure entry window  •  " + GgoLaunchTicketClient.menuSecondsRemaining() + "s",
+                marginX, heroY + 198, 0xFFB47A83, false);
+        }
+
+        // Action card.
+        g.fill(cardX, cardTop, cardX + cardW, cardBottom, 0xD90B0E14);
+        g.fill(cardX, cardTop, cardX + 3, cardBottom, ACCENT);
+        g.fill(cardX + 18, cardTop + 58, cardX + cardW - 18, cardTop + 59, 0xFF242A34);
+        g.drawString(font, "PLAY", cardX + 22, cardTop + 24, TEXT, false);
+        g.drawString(font, connected ? "CURRENT SESSION" : "CHOOSE MODE", cardX + 22, cardTop + 41, MUTED, false);
+
+        int footerY = height - Math.max(30, height / 24);
+        g.drawString(font, "GGO CLIENT  •  STAGE96", marginX, footerY, 0xFF596474, false);
+        g.drawString(font, "ESC LOCKED ON FRONTEND", width - Math.max(210, width / 7), footerY, 0xFF4E5866, false);
 
         super.render(g, mouseX, mouseY, partialTick);
     }
 
     @Override
-    public boolean isPauseScreen() { return false; }
+    public boolean isPauseScreen() {
+        return false;
+    }
 
     @Override
-    public boolean shouldCloseOnEsc() { return false; }
+    public boolean shouldCloseOnEsc() {
+        return false;
+    }
 }
