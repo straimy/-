@@ -27,10 +27,12 @@ rust = rust.replace(
 )
 
 start = rust.find("#[tauri::command]\nasync fn preview_minecraft_launch(")
-end = rust.find("#[tauri::command]\nasync fn launch_training(")
-if start == -1 or end == -1 or end <= start:
-    raise SystemExit("legacy launch command block not found")
-rust = rust[:start] + rust[end:]
+if start != -1:
+    end = rust.find("#[tauri::command]\nasync fn launch_training(")
+    if end == -1 or end <= start:
+        raise SystemExit("legacy launch command block start found without valid end")
+    rust = rust[:start] + rust[end:]
+# Already-canonical source has no preview_minecraft_launch block; that is success, not failure.
 rust = rust.replace("#[tauri::command]\nasync fn launch_training(", "async fn launch_training(", 1)
 
 # launch_game is the only public game-start command. The official launch boots into the GGO menu first;
@@ -55,9 +57,10 @@ new_env = '''    let expires_at = SystemTime::now()
             expires_at.to_string(),
         ),
     ];'''
-if old_env not in rust:
+if old_env in rust:
+    rust = rust.replace(old_env, new_env, 1)
+elif "GGO_GAME_TICKET_EXPIRES_AT" not in rust:
     raise SystemExit("ticket environment block not found")
-rust = rust.replace(old_env, new_env, 1)
 for entry in [
     "            preview_minecraft_launch,\n",
     "            launch_minecraft,\n",
@@ -85,20 +88,23 @@ elif new_ready not in app:
 
 old_launch = '''async function launch(training=false,server?:RemoteServer){if(!installDir){setStatus("Choose a GGO data folder");return;}if(!gameInstalled){setStatus(t.notInstalled);return;}setBusy(true);try{const runtimeCheck=await ensureRuntime();const profile=auth.minecraftProfile;const display=ggoAccount.connected?(ggoAccount.displayName||nickname.trim()||"GGOPlayer"):(profile?.name||nickname.trim()||"GGOPlayer");const provider=ggoAccount.connected?"ggo":profile?"microsoft":"guest";await invoke("write_identity_bridge",{installDir,ggoPlayerId:ggoAccount.connected?ggoAccount.playerId:null,displayName:display,skinSource:ggoAccount.skinSource,provider});const extraJvmArgs=extraJvmText.split(/\\r?\\n/).map(v=>v.trim()).filter(Boolean);const opts:LaunchOptions={ramMb,minRamMb:Math.min(minRamMb,ramMb),extraJvmArgs,width:resolution[0],height:resolution[1],fullscreen};const target=training?null:(server??selected??FALLBACK_SERVER);const launchProfile: MinecraftProfile = profile??{id:"guest",name:display};const result=await invoke<LaunchResult>("launch_game",{installDir,customJava:javaPath||runtimeCheck.java?.path||null,options:opts,serverAddress:target?.address||null,training,profile:launchProfile});setStatus(`Running · PID ${result.pid}`);}catch(error){setStatus(String(error));}finally{setBusy(false);}}'''
 new_launch = '''async function launch(){if(!installDir){setStatus("Choose a GGO data folder");return;}if(!gameInstalled){setStatus(t.notInstalled);return;}if(!ggoAccount.connected){setStatus("GGO Account is required. Sign in first.");setPage("accounts");return;}setBusy(true);try{const runtimeCheck=await ensureRuntime();const profile=auth.minecraftProfile;const display=ggoAccount.displayName||nickname.trim()||"GGOPlayer";await invoke("write_identity_bridge",{installDir,ggoPlayerId:ggoAccount.playerId,displayName:display,skinSource:ggoAccount.skinSource,provider:"ggo"});const extraJvmArgs=extraJvmText.split(/\\r?\\n/).map(v=>v.trim()).filter(Boolean);const opts:LaunchOptions={ramMb,minRamMb:Math.min(minRamMb,ramMb),extraJvmArgs,width:resolution[0],height:resolution[1],fullscreen};const launchProfile:MinecraftProfile=profile??{id:"ggo",name:display};const result=await invoke<LaunchResult>("launch_game",{installDir,customJava:javaPath||runtimeCheck.java?.path||null,options:opts,training:false,profile:launchProfile});setStatus(`GGO Client · PID ${result.pid}`);}catch(error){setStatus(String(error));}finally{setBusy(false);}}'''
-if old_launch not in app:
+if old_launch in app:
+    app = app.replace(old_launch, new_launch, 1)
+elif new_launch not in app:
     raise SystemExit("launcher launch() block not found")
-app = app.replace(old_launch, new_launch, 1)
 
 old_home = '''<div className="home-actions"><button className="play-button" disabled={busy||!gameInstalled||updateAvailable} onClick={()=>void launch(false)}>{busy?t.preparing:t.play}</button><button className="training-button" disabled={busy||!gameInstalled} onClick={()=>void launch(true)}>{t.training}<small>{t.trainingHint}</small></button></div>'''
 new_home = '''<div className="home-actions"><button className="play-button" disabled={busy||checkingGame} onClick={()=>void ((!gameInstalled||updateAvailable)?installGame():launch())}>{busy?t.preparing:!gameInstalled?t.install:updateAvailable?t.updateGame:t.play}</button></div>'''
-if old_home not in app:
+if old_home in app:
+    app = app.replace(old_home, new_home, 1)
+elif new_home not in app:
     raise SystemExit("home action block not found")
-app = app.replace(old_home, new_home, 1)
 
 old_card_actions = '''{(!gameInstalled||updateAvailable)&&<button disabled={busy} onClick={()=>void installGame()}>{installLabel}</button>}{gameInstalled&&!updateAvailable&&<button className="repair-link" disabled={busy} onClick={()=>void repairGame()}>{t.repair}</button>}'''
-if old_card_actions not in app:
-    raise SystemExit("install-card action block not found")
-app = app.replace(old_card_actions, "", 1)
+if old_card_actions in app:
+    app = app.replace(old_card_actions, "", 1)
+elif 'className="repair-link"' in app:
+    raise SystemExit("unexpected repair action survived canonical home")
 
 old_server_play = '''<button className="play-button compact" disabled={busy||!gameInstalled||updateAvailable} onClick={()=>void launch(false)}>{t.play}</button>'''
 app = app.replace(old_server_play, "")
@@ -136,6 +142,7 @@ for token in [
 
 print("Applied GGO launcher Stage 76 menu-first beta hardening")
 print(f" - resolved launcher root: {ROOT}")
+print(" - idempotent on already-canonical launcher source")
 print(" - one public game launch command")
 print(" - official launch boots to GGO client menu before network connect")
 print(" - absolute ticket expiry is passed to the child without exposing the ticket to UI")
