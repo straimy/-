@@ -1,0 +1,75 @@
+name: GGO Stage100 Title Hotfix Manifest
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - launcher/bootstrap-v0.1
+    paths:
+      - '.github/workflows/ggo-stage100-title-hotfix-manifest.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-manifest:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+          fetch-depth: 0
+      - name: Patch Stage100 UI to runtime-safe title hotfix
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path('site/content/manifests/beta-stage100-candidate.json')
+          data = json.loads(path.read_text())
+          assert data['gameVersion'] == 'v100-candidate'
+
+          old_sha = '75259d89f12e0f36add0bd82f02674aaad3313e7f807ae38ef2791026ca9e4fc'
+          new_sha = 'cb1eec3cac32078a01c9081360d71702cb325c34f2f3b20d5f9cfb271a47b869'
+          found = False
+          for item in data['files']:
+              if item.get('sha256') == old_sha or item.get('path') == 'mods/gungloryonline-ui-runtime-v1-stage100-title-hotfix.jar':
+                  item.update({
+                      'path': 'mods/gungloryonline-ui-runtime-v1-stage100-title-hotfix.jar',
+                      'url': 'https://ggo.kvicloud.ru/content/files/v100/gungloryonline-ui-runtime-v1-stage100-title-hotfix.jar',
+                      'sha256': new_sha,
+                      'size': 208690,
+                      'required': True,
+                      'side': 'client',
+                      'version': 'v100-candidate',
+                      'kind': 'mod',
+                  })
+                  found = True
+          assert found, 'Stage100 UI entry not found'
+          assert sum(1 for x in data['files'] if x.get('sha256') == new_sha) == 1
+          assert not any(x.get('sha256') == old_sha for x in data['files'])
+          path.write_text(json.dumps(data, indent=2) + '\n')
+          PY
+      - name: Validate manifest invariants
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          m=json.load(open('site/content/manifests/beta-stage100-candidate.json'))
+          files={x['path']:x for x in m['files']}
+          assert files['mods/gungloryonline-core-runtime-v1-stage100-ost-branding.jar']['sha256']=='c3c580b456ad5bd17144188a557d6d50ce2d3c23eee5685f7fdf28b632c1f2a1'
+          assert files['mods/gungloryonline-ui-runtime-v1-stage100-title-hotfix.jar']['sha256']=='cb1eec3cac32078a01c9081360d71702cb325c34f2f3b20d5f9cfb271a47b869'
+          assert files['resourcepacks/GunGloryOnline-Official.zip']['sha256']=='b10b3228004b8d3068c93122c39e766df9778a1b277fef4a97d835c5ab0005ba'
+          print('Stage100 title hotfix manifest: PASS')
+          PY
+      - name: Commit candidate manifest
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add site/content/manifests/beta-stage100-candidate.json
+          git commit -m 'fix(launcher): point Stage100 at runtime-safe UI' || exit 0
+          git fetch origin launcher/bootstrap-v0.1
+          git rebase origin/launcher/bootstrap-v0.1
+          git push origin HEAD:launcher/bootstrap-v0.1
