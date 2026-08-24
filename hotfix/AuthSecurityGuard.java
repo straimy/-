@@ -57,7 +57,7 @@ public final class AuthSecurityGuard {
 
         event.setCanceled(true);
         player.sendSystemMessage(Component.literal(
-                "GunGloryOnline: отдельная регистрация на сервере отключена. Вход выполняется только через GGO Launcher."));
+                "GunGloryOnline: отдельная регистрация на сервере отключена. Вход выполняется только через GGO Launcher / PLAY ONLINE."));
     }
 
     @SubscribeEvent
@@ -84,7 +84,7 @@ public final class AuthSecurityGuard {
             long deadline = DEADLINE.computeIfAbsent(id, ignored -> now + OFFICIAL_LOGIN_TIMEOUT_TICKS);
             if (now >= deadline) {
                 player.connection.disconnect(Component.literal(
-                        "GunGloryOnline: launcher authentication timed out. Return to the GGO Launcher and press PLAY again."));
+                        "GunGloryOnline: launcher authentication timed out. Return to the GGO Launcher and press PLAY ONLINE again."));
             }
         }
     }
