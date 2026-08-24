@@ -6,7 +6,7 @@ import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
-/** Keeps explicit admin /gm 1 and /gm 3 modes from being overwritten by arena/session guards. */
+/** Keeps explicit /admin 1 and /admin 2 modes from being overwritten by arena/session guards. */
 @Mod.EventBusSubscriber(modid="gunnerarena",bus=Mod.EventBusSubscriber.Bus.FORGE)
 public final class AdminModeGuard {
     private AdminModeGuard(){}
