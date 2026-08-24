@@ -1,6 +1,6 @@
 workflow=GGO Runtime Stage 96 Client Channel Sync
-run_id=32697631226
-client_sha=7f41e85328d25f28fbee7efc038cd33c7850e6cd
+run_id=32697667540
+client_sha=20d10bf0e178fd39fbd24ed7307c24792fbecf61
 stage93_run=32633191926
 protocol=3
 core_sha256=
