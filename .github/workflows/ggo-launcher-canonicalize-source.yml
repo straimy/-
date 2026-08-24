@@ -1,0 +1,51 @@
+name: GGO Launcher Canonicalize Source
+
+on:
+  push:
+    branches:
+      - launcher/bootstrap-v0.1
+    paths:
+      - '.github/workflows/ggo-launcher-canonicalize-source.yml'
+      - 'launcher/hotfix/apply_menu_first_beta_stage76.py'
+      - 'launcher/hotfix/apply_client_integrity_stage84.py'
+      - 'launcher/hotfix/apply_ticket_binding_stage90.py'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  canonicalize:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+          fetch-depth: 0
+
+      - name: Apply canonical launcher chain to tracked source
+        working-directory: launcher
+        run: |
+          set -euo pipefail
+          python3 hotfix/apply_menu_first_beta_stage76.py
+          grep -q 'play:"PLAY"' src/App.tsx
+          ! grep -q 'play:"PLAY ONLINE"' src/App.tsx
+          ! grep -q 'onClick={()=>void launch(true)}' src/App.tsx
+          grep -q '?t.install:updateAvailable?t.updateGame:t.play' src/App.tsx
+          grep -q 'setGameInstalled(plan.files.length===0)' src/App.tsx
+          grep -q 'async fn launch_game(' src-tauri/src/lib.rs
+
+      - name: Persist canonical source
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- launcher/src launcher/src-tauri/src; then
+            echo 'Launcher source already canonical'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add launcher/src launcher/src-tauri/src
+          git commit -m 'fix(launcher): persist one-button canonical source'
+          git fetch origin launcher/bootstrap-v0.1
+          git rebase origin/launcher/bootstrap-v0.1
+          git push origin HEAD:launcher/bootstrap-v0.1
