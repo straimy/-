@@ -6,6 +6,8 @@ SHELL = ROOT / "client-ui/src/main/java/arena/client/shell/GgoShellScreen.java"
 HOOKS = ROOT / "client-ui/src/main/java/arena/client/shell/GgoShellHooks.java"
 UI.mkdir(parents=True, exist_ok=True)
 
+# Stage101 routing contract: retain the mature server-driven Shop/Profile/Skills screens
+# while replacing only their legacy KVICloud/Gunner Arena navigation shell.
 bridge = r'''package arena.client.ui;
 
 import net.minecraft.client.Minecraft;
