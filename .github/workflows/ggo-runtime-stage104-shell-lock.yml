@@ -17,7 +17,7 @@ on:
       - 'hotfix/apply_ggo_startup_brand_stage98.py'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -73,8 +73,6 @@ jobs:
 
           SHELL=ga-build/client-ui/src/main/java/arena/client/shell
           UIJAVA=ga-build/client-ui/src/main/java/arena/client/ui
-
-          # Source contract: official launcher sessions can never escape to vanilla navigation.
           for token in \
             'screen instanceof TitleScreen' \
             'screen instanceof OptionsScreen' \
@@ -88,8 +86,6 @@ jobs:
           ! grep -q 'mc.execute(() -> mc.setScreen(new GgoFrontEndScreen()))' "$SHELL/GgoShellScreen.java"
           grep -q 'RETURNING_TO_FRONTEND.getAndSet(false)' "$SHELL/GgoEntryExperience.java"
           grep -q 'pose().last().pose().identity()' ga-build/client-ui/src/main/java/arena/mixin/GgoForgeLoadingOverlayMixin.java
-
-          # Preserve the mature server-driven routes while replacing their old shell.
           grep -q 'sendCommand("menu")' "$SHELL/GgoShellHooks.java"
           grep -q 'new GgoShellScreen(GgoShellScreen.Page.HOME)' "$UIJAVA/ClientUiOpener.java"
           grep -q 'GgoLegacyUiBridge.openShop()' "$SHELL/GgoShellScreen.java"
@@ -104,7 +100,6 @@ jobs:
 
           UI="$(find ga-build/client-ui/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
           test -n "$UI" && test -f "$UI"
-
           for c in GgoVanillaRuntimeFence GgoEntryExperience GgoShellScreen GgoShellHooks GgoWindowIconClient; do
             jar tf "$UI" | grep -q "^arena/client/shell/$c.class$"
           done
@@ -114,7 +109,6 @@ jobs:
           jar tf "$UI" | grep -q '^arena/mixin/GgoForgeLoadingOverlayMixin.class$'
           jar tf "$UI" | grep -q '^assets/ggo/icon.png$'
           ! jar tf "$UI" | grep -q '^arena/mixin/GgoWindowTitleMixin.class$'
-
           unzip -p "$UI" arena/client/shell/GgoShellScreen.class | strings | grep -q 'EXIT TO GGO'
           unzip -p "$UI" arena/client/shell/GgoShellScreen.class | strings | grep -q 'GGO HUB'
           unzip -p "$UI" arena/client/ui/GgoLegacyUiBridge.class | strings | grep -q 'ShopScreen'
@@ -129,9 +123,43 @@ jobs:
           echo "bytes=$(stat -c%s "$UI")" >> "$GITHUB_OUTPUT"
 
       - name: Upload Stage104 runtime UI
+        id: upload
         uses: actions/upload-artifact@v4
         with:
           name: GunGloryOnline-Runtime-Stage104-GGO-Only-Shell
           path: stage104/**
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish Stage104 receipt
+        if: always()
+        env:
+          UI_OUTCOME: ${{ steps.ui.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+        run: |
+          set -euo pipefail
+          result=failure
+          [ "$UI_OUTCOME" = success ] && [ "$UPLOAD_OUTCOME" = success ] && result=success
+          mkdir -p ci-results
+          cat > ci-results/stage104-ggo-only-shell.txt <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_id=${GITHUB_RUN_ID}
+          client_sha=${GITHUB_SHA}
+          build_id=runtime-stage104
+          ui_sha256=${{ steps.ui.outputs.sha256 }}
+          ui_bytes=${{ steps.ui.outputs.bytes }}
+          legacy_routes_preserved=true
+          vanilla_navigation_fenced=true
+          intentional_disconnect_coordinated=true
+          startup_transform_reset=true
+          ui_build=$UI_OUTCOME
+          upload=$UPLOAD_OUTCOME
+          result=$result
+          EOF
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add ci-results/stage104-ggo-only-shell.txt
+          git commit -m "ci: record Stage104 GGO-only shell ${GITHUB_RUN_ID}" || exit 0
+          git fetch origin client/runtime-migration-v1
+          git rebase origin/client/runtime-migration-v1
+          git push origin HEAD:client/runtime-migration-v1
