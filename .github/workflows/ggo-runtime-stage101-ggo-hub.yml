@@ -8,6 +8,7 @@ on:
     paths:
       - '.github/workflows/ggo-runtime-stage101-ggo-hub.yml'
       - 'hotfix/apply_ggo_hub_stage101.py'
+      - 'hotfix/apply_ggo_legacy_routes_stage101.py'
       - 'hotfix/GgoWindowIconClient.java'
 
 permissions:
@@ -53,7 +54,8 @@ jobs:
             apply_ggo_inventory_stage50.py apply_ggo_launch_ticket_stage55.py apply_ggo_entry_ux_stage57.py \
             apply_ggo_launcher_authority_stage58.py apply_ggo_session_verification_stage61.py apply_ggo_ui_packets_stage65.py \
             apply_ggo_surface_fence_stage66.py apply_ggo_chat_shell_stage67.py apply_ggo_brand_leak_cleanup_stage68.py \
-            apply_ggo_training_stage77.py apply_ggo_startup_brand_stage98.py apply_ggo_hub_stage101.py; do
+            apply_ggo_training_stage77.py apply_ggo_startup_brand_stage98.py apply_ggo_hub_stage101.py \
+            apply_ggo_legacy_routes_stage101.py; do
             python3 "hotfix/$patch"
           done
           SHELL=ga-build/client-ui/src/main/java/arena/client/shell
@@ -69,15 +71,17 @@ jobs:
           (cd ga-build/client-ui && ./gradlew --no-daemon clean build --stacktrace)
           UI="$(find ga-build/client-ui/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
           test -n "$UI" && test -f "$UI"
-          jar tf "$UI" | grep -q '^arena/client/shell/GgoShellScreen.class$'
-          jar tf "$UI" | grep -q '^arena/client/shell/GgoShellHooks.class$'
-          jar tf "$UI" | grep -q '^arena/client/shell/GgoWindowIconClient.class$'
+          for c in GgoShellScreen GgoShellHooks GgoWindowIconClient; do jar tf "$UI" | grep -q "^arena/client/shell/$c.class$"; done
+          for c in MainArenaScreen ShopScreen ProfileScreen SkillsScreen GgoLegacyUiBridge; do jar tf "$UI" | grep -q "^arena/client/ui/$c.class$"; done
           jar tf "$UI" | grep -q '^arena/mixin/GgoForgeLoadingOverlayMixin.class$'
           ! jar tf "$UI" | grep -q '^arena/mixin/GgoWindowTitleMixin.class$'
           unzip -p "$UI" arena/client/shell/GgoShellScreen.class | strings | grep -q 'EXIT TO GGO'
           unzip -p "$UI" arena/client/shell/GgoShellScreen.class | strings | grep -q 'CONTRACTS'
           unzip -p "$UI" arena/client/shell/GgoShellScreen.class | strings | grep -q 'GGO HUB'
           unzip -p "$UI" arena/client/shell/GgoShellScreen.class | strings | grep -q 'ENTER GGO / ACTIVITIES'
+          unzip -p "$UI" arena/client/ui/GgoLegacyUiBridge.class | strings | grep -q 'ShopScreen'
+          unzip -p "$UI" arena/client/ui/GgoLegacyUiBridge.class | strings | grep -q 'ProfileScreen'
+          unzip -p "$UI" arena/client/ui/GgoLegacyUiBridge.class | strings | grep -q 'SkillsScreen'
           ! unzip -p "$UI" arena/client/shell/GgoShellScreen.class | strings | grep -qi 'KVICloud'
           ! unzip -p "$UI" arena/client/shell/GgoShellScreen.class | strings | grep -qi 'GUNNER ARENA'
           unzip -p "$UI" arena/client/shell/GgoWindowIconClient.class | strings | grep -q 'GunGloryOnline'
