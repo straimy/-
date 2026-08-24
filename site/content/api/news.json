@@ -2,17 +2,83 @@
   "schemaVersion": 1,
   "items": [
     {
-      "id": "launcher-beta-021",
-      "date": "2026-08-20",
-      "title": {
-        "en": "Launcher 0.2.1 Beta",
-        "ru": "Launcher 0.2.1 Beta",
-        "uk": "Launcher 0.2.1 Beta"
-      },
+      "id": "ggo-v08-beta",
+      "date": "2026-08-22",
+      "title": {"en":"GGO v0.8 Beta","ru":"GGO v0.8 Beta","uk":"GGO v0.8 Beta"},
       "body": {
-        "en": "Public launcher bootstrap, automatic Runtime v1 setup and production server catalog are being prepared.",
-        "ru": "Готовим публичный лаунчер, автоматическую установку Runtime v1 и подключение к основному серверу.",
-        "uk": "Готуємо публічний лаунчер, автоматичне встановлення Runtime v1 та підключення до основного сервера."
+        "en":"Launcher and game moved closer to one GGO system: GGO Account, protected sign-in, custom frontend/HUD, Inventory/Activities/Map/Squad, squad pings, Battle Royale safe-zone, contracts and official OST integration.",
+        "ru":"Лаунчер и игра стали заметно ближе к единой системе GGO: GGO-аккаунт и защищённый вход, новый frontend/HUD, Inventory/Activities/Map/Squad, squad-пинги, Battle Royale с safe-zone, контракты и подключение собственного OST.",
+        "uk":"Лаунчер і гра стали ближчими до єдиної системи GGO: GGO-акаунт і захищений вхід, новий frontend/HUD, Inventory/Activities/Map/Squad, squad-пінги, Battle Royale із safe-zone, контракти та власний OST."
+      }
+    },
+    {
+      "id": "ggo-v07-beta",
+      "date": "2026-08-21",
+      "title": {"en":"GGO v0.7 Beta","ru":"GGO v0.7 Beta","uk":"GGO v0.7 Beta"},
+      "body": {
+        "en":"Development of the standalone Gun Glory Online launcher became public: automatic install/update, GGO Account, client settings, diagnostics, Windows/Linux builds and the first published GGO soundtrack tracks.",
+        "ru":"Публично показали разработку собственного GGO Launcher: автоматическая установка и обновления, GGO-аккаунт, настройки клиента, диагностика, сборки Windows/Linux. Также начали публиковать официальный саундтрек GGO.",
+        "uk":"Публічно показали розробку власного GGO Launcher: автоматичне встановлення й оновлення, GGO-акаунт, налаштування клієнта, діагностика, збірки Windows/Linux. Також почали публікувати офіційний саундтрек GGO."
+      }
+    },
+    {
+      "id": "ggo-v06-beta",
+      "date": "2026-08-18",
+      "title": {"en":"GGO v0.6 Beta","ru":"GGO v0.6 Beta","uk":"GGO v0.6 Beta"},
+      "body": {
+        "en":"Friends and clans arrived with GGO IDs, requests, statuses and clan management. Skills were simplified to speed, vitality, damage and defense; ranks, PvP progress and persistent upgrades were added.",
+        "ru":"Добавили друзей и кланы с GGO-ID, заявками, статусами и управлением кланами. Навыки упростили до скорости, живучести, урона и защиты; появились звания, PvP-прогресс и постоянные усиления.",
+        "uk":"Додали друзів і клани з GGO-ID, заявками, статусами та керуванням кланами. Навички спростили до швидкості, живучості, шкоди й захисту; з'явилися звання, PvP-прогрес і постійні посилення."
+      }
+    },
+    {
+      "id": "ggo-v05-beta",
+      "date": "2026-08-18",
+      "title": {"en":"GGO v0.5 Beta","ru":"GGO v0.5 Beta","uk":"GGO v0.5 Beta"},
+      "body": {
+        "en":"Weapon gameplay was stabilized across 14 main JEG guns: ammo, reloads, empty magazines and no-ammo feedback. Map ammo spawning and TNT/fire events improved, and the first Swittie Fox AI prototype appeared.",
+        "ru":"Стабилизировали 14 основных пушек JEG: патроны, перезарядку, пустые магазины и подсказки «НЕТ ПАТРОНОВ». Улучшили спавн боеприпасов и события карты, появился первый прототип AI-бота Свитти Фокс.",
+        "uk":"Стабілізували 14 основних гармат JEG: патрони, перезарядку, порожні магазини й підказки «НЕМАЄ ПАТРОНІВ». Покращили спавн боєприпасів і події карти, з'явився перший прототип AI-бота Swittie Fox."
+      }
+    },
+    {
+      "id": "ggo-v04-beta",
+      "date": "2026-08-16",
+      "title": {"en":"GGO v0.4 Beta","ru":"GGO v0.4 Beta","uk":"GGO v0.4 Beta"},
+      "body": {
+        "en":"Weapon skins became fully functional through JEG Paint Jobs. Neon Pulse, Crimson Grid and Void Ice were introduced, with persistent automatic application after purchases, respawns and map changes.",
+        "ru":"Полноценно заработали скины оружия через JEG Paint Jobs. Добавили Neon Pulse, Crimson Grid и Void Ice; выбранный скин сохраняется и автоматически применяется после покупки, респавна и смены карты.",
+        "uk":"Повноцінно запрацювали скіни зброї через JEG Paint Jobs. Додали Neon Pulse, Crimson Grid і Void Ice; вибраний скін зберігається й автоматично застосовується після покупки, респавну та зміни карти."
+      }
+    },
+    {
+      "id": "ggo-v03-beta",
+      "date": "2026-08-16",
+      "title": {"en":"GGO v0.3 Beta","ru":"GGO v0.3 Beta","uk":"GGO v0.3 Beta"},
+      "body": {
+        "en":"The match loop was reworked: in-match weapon shop on G, five seconds of spawn protection, health above active players, compact passive skill progression and a new crystal currency. The project was finalized under the Gun Glory Online name.",
+        "ru":"Переработали игровой цикл: магазин оружия по G только во время матча, 5 секунд бессмертия после спавна, здоровье над игроками, компактная прокачка навыков и новая валюта — кристаллы. Проект окончательно стал Gun Glory Online.",
+        "uk":"Переробили ігровий цикл: магазин зброї на G лише під час матчу, 5 секунд безсмертя після спавну, здоров'я над гравцями, компактне прокачування навичок і нова валюта — кристали. Проєкт остаточно став Gun Glory Online."
+      }
+    },
+    {
+      "id": "ggo-v02-beta",
+      "date": "2026-08-15",
+      "title": {"en":"GGO v0.2 Beta","ru":"GGO v0.2 Beta","uk":"GGO v0.2 Beta"},
+      "body": {
+        "en":"The second full beta test added a generated arena, round system, updated HUD, full menu, weapon shop, player profile, statistics and the foundation of a skill tree. Core combat and respawn flow were tested together.",
+        "ru":"Во втором полноценном тесте появились новая арена с генерацией карты, система раундов, обновлённый HUD, полноценное меню, магазин оружия, профиль, статистика и основа дерева навыков. Проверили общий цикл боя, покупок, смерти и респавна.",
+        "uk":"У другому повноцінному тесті з'явилися нова арена з генерацією карти, система раундів, оновлений HUD, повноцінне меню, магазин зброї, профіль, статистика й основа дерева навичок. Перевірили загальний цикл бою, покупок, смерті та респавну."
+      }
+    },
+    {
+      "id": "ggo-v01-alpha",
+      "date": "2026-08-13",
+      "title": {"en":"GGO v0.1 Alpha","ru":"GGO v0.1 Alpha","uk":"GGO v0.1 Alpha"},
+      "body": {
+        "en":"The first GGO test validated the foundation: weapons, shooting, lobby, shop and interfaces. No critical blocker was found and the first complete playable loop worked.",
+        "ru":"Первый тест GGO подтвердил основу проекта: оружие, стрельба, лобби, магазин и интерфейсы. Критических блокирующих проблем не нашли — первый полноценный игровой цикл уже работал.",
+        "uk":"Перший тест GGO підтвердив основу проєкту: зброя, стрільба, лобі, магазин та інтерфейси. Критичних блокуючих проблем не знайшли — перший повноцінний ігровий цикл уже працював."
       }
     }
   ]
