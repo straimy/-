@@ -13,6 +13,7 @@ import threading
 import time
 from collections import defaultdict, deque
 from http.server import ThreadingHTTPServer
+from pathlib import Path
 
 import server as core
 
@@ -20,6 +21,9 @@ ALLOW_OWNER_BOOTSTRAP = os.environ.get("GGO_ALLOW_OWNER_BOOTSTRAP", "").strip() 
 TRUST_PROXY = os.environ.get("GGO_TRUST_LOCAL_PROXY", "1").strip() == "1"
 BUILD_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,96}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+NEWS_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{2,63}$")
+NEWS_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+NEWS_SEED_PATH = Path(os.environ.get("GGO_NEWS_SEED", "/opt/ggo-auth/news_seed.json"))
 
 # Sliding-window limits. These protect the Python service even if an upstream proxy is misconfigured.
 # They intentionally target credential/session creation, not ordinary read-only API traffic.
@@ -91,6 +95,42 @@ def _ticket_build(data):
     return build_id, core_sha256, ui_sha256
 
 
+def _news_input(data):
+    if not isinstance(data, dict):
+        raise ValueError("invalid_news")
+    date = str(data.get("date", "")).strip()
+    if not NEWS_DATE_RE.fullmatch(date):
+        raise ValueError("invalid_news_date")
+    title = data.get("title") if isinstance(data.get("title"), dict) else {}
+    body = data.get("body") if isinstance(data.get("body"), dict) else {}
+    values = {
+        "title_en": str(title.get("en", "")).strip(),
+        "title_ru": str(title.get("ru", "")).strip(),
+        "title_uk": str(title.get("uk", "")).strip(),
+        "body_en": str(body.get("en", "")).strip(),
+        "body_ru": str(body.get("ru", "")).strip(),
+        "body_uk": str(body.get("uk", "")).strip(),
+    }
+    if any(not values[key] for key in ("title_en", "title_ru", "title_uk")):
+        raise ValueError("missing_news_title")
+    if any(not values[key] for key in ("body_en", "body_ru", "body_uk")):
+        raise ValueError("missing_news_body")
+    if any(len(values[key]) > 160 for key in ("title_en", "title_ru", "title_uk")):
+        raise ValueError("news_title_too_long")
+    if any(len(values[key]) > 6000 for key in ("body_en", "body_ru", "body_uk")):
+        raise ValueError("news_body_too_long")
+    return date, values
+
+
+def _news_payload(row):
+    return {
+        "id": row["id"],
+        "date": row["date"],
+        "title": {"en": row["title_en"], "ru": row["title_ru"], "uk": row["title_uk"]},
+        "body": {"en": row["body_en"], "ru": row["body_ru"], "uk": row["body_uk"]},
+    }
+
+
 def init_security_db():
     with core.connect() as db:
         db.execute(
@@ -120,6 +160,61 @@ def init_security_db():
         db.commit()
 
 
+def init_news_db():
+    with core.connect() as db:
+        db.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS news_items (
+              id TEXT PRIMARY KEY,
+              date TEXT NOT NULL,
+              title_en TEXT NOT NULL,
+              title_ru TEXT NOT NULL,
+              title_uk TEXT NOT NULL,
+              body_en TEXT NOT NULL,
+              body_ru TEXT NOT NULL,
+              body_uk TEXT NOT NULL,
+              author_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_news_date ON news_items(date DESC,created_at DESC);
+            """
+        )
+        seed_path = NEWS_SEED_PATH if NEWS_SEED_PATH.is_file() else Path(__file__).with_name("news_seed.json")
+        if seed_path.is_file():
+            try:
+                seed = json.loads(seed_path.read_text(encoding="utf-8"))
+                for item in seed.get("items", []):
+                    item_id = str(item.get("id", "")).strip().lower()
+                    if not NEWS_ID_RE.fullmatch(item_id):
+                        continue
+                    try:
+                        date, values = _news_input(item)
+                    except ValueError:
+                        continue
+                    ts = core.now()
+                    db.execute(
+                        "INSERT OR IGNORE INTO news_items("
+                        "id,date,title_en,title_ru,title_uk,body_en,body_ru,body_uk,author_user_id,created_at,updated_at"
+                        ") VALUES(?,?,?,?,?,?,?,?,NULL,?,?)",
+                        (
+                            item_id,
+                            date,
+                            values["title_en"],
+                            values["title_ru"],
+                            values["title_uk"],
+                            values["body_en"],
+                            values["body_ru"],
+                            values["body_uk"],
+                            ts,
+                            ts,
+                        ),
+                    )
+            except Exception as error:
+                print(f"[ggo-auth] news seed skipped: {error}", flush=True)
+        db.commit()
+
+
 def _audit(db, actor_user_id, action, target_user_id=None, details=None):
     # Append-only by API design: there is intentionally no update/delete endpoint for this table.
     safe_details = json.dumps(details or {}, ensure_ascii=False, separators=(",", ":"))[:2000]
@@ -130,7 +225,7 @@ def _audit(db, actor_user_id, action, target_user_id=None, details=None):
 
 
 class SecureHandler(core.Handler):
-    server_version = "GGOAuth/1.5-secure"
+    server_version = "GGOAuth/1.6-secure"
 
     def json(self, status, payload, headers=None):
         hardened = {
@@ -154,8 +249,19 @@ class SecureHandler(core.Handler):
         )
         return True
 
+    def require_owner(self, db):
+        actor = self.require_admin(db)
+        if not actor:
+            return None
+        if actor["username_norm"] not in core.OWNER_USERNAMES:
+            self.json(403, {"error": "owner_required"})
+            return None
+        return actor
+
     def do_GET(self):
         path = self.path.split("?", 1)[0]
+        if path == "/api/v1/news":
+            return self.get_news()
         if path == "/api/v1/admin/audit":
             return self.get_security_audit()
         return super().do_GET()
@@ -166,7 +272,27 @@ class SecureHandler(core.Handler):
         path = self.path.split("?", 1)[0]
         if path == "/api/v1/auth/logout-all":
             return self.logout_all_sessions()
+        if path == "/api/v1/admin/news":
+            data = self.read_json()
+            if data is None:
+                return self.json(400, {"error": "invalid_json"})
+            return self.create_news(data)
         return super().do_POST()
+
+    def do_PUT(self):
+        path = self.path.split("?", 1)[0]
+        if path.startswith("/api/v1/admin/news/"):
+            data = self.read_json()
+            if data is None:
+                return self.json(400, {"error": "invalid_json"})
+            return self.update_news(path.rsplit("/", 1)[-1], data)
+        return super().do_PUT()
+
+    def do_DELETE(self):
+        path = self.path.split("?", 1)[0]
+        if path.startswith("/api/v1/admin/news/"):
+            return self.delete_news(path.rsplit("/", 1)[-1])
+        return self.json(404, {"error": "not_found"})
 
     def register(self, data):
         username = str(data.get("username", "")).strip().lower()
@@ -265,6 +391,109 @@ class SecureHandler(core.Handler):
                 },
             },
         )
+
+    def get_news(self):
+        with core.connect() as db:
+            rows = db.execute(
+                "SELECT * FROM news_items ORDER BY date DESC, created_at DESC, id DESC LIMIT 200"
+            ).fetchall()
+            return self.json(200, {"schemaVersion": 1, "items": [_news_payload(row) for row in rows]})
+
+    def create_news(self, data):
+        if not self.same_origin_ok():
+            return self.json(403, {"error": "origin_rejected"})
+        try:
+            date, values = _news_input(data)
+        except ValueError as error:
+            return self.json(400, {"error": str(error)})
+        item_id = str(data.get("id", "")).strip().lower() or f"news-{date}-{secrets.token_hex(4)}"
+        if not NEWS_ID_RE.fullmatch(item_id):
+            return self.json(400, {"error": "invalid_news_id"})
+        with core.connect() as db:
+            actor = self.require_owner(db)
+            if not actor:
+                return
+            ts = core.now()
+            try:
+                db.execute(
+                    "INSERT INTO news_items("
+                    "id,date,title_en,title_ru,title_uk,body_en,body_ru,body_uk,author_user_id,created_at,updated_at"
+                    ") VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                    (
+                        item_id,
+                        date,
+                        values["title_en"],
+                        values["title_ru"],
+                        values["title_uk"],
+                        values["body_en"],
+                        values["body_ru"],
+                        values["body_uk"],
+                        actor["id"],
+                        ts,
+                        ts,
+                    ),
+                )
+            except core.sqlite3.IntegrityError:
+                return self.json(409, {"error": "news_id_exists"})
+            _audit(db, actor["id"], "news_created", None, {"news_id": item_id, "date": date})
+            db.commit()
+            row = db.execute("SELECT * FROM news_items WHERE id=?", (item_id,)).fetchone()
+            return self.json(201, _news_payload(row))
+
+    def update_news(self, item_id, data):
+        if not self.same_origin_ok():
+            return self.json(403, {"error": "origin_rejected"})
+        item_id = str(item_id).strip().lower()
+        if not NEWS_ID_RE.fullmatch(item_id):
+            return self.json(400, {"error": "invalid_news_id"})
+        try:
+            date, values = _news_input(data)
+        except ValueError as error:
+            return self.json(400, {"error": str(error)})
+        with core.connect() as db:
+            actor = self.require_owner(db)
+            if not actor:
+                return
+            if not db.execute("SELECT 1 FROM news_items WHERE id=?", (item_id,)).fetchone():
+                return self.json(404, {"error": "news_not_found"})
+            ts = core.now()
+            db.execute(
+                "UPDATE news_items SET date=?,title_en=?,title_ru=?,title_uk=?,body_en=?,body_ru=?,body_uk=?,"
+                "author_user_id=?,updated_at=? WHERE id=?",
+                (
+                    date,
+                    values["title_en"],
+                    values["title_ru"],
+                    values["title_uk"],
+                    values["body_en"],
+                    values["body_ru"],
+                    values["body_uk"],
+                    actor["id"],
+                    ts,
+                    item_id,
+                ),
+            )
+            _audit(db, actor["id"], "news_updated", None, {"news_id": item_id, "date": date})
+            db.commit()
+            row = db.execute("SELECT * FROM news_items WHERE id=?", (item_id,)).fetchone()
+            return self.json(200, _news_payload(row))
+
+    def delete_news(self, item_id):
+        if not self.same_origin_ok():
+            return self.json(403, {"error": "origin_rejected"})
+        item_id = str(item_id).strip().lower()
+        if not NEWS_ID_RE.fullmatch(item_id):
+            return self.json(400, {"error": "invalid_news_id"})
+        with core.connect() as db:
+            actor = self.require_owner(db)
+            if not actor:
+                return
+            changed = db.execute("DELETE FROM news_items WHERE id=?", (item_id,)).rowcount
+            if changed != 1:
+                return self.json(404, {"error": "news_not_found"})
+            _audit(db, actor["id"], "news_deleted", None, {"news_id": item_id})
+            db.commit()
+            return self.json(200, {"ok": True, "id": item_id})
 
     def get_security_audit(self):
         with core.connect() as db:
@@ -367,6 +596,7 @@ class SecureHandler(core.Handler):
 if __name__ == "__main__":
     core.init_db()
     init_security_db()
+    init_news_db()
     print(
         f"[ggo-auth] secure entrypoint on http://{core.HOST}:{core.PORT} "
         f"public={core.PUBLIC_URL} db={core.DB_PATH}",
