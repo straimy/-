@@ -1,0 +1,133 @@
+name: GGO Launcher Stage106 Unified Process
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - launcher/bootstrap-v0.1
+    paths:
+      - '.github/workflows/ggo-launcher-stage106-unified-process.yml'
+      - 'launcher/hotfix/apply_unified_process_stage106.py'
+      - 'launcher/src/**'
+      - 'launcher/src-tauri/src/**'
+      - 'launcher/src-tauri/Cargo.toml'
+      - 'launcher/src-tauri/tauri.conf.json'
+      - 'launcher/package.json'
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: launcher
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+          fetch-depth: 0
+      - name: Install Linux prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install frontend dependencies
+        run: npm install
+      - name: Apply Stage106 unified lifecycle
+        id: patch
+        run: python3 hotfix/apply_unified_process_stage106.py
+      - name: Stage106 source gate
+        id: gate
+        run: |
+          set -euo pipefail
+          grep -Fq '"GGO_READY_FILE".to_string()' src-tauri/src/lib.rs
+          grep -Fq 'fn game_surface_ready(' src-tauri/src/lib.rs
+          grep -Fq 'game_surface_ready,' src-tauri/src/lib.rs
+          grep -Fq 'invoke<boolean>("game_surface_ready"' src/App.tsx
+          grep -Fq 'STARTING GUNGLORYONLINE' src/App.tsx
+          grep -Fq 'ggo-boot-cover' src/App.tsx
+          grep -Fq 'setAlwaysOnTop(true)' src/App.tsx
+          ! grep -Fq 'setClientRunning(true);await getCurrentWindow().hide()' src/App.tsx
+          grep -Fq 'version = "0.2.8"' src-tauri/Cargo.toml
+          grep -Fq '"version": "0.2.8"' src-tauri/tauri.conf.json
+      - name: Frontend build
+        id: frontend
+        run: npm run build
+      - name: Rust format/check/test
+        id: rust
+        run: |
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all
+          cargo check --manifest-path src-tauri/Cargo.toml
+          cargo test --manifest-path src-tauri/Cargo.toml
+      - name: Generate platform icons
+        run: npm run tauri icon src-tauri/icons/icon.png
+      - name: Build Stage106 lifecycle AppImage prototype
+        id: package
+        run: npm run tauri build -- --bundles appimage
+      - name: Verify prototype AppImage
+        id: verify
+        run: |
+          set -euo pipefail
+          APP="$(find src-tauri/target/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage' | head -n1)"
+          test -n "$APP" && test -f "$APP"
+          case "$(basename "$APP")" in *0.2.8*) ;; *) echo "unexpected launcher filename: $APP" >&2; exit 1;; esac
+          echo "sha256=$(sha256sum "$APP" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "bytes=$(stat -c%s "$APP")" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        id: upload
+        with:
+          name: GunGloryOnline-Linux-Stage106-Lifecycle-Prototype-0.2.8
+          path: launcher/src-tauri/target/release/bundle/appimage/*.AppImage
+          if-no-files-found: error
+          retention-days: 14
+      - name: Publish Stage106 launcher receipt
+        if: always()
+        env:
+          PATCH: ${{ steps.patch.outcome }}
+          GATE: ${{ steps.gate.outcome }}
+          FRONTEND: ${{ steps.frontend.outcome }}
+          RUST: ${{ steps.rust.outcome }}
+          PACKAGE: ${{ steps.package.outcome }}
+          VERIFY: ${{ steps.verify.outcome }}
+          UPLOAD: ${{ steps.upload.outcome }}
+        working-directory: .
+        run: |
+          set -euo pipefail
+          result=failure
+          [ "$PATCH" = success ] && [ "$GATE" = success ] && [ "$FRONTEND" = success ] && [ "$RUST" = success ] && [ "$PACKAGE" = success ] && [ "$VERIFY" = success ] && [ "$UPLOAD" = success ] && result=success
+          git reset --hard HEAD
+          mkdir -p .ci/launcher
+          cat > .ci/launcher/stage106-unified-process.txt <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_id=${GITHUB_RUN_ID}
+          source_sha=${GITHUB_SHA}
+          launcher_version=0.2.8
+          ready_marker_handshake=true
+          launcher_startup_cover=true
+          waits_for_client_ready=true
+          child_process_reaped=true
+          launcher_restores_after_exit=true
+          appimage_sha256=${{ steps.verify.outputs.sha256 }}
+          appimage_bytes=${{ steps.verify.outputs.bytes }}
+          patch=$PATCH
+          source_gate=$GATE
+          frontend=$FRONTEND
+          rust=$RUST
+          package=$PACKAGE
+          verify=$VERIFY
+          upload=$UPLOAD
+          result=$result
+          EOF
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .ci/launcher/stage106-unified-process.txt
+          git commit -m "ci: record Stage106 unified launcher ${GITHUB_RUN_ID}" || exit 0
+          git fetch origin launcher/bootstrap-v0.1
+          git rebase origin/launcher/bootstrap-v0.1
+          git push origin HEAD:launcher/bootstrap-v0.1
