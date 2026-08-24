@@ -1,0 +1,13 @@
+workflow=GGO Runtime Stage104 GGO Only Shell
+run_id=32769238510
+client_sha=e283af4ee1880e11785f44b18f482e3b6c6a2794
+build_id=runtime-stage104
+ui_sha256=df9cdac2af410d1c6073d27374710bbe23766b039f216f918804dc2f29f7f45f
+ui_bytes=198911
+legacy_routes_preserved=true
+vanilla_navigation_fenced=true
+intentional_disconnect_coordinated=true
+startup_transform_reset=true
+ui_build=success
+upload=success
+result=success
