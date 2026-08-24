@@ -72,6 +72,16 @@ for old, new in [
 ]:
     app = app.replace(old, new)
 
+# A manifest with zero pending files is ready even when a remote/cache failure prevents
+# checkedFiles from being populated. Requiring checkedFiles>0 caused a successful Stage96
+# install to fall back to INSTALL after the final readiness pass.
+old_ready = "setGameInstalled(plan.checkedFiles>0&&plan.files.length===0);"
+new_ready = "setGameInstalled(plan.files.length===0);"
+if old_ready in app:
+    app = app.replace(old_ready, new_ready, 1)
+elif new_ready not in app:
+    raise SystemExit("launcher readiness expression not found")
+
 old_launch = '''async function launch(training=false,server?:RemoteServer){if(!installDir){setStatus("Choose a GGO data folder");return;}if(!gameInstalled){setStatus(t.notInstalled);return;}setBusy(true);try{const runtimeCheck=await ensureRuntime();const profile=auth.minecraftProfile;const display=ggoAccount.connected?(ggoAccount.displayName||nickname.trim()||"GGOPlayer"):(profile?.name||nickname.trim()||"GGOPlayer");const provider=ggoAccount.connected?"ggo":profile?"microsoft":"guest";await invoke("write_identity_bridge",{installDir,ggoPlayerId:ggoAccount.connected?ggoAccount.playerId:null,displayName:display,skinSource:ggoAccount.skinSource,provider});const extraJvmArgs=extraJvmText.split(/\\r?\\n/).map(v=>v.trim()).filter(Boolean);const opts:LaunchOptions={ramMb,minRamMb:Math.min(minRamMb,ramMb),extraJvmArgs,width:resolution[0],height:resolution[1],fullscreen};const target=training?null:(server??selected??FALLBACK_SERVER);const launchProfile: MinecraftProfile = profile??{id:"guest",name:display};const result=await invoke<LaunchResult>("launch_game",{installDir,customJava:javaPath||runtimeCheck.java?.path||null,options:opts,serverAddress:target?.address||null,training,profile:launchProfile});setStatus(`Running · PID ${result.pid}`);}catch(error){setStatus(String(error));}finally{setBusy(false);}}'''
 new_launch = '''async function launch(){if(!installDir){setStatus("Choose a GGO data folder");return;}if(!gameInstalled){setStatus(t.notInstalled);return;}if(!ggoAccount.connected){setStatus("GGO Account is required. Sign in first.");setPage("accounts");return;}setBusy(true);try{const runtimeCheck=await ensureRuntime();const profile=auth.minecraftProfile;const display=ggoAccount.displayName||nickname.trim()||"GGOPlayer";await invoke("write_identity_bridge",{installDir,ggoPlayerId:ggoAccount.playerId,displayName:display,skinSource:ggoAccount.skinSource,provider:"ggo"});const extraJvmArgs=extraJvmText.split(/\\r?\\n/).map(v=>v.trim()).filter(Boolean);const opts:LaunchOptions={ramMb,minRamMb:Math.min(minRamMb,ramMb),extraJvmArgs,width:resolution[0],height:resolution[1],fullscreen};const launchProfile:MinecraftProfile=profile??{id:"ggo",name:display};const result=await invoke<LaunchResult>("launch_game",{installDir,customJava:javaPath||runtimeCheck.java?.path||null,options:opts,training:false,profile:launchProfile});setStatus(`GGO Client · PID ${result.pid}`);}catch(error){setStatus(String(error));}finally{setBusy(false);}}'''
 if old_launch not in app:
@@ -104,6 +114,7 @@ checks = {
     "serverAddress:target": False,
     "onClick={()=>void launch(true)}": False,
     "className=\"repair-link\"": False,
+    "setGameInstalled(plan.checkedFiles>0": False,
 }
 combined = rust + "\n" + app
 for token, expected in checks.items():
@@ -116,6 +127,7 @@ for token in [
     '("GGO_GAME_TICKET".to_string(), ticket.ticket)',
     'GGO_GAME_TICKET_EXPIRES_AT',
     'async function launch(){',
+    'setGameInstalled(plan.files.length===0);',
     '?t.install:updateAvailable?t.updateGame:t.play',
 ]:
     if token not in combined:
@@ -126,5 +138,6 @@ print(f" - resolved launcher root: {ROOT}")
 print(" - one public game launch command")
 print(" - official launch boots to GGO client menu before network connect")
 print(" - absolute ticket expiry is passed to the child without exposing the ticket to UI")
+print(" - launcher readiness is based on zero pending manifest files")
 print(" - launcher home has one INSTALL / UPDATE / PLAY primary action")
 print(" - Training and Repair removed from primary home surface")
