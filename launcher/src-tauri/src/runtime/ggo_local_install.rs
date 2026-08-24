@@ -372,11 +372,7 @@ mod tests {
             b"core",
         )
         .unwrap();
-        std::fs::write(
-            root.join("gungloryonline-ui-runtime-v1-stage96.jar"),
-            b"ui",
-        )
-        .unwrap();
+        std::fs::write(root.join("gungloryonline-ui-runtime-v1-stage96.jar"), b"ui").unwrap();
         assert!(has_complete_staged_runtime_pair(&root).unwrap());
         let _ = std::fs::remove_dir_all(root);
     }
