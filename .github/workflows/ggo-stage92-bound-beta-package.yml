@@ -79,6 +79,7 @@ jobs:
           set -euo pipefail
           grep -q '"version": "0.2.4"' package.json
           grep -q '^version = "0.2.4"' src-tauri/Cargo.toml
+          grep -q 'runtime-stage96' src-tauri/src/lib.rs
           grep -q 'runtime-stage85' src-tauri/src/lib.rs
           grep -q 'ggo_integrity_pair(&root)' src-tauri/src/lib.rs
           test "$(grep -c 'let (build_id, core_sha256, ui_sha256) = ggo_integrity_pair(&root)?;' src-tauri/src/lib.rs)" -eq 1
@@ -176,6 +177,7 @@ jobs:
           launcher_sha=$(git rev-parse HEAD)
           launcher_candidate_version=0.2.4
           ticket_build_binding=true
+          stage96_integrity=true
           stage85_integrity=true
           remote_content_default=true
           cloudflare_ua_compat=true
