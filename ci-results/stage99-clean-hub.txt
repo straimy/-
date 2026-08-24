@@ -1,0 +1,17 @@
+workflow=GGO Runtime Stage 99 Clean Hub
+run_id=32705943177
+client_sha=fa6a5dad6b6fac6adf02adb6c7f817fa1c39e096
+protocol=3
+build_id=runtime-stage99
+core_sha256=
+ui_sha256=
+resource_pack_sha256=
+clean_hub=true
+practice_placeholder=true
+startup_brand=true
+ost_restored=false
+ui_build=failure
+core_sync=skipped
+assemble=skipped
+upload=skipped
+result=failure
