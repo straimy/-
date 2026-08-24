@@ -178,34 +178,14 @@ jobs:
         with:
           node-version: 22
 
-      - name: Setup Python for Windows icon
-        if: runner.os == 'Windows'
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Generate Windows icon
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          python -m pip install --disable-pip-version-check pillow
-          @'
-          from PIL import Image
-          image = Image.open(r"src-tauri/icons/icon.png").convert("RGBA")
-          image.save(
-              r"src-tauri/icons/icon.ico",
-              format="ICO",
-              sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)],
-          )
-          '@ | Set-Content -Encoding UTF8 .ggo_make_icon.py
-          python .ggo_make_icon.py
-          if (!(Test-Path "src-tauri/icons/icon.ico")) { throw "icon.ico was not generated" }
-
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install frontend dependencies
         run: npm install
+
+      - name: Generate platform icons
+        run: npm run tauri icon src-tauri/icons/icon.png
 
       - name: Build Tauri test bundle
         env:
