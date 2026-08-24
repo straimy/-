@@ -9,7 +9,7 @@ import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.client.multiplayer.resolver.ServerAddress;
 import net.minecraft.network.chat.Component;
 
-/** Minimal GunGloryOnline entry hub. Mode selection belongs inside the game, not the launcher. */
+/** Canonical minimal GunGloryOnline entry hub. Mode selection belongs inside the game, not the launcher. */
 public final class GgoFrontEndScreen extends Screen {
     private static final String OFFICIAL_SERVER = "play.kvicloud.ru:24842";
     private static final int BG = 0xFF05070B;
