@@ -11,6 +11,29 @@ for path in (RUST, AUTH):
 rust = RUST.read_text(encoding="utf-8")
 auth = AUTH.read_text(encoding="utf-8")
 
+# The GGO Auth API returns ticket fields in snake_case (expires_in/player_id/display_name).
+# GameTicket is internal transport data, so it must deserialize the API shape rather than the
+# camelCase shape used by Tauri-facing structs.
+old_ticket = '''#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameTicket {
+    pub ticket: String,
+    pub expires_in: u64,
+    pub player_id: String,
+    pub display_name: String,
+}'''
+new_ticket = '''#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GameTicket {
+    pub ticket: String,
+    pub expires_in: u64,
+    pub player_id: String,
+    pub display_name: String,
+}'''
+if old_ticket in auth:
+    auth = auth.replace(old_ticket, new_ticket, 1)
+elif new_ticket not in auth:
+    raise SystemExit("GameTicket response shape not found")
+
 old_request = '''struct GameTicketRequest<'a> {
     audience: &'a str,
 }'''
@@ -86,6 +109,7 @@ if rust.count('let (build_id, core_sha256, ui_sha256) = ggo_integrity_pair(&root
     rust = rust[:pos] + rust[pos:].replace(old_late, new_late, 1)
 
 required = [
+    "pub struct GameTicket {\n    pub ticket: String,\n    pub expires_in: u64,\n    pub player_id: String,\n    pub display_name: String,\n}",
     "build_id: &'a str",
     "core_sha256: &'a str",
     "ui_sha256: &'a str",
@@ -96,12 +120,15 @@ combined = auth + "\n" + rust
 for token in required:
     if token not in combined:
         raise SystemExit(f"Stage90 ticket binding requirement missing: {token}")
+if '#[serde(rename_all = "camelCase")]\npub struct GameTicket' in auth:
+    raise SystemExit("GameTicket must deserialize snake_case API fields")
 if rust.count('let (build_id, core_sha256, ui_sha256) = ggo_integrity_pair(&root)?;') != 1:
     raise SystemExit("integrity metadata must be calculated exactly once before ticket issuance")
 
 AUTH.write_text(auth, encoding="utf-8")
 RUST.write_text(rust, encoding="utf-8")
 print("Applied GGO Stage90 ticket-bound build identity")
+print(" - accepts snake_case GGO Auth game-ticket response fields")
 print(" - hashes managed Core/UI before requesting a game ticket")
 print(" - sends build id + Core/UI SHA-256 to trusted GGO Auth")
 print(" - passes the same bound metadata to the Java child for server comparison")
