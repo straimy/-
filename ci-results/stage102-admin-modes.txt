@@ -1,0 +1,12 @@
+workflow=GGO Runtime Stage102 Admin Modes
+run_id=32735586316
+server_sha=3ab00ce9fd55246edbf943156f7dbd93b61ba1a6
+build_id=runtime-stage102-admin
+source_gate=success
+core_build=success
+artifact_upload=success
+core_sha256=a7785fd643cb9233d43b950a81c511e4f6ed2062bd35a57cc86fd5237fe90ec6
+core_bytes=470944
+canonical_admin_command=true
+legacy_gm_alias=false
+result=success
