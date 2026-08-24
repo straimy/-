@@ -1,6 +1,6 @@
 workflow=GGO Runtime Stage 98 Startup Brand
-run_id=32709721948
-client_sha=ed2354c6492608bcfc3431db420b6533386b3fce
+run_id=32725278805
+client_sha=ac404c4fa43701f002f7abaa202b767a0c76f87a
 protocol=3
 build_id=runtime-stage98
 core_sha256=
