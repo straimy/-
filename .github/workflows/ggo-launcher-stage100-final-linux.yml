@@ -42,6 +42,9 @@ jobs:
         run: |
           set -euo pipefail
           python3 hotfix/apply_menu_first_beta_stage76.py
+          grep -Fq '"version": "0.2.5"' package.json
+          grep -Fq 'version = "0.2.5"' src-tauri/Cargo.toml
+          grep -Fq '"version": "0.2.5"' src-tauri/tauri.conf.json
           grep -Fq 'beta-stage100-candidate.json' src-tauri/src/core/bootstrap.rs
           grep -Fq 'game_version: "v100-candidate"' src-tauri/src/core/bootstrap.rs
           grep -Fq 'runtime-stage' src-tauri/src/lib.rs
@@ -71,6 +74,10 @@ jobs:
           set -euo pipefail
           APP="$(find src-tauri/target/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage' | head -n1)"
           test -n "$APP" && test -f "$APP"
+          case "$(basename "$APP")" in
+            *0.2.5*) ;;
+            *) echo "unexpected launcher filename: $APP" >&2; exit 1 ;;
+          esac
           sha256sum "$APP"
           echo "app=$APP" >> "$GITHUB_OUTPUT"
           echo "sha256=$(sha256sum "$APP" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
@@ -79,7 +86,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         id: upload
         with:
-          name: GunGloryOnline-Linux-Stage100-Final
+          name: GunGloryOnline-Linux-Stage100-Final-0.2.5
           path: launcher/src-tauri/target/release/bundle/appimage/*.AppImage
           if-no-files-found: error
           retention-days: 30
@@ -99,6 +106,7 @@ jobs:
           workflow=${GITHUB_WORKFLOW}
           run_id=${GITHUB_RUN_ID}
           source_sha=${GITHUB_SHA}
+          launcher_version=0.2.5
           game_version=v100-candidate
           manifest=beta-stage100-candidate.json
           appimage_sha256=${{ steps.verify.outputs.sha256 }}
