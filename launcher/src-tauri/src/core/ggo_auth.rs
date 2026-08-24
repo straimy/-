@@ -31,7 +31,6 @@ pub struct MinecraftLinkResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct GameTicket {
     pub ticket: String,
     pub expires_in: u64,
@@ -158,6 +157,9 @@ struct PasswordLoginRequest<'a> {
 #[derive(Debug, Serialize)]
 struct GameTicketRequest<'a> {
     audience: &'a str,
+    build_id: &'a str,
+    core_sha256: &'a str,
+    ui_sha256: &'a str,
 }
 #[derive(Debug, Deserialize)]
 struct SessionResponse {
@@ -353,6 +355,9 @@ pub async fn issue_game_ticket(
     http: &Client,
     api_url: &str,
     audience: &str,
+    build_id: &str,
+    core_sha256: &str,
+    ui_sha256: &str,
     store: &GgoSessionStore,
 ) -> Result<GameTicket, String> {
     let session = store
@@ -366,7 +371,12 @@ pub async fn issue_game_ticket(
     let response = http
         .post(endpoint(api_url, "/auth/game-ticket"))
         .bearer_auth(&session.access_token)
-        .json(&GameTicketRequest { audience })
+        .json(&GameTicketRequest {
+            audience,
+            build_id,
+            core_sha256,
+            ui_sha256,
+        })
         .send()
         .await
         .map_err(|e| e.to_string())?;

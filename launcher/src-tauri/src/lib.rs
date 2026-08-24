@@ -18,11 +18,14 @@ use runtime::{
     ggo_remote_install,
     minecraft::{self, JavaRuntimeInfo, LaunchPreparation, RuntimeCheck},
     minecraft_install::{self, RuntimeInstallReport},
-    minecraft_launch::{self, LaunchCommandPreview, LaunchOptions, LaunchResult},
+    minecraft_launch::{LaunchOptions, LaunchResult},
     minecraft_process,
 };
 use sha2::{Digest, Sha256};
-use std::{path::PathBuf, time::Instant};
+use std::{
+    path::PathBuf,
+    time::{Instant, SystemTime, UNIX_EPOCH},
+};
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 use tokio::{
@@ -230,61 +233,6 @@ async fn install_local_ggo(
     .map_err(|error| error.to_string())
 }
 
-#[tauri::command]
-async fn preview_minecraft_launch(
-    store: State<'_, MicrosoftSessionStore>,
-    install_dir: String,
-    custom_java: Option<String>,
-    options: LaunchOptions,
-) -> Result<LaunchCommandPreview, String> {
-    let session = store
-        .snapshot()
-        .await
-        .ok_or_else(|| "Minecraft account is not authenticated".to_string())?;
-    minecraft_launch::preview(
-        &PathBuf::from(install_dir),
-        custom_java.as_deref(),
-        &session,
-        &options,
-    )
-    .map_err(|error| error.to_string())
-}
-
-#[tauri::command]
-async fn launch_minecraft(
-    microsoft_store: State<'_, MicrosoftSessionStore>,
-    ggo_store: State<'_, GgoSessionStore>,
-    install_dir: String,
-    custom_java: Option<String>,
-    options: LaunchOptions,
-) -> Result<LaunchResult, String> {
-    let session = microsoft_store
-        .snapshot()
-        .await
-        .ok_or_else(|| "Minecraft account is not authenticated".to_string())?;
-    let root = PathBuf::from(&install_dir);
-    if let Some(ggo) = ggo_store.snapshot().await {
-        identity_bridge::write(
-            &root,
-            Some(&ggo.profile.id),
-            &ggo.profile.display_name,
-            &ggo.profile.skin_source,
-            "ggo",
-        )?;
-    } else {
-        identity_bridge::write(
-            &root,
-            None,
-            &session.minecraft_profile.name,
-            "microsoft",
-            "microsoft",
-        )?;
-    }
-    minecraft_process::launch_with_natives(&root, custom_java.as_deref(), &session, &options)
-        .map_err(|error| error.to_string())
-}
-
-#[tauri::command]
 async fn launch_training(
     ggo_store: State<'_, GgoSessionStore>,
     install_dir: String,
@@ -336,14 +284,60 @@ fn local_session(name: String, id: String) -> MicrosoftSession {
     }
 }
 
+fn ggo_integrity_pair(root: &std::path::Path) -> Result<(String, String, String), String> {
+    let mods = root.join("mods");
+    let candidates = [
+        (
+            "runtime-stage97",
+            "gungloryonline-core-runtime-v1-stage97-channel-sync.jar",
+            "gungloryonline-ui-runtime-v1-stage97.jar",
+        ),
+        (
+            "runtime-stage96",
+            "gungloryonline-core-runtime-v1-stage96-channel-sync.jar",
+            "gungloryonline-ui-runtime-v1-stage96.jar",
+        ),
+        (
+            "runtime-stage85",
+            "gungloryonline-core-runtime-v1-stage85.jar",
+            "gungloryonline-ui-runtime-v1-stage85.jar",
+        ),
+        (
+            "runtime-stage77",
+            "gungloryonline-core-runtime-v1-stage77.jar",
+            "gungloryonline-ui-runtime-v1-stage77.jar",
+        ),
+        (
+            "runtime-stage68-69",
+            "gungloryonline-core-runtime-v1-stage68.jar",
+            "gungloryonline-ui-runtime-v1-stage69.jar",
+        ),
+    ];
+    for (build_id, core_name, ui_name) in candidates {
+        let core = mods.join(core_name);
+        let ui = mods.join(ui_name);
+        if core.is_file() && ui.is_file() {
+            let core_bytes = std::fs::read(&core).map_err(|error| {
+                format!("cannot read managed Core for integrity check: {error}")
+            })?;
+            let ui_bytes = std::fs::read(&ui)
+                .map_err(|error| format!("cannot read managed UI for integrity check: {error}"))?;
+            return Ok((
+                build_id.to_string(),
+                hex::encode(Sha256::digest(core_bytes)),
+                hex::encode(Sha256::digest(ui_bytes)),
+            ));
+        }
+    }
+    Err("GGO managed Core/UI pair is incomplete. Repair the game before launching.".to_string())
+}
+
 #[tauri::command]
 async fn launch_game(
-    _microsoft_store: State<'_, MicrosoftSessionStore>,
     ggo_store: State<'_, GgoSessionStore>,
     install_dir: String,
     custom_java: Option<String>,
     mut options: LaunchOptions,
-    _server_address: Option<String>,
     training: bool,
     profile: Option<MinecraftProfile>,
 ) -> Result<LaunchResult, String> {
@@ -359,7 +353,7 @@ async fn launch_game(
         "GGO Account is required for official online play. Sign in through the GGO launcher first."
             .to_string()
     })?;
-    options.connect_server = true;
+    options.connect_server = false;
     options.launch_mode = "online".to_string();
 
     let root = PathBuf::from(&install_dir);
@@ -379,8 +373,17 @@ async fn launch_game(
     // minecraft_launch, so an untrusted UI catalog cannot redirect the credential elsewhere.
     let api_url = BootstrapInfo::current().account_api_url;
     let http = updater::client().map_err(|error| error.to_string())?;
-    let ticket =
-        ggo_auth::issue_game_ticket(&http, &api_url, "official-online", ggo_store.inner()).await?;
+    let (build_id, core_sha256, ui_sha256) = ggo_integrity_pair(&root)?;
+    let ticket = ggo_auth::issue_game_ticket(
+        &http,
+        &api_url,
+        "official-online",
+        &build_id,
+        &core_sha256,
+        &ui_sha256,
+        ggo_store.inner(),
+    )
+    .await?;
     if ticket.player_id != ggo.profile.id {
         return Err(
             "GGO launcher session changed while preparing the game. Sign in again.".to_string(),
@@ -391,7 +394,21 @@ async fn launch_game(
             "GGO launcher session ticket lifetime is too short. Try PLAY ONLINE again.".to_string(),
         );
     }
-    let child_environment = vec![("GGO_GAME_TICKET".to_string(), ticket.ticket)];
+    let expires_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| format!("system clock is invalid: {error}"))?
+        .as_secs()
+        .saturating_add(ticket.expires_in as u64);
+    let child_environment = vec![
+        ("GGO_GAME_TICKET".to_string(), ticket.ticket),
+        (
+            "GGO_GAME_TICKET_EXPIRES_AT".to_string(),
+            expires_at.to_string(),
+        ),
+        ("GGO_CLIENT_BUILD_ID".to_string(), build_id),
+        ("GGO_CORE_SHA256".to_string(), core_sha256),
+        ("GGO_UI_SHA256".to_string(), ui_sha256),
+    ];
     minecraft_process::launch_with_natives_environment(
         &root,
         custom_java.as_deref(),
@@ -571,9 +588,6 @@ pub fn run() {
             prepare_launch,
             install_runtime,
             install_local_ggo,
-            preview_minecraft_launch,
-            launch_minecraft,
-            launch_training,
             launch_game,
             microsoft_login,
             microsoft_auth_status,
