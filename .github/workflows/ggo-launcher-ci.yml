@@ -86,6 +86,9 @@ jobs:
         id: install
         run: npm install
 
+      - name: Apply canonical menu-first launcher contract
+        run: python3 hotfix/apply_menu_first_beta_stage76.py
+
       - name: TypeScript and Vite build
         id: frontend
         run: npm run build
@@ -183,6 +186,9 @@ jobs:
 
       - name: Install frontend dependencies
         run: npm install
+
+      - name: Apply canonical menu-first launcher contract
+        run: python3 hotfix/apply_menu_first_beta_stage76.py
 
       - name: Generate platform icons
         run: npm run tauri icon src-tauri/icons/icon.png
