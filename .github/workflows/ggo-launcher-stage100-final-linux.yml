@@ -8,6 +8,7 @@ on:
       - launcher/bootstrap-v0.1
     paths:
       - '.github/workflows/ggo-launcher-stage100-final-linux.yml'
+      - 'launcher/src-tauri/src/core/bootstrap.rs'
 
 permissions:
   contents: write
