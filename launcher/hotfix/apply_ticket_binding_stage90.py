@@ -4,12 +4,14 @@ from pathlib import Path
 ROOT = Path(".") if Path("src-tauri/src/lib.rs").is_file() else Path("launcher")
 RUST = ROOT / "src-tauri/src/lib.rs"
 AUTH = ROOT / "src-tauri/src/core/ggo_auth.rs"
-for path in (RUST, AUTH):
+APP = ROOT / "src/App.tsx"
+for path in (RUST, AUTH, APP):
     if not path.is_file():
         raise SystemExit(f"missing launcher source: {path}")
 
 rust = RUST.read_text(encoding="utf-8")
 auth = AUTH.read_text(encoding="utf-8")
+app = APP.read_text(encoding="utf-8")
 
 # The GGO Auth API returns ticket fields in snake_case (expires_in/player_id/display_name).
 # GameTicket is internal transport data, so it must deserialize the API shape rather than the
@@ -108,6 +110,17 @@ if rust.count('let (build_id, core_sha256, ui_sha256) = ggo_integrity_pair(&root
         raise SystemExit("late integrity calculation block not found")
     rust = rust[:pos] + rust[pos:].replace(old_late, new_late, 1)
 
+# A fully synced remote manifest may report zero checkedFiles after the installer has just
+# materialized the runtime. The authoritative signal for readiness is that there are zero
+# pending files. Requiring checkedFiles > 0 made the UI immediately fall back from
+# "GunGloryOnline ready" to INSTALL after a successful Stage96 sync.
+old_ready = 'setGameInstalled(plan.checkedFiles>0&&plan.files.length===0);setUpdateAvailable(plan.files.length>0);'
+new_ready = 'setGameInstalled(plan.files.length===0);setUpdateAvailable(plan.files.length>0);'
+if old_ready in app:
+    app = app.replace(old_ready, new_ready, 1)
+elif new_ready not in app:
+    raise SystemExit("launcher remote ready-state predicate not found")
+
 required = [
     "pub struct GameTicket {\n    pub ticket: String,\n    pub expires_in: u64,\n    pub player_id: String,\n    pub display_name: String,\n}",
     "build_id: &'a str",
@@ -124,11 +137,15 @@ if '#[serde(rename_all = "camelCase")]\npub struct GameTicket' in auth:
     raise SystemExit("GameTicket must deserialize snake_case API fields")
 if rust.count('let (build_id, core_sha256, ui_sha256) = ggo_integrity_pair(&root)?;') != 1:
     raise SystemExit("integrity metadata must be calculated exactly once before ticket issuance")
+if new_ready not in app:
+    raise SystemExit("Stage96 ready-state fix did not survive packaging transform")
 
 AUTH.write_text(auth, encoding="utf-8")
 RUST.write_text(rust, encoding="utf-8")
+APP.write_text(app, encoding="utf-8")
 print("Applied GGO Stage90 ticket-bound build identity")
 print(" - accepts snake_case GGO Auth game-ticket response fields")
 print(" - hashes managed Core/UI before requesting a game ticket")
 print(" - sends build id + Core/UI SHA-256 to trusted GGO Auth")
 print(" - passes the same bound metadata to the Java child for server comparison")
+print(" - treats zero pending manifest files as an installed/ready Stage96 client")
