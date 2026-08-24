@@ -18,7 +18,7 @@ use runtime::{
     ggo_remote_install,
     minecraft::{self, JavaRuntimeInfo, LaunchPreparation, RuntimeCheck},
     minecraft_install::{self, RuntimeInstallReport},
-    minecraft_launch::{LaunchOptions, LaunchResult},
+    minecraft_launch::{self, GameProcessStatus, LaunchOptions, LaunchResult},
     minecraft_process,
 };
 use sha2::{Digest, Sha256};
@@ -426,6 +426,12 @@ async fn launch_game(
     .map_err(|error| error.to_string())
 }
 
+
+#[tauri::command]
+fn game_process_status() -> GameProcessStatus {
+    minecraft_launch::game_process_status()
+}
+
 #[tauri::command]
 async fn microsoft_login(
     store: State<'_, MicrosoftSessionStore>,
@@ -598,6 +604,7 @@ pub fn run() {
             install_runtime,
             install_local_ggo,
             launch_game,
+            game_process_status,
             microsoft_login,
             microsoft_auth_status,
             microsoft_logout,

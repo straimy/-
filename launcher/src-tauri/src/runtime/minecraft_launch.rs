@@ -8,6 +8,7 @@ use std::{
     io::Write,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
+    sync::{Mutex, OnceLock},
 };
 use thiserror::Error;
 
@@ -97,6 +98,31 @@ pub struct LaunchResult {
     pub profile_id: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameProcessStatus {
+    pub running: bool,
+    pub pid: Option<u32>,
+    pub exit_code: Option<i32>,
+}
+
+static GAME_PROCESS_STATUS: OnceLock<Mutex<GameProcessStatus>> = OnceLock::new();
+
+fn game_process_state() -> &'static Mutex<GameProcessStatus> {
+    GAME_PROCESS_STATUS.get_or_init(|| Mutex::new(GameProcessStatus {
+        running: false,
+        pid: None,
+        exit_code: None,
+    }))
+}
+
+pub fn game_process_status() -> GameProcessStatus {
+    game_process_state()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone()
+}
+
 #[derive(Debug)]
 struct BuiltLaunch {
     java_path: String,
@@ -140,11 +166,40 @@ pub fn launch_with_environment(
     options: &LaunchOptions,
     environment: &[(String, String)],
 ) -> Result<LaunchResult, LaunchError> {
+    {
+        let status = game_process_state()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if status.running {
+            return Err(LaunchError::Spawn("GunGloryOnline is already running".to_string()));
+        }
+    }
+
     let built = build_launch(install_dir, custom_java, session, options)?;
-    let child = spawn(&built, environment)?;
+    let mut child = spawn(&built, environment)?;
+    let pid = child.id();
+    {
+        let mut status = game_process_state()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        *status = GameProcessStatus { running: true, pid: Some(pid), exit_code: None };
+    }
+
+    // Keep ownership of the Java child until it exits. This reaps the process and gives
+    // the Tauri shell one authoritative lifecycle instead of leaving a detached game.
+    std::thread::spawn(move || {
+        let exit_code = child.wait().ok().and_then(|status| status.code());
+        let mut status = game_process_state()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        status.running = false;
+        status.pid = None;
+        status.exit_code = exit_code;
+    });
+
     Ok(LaunchResult {
         started: true,
-        pid: child.id(),
+        pid,
         profile_name: session.minecraft_profile.name.clone(),
         profile_id: session.minecraft_profile.id.clone(),
     })
