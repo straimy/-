@@ -11,6 +11,7 @@ from pathlib import Path
 CORE_NAME = "gungloryonline-core-runtime-v1-stage96-channel-sync.jar"
 UI_NAME = "gungloryonline-ui-runtime-v1-stage96.jar"
 RP_NAME = "GunGloryOnline-Official.zip"
+RP_PUBLISHED_NAME = "GunGloryOnline-Official-stage96.zip"
 CORE_SHA = "c3c580b456ad5bd17144188a557d6d50ce2d3c23eee5685f7fdf28b632c1f2a1"
 UI_SHA = "783b0a6c572de0f98cd2e882eb3f98b2014e760062f50818110cea5300ee2852"
 RP_SHA = "ec3c1e83d59195ba5a8fb2a90a0a41b7439f3b98f10970bfc9c359d0f7a22dae"
@@ -80,41 +81,42 @@ def main() -> None:
                 raise SystemExit(f"SHA-256 mismatch for {name}: {actual} != {expected}")
 
         files_dir.mkdir(parents=True, exist_ok=True)
-        for name in required:
-            shutil.copy2(found[name], files_dir / name)
+        shutil.copy2(found[CORE_NAME], files_dir / CORE_NAME)
+        shutil.copy2(found[UI_NAME], files_dir / UI_NAME)
+        shutil.copy2(found[RP_NAME], files_dir / RP_PUBLISHED_NAME)
 
     data = json.loads(base_manifest.read_text(encoding="utf-8"))
     data["gameVersion"] = "v96-candidate"
 
-    replacements = {
-        "core": (CORE_NAME, CORE_SHA),
-        "ui": (UI_NAME, UI_SHA),
-        "resourcepack": (RP_NAME, RP_SHA),
-    }
     replaced = {"core": False, "ui": False, "resourcepack": False}
 
     for entry in data.get("files", []):
         path = str(entry.get("path", ""))
         kind = str(entry.get("kind", ""))
-        key = None
-        if path.startswith("mods/gungloryonline-core-runtime-v1-"):
-            key = "core"
-        elif path.startswith("mods/gungloryonline-ui-runtime-v1-"):
-            key = "ui"
-        elif kind == "resourcepack" and path.endswith("GunGloryOnline-Official.zip"):
-            key = "resourcepack"
-        if key is None:
-            continue
 
-        name, digest = replacements[key]
-        prefix = "mods" if key in {"core", "ui"} else "resourcepacks"
-        target = files_dir / name
-        entry["path"] = f"{prefix}/{name}"
-        entry["url"] = f"https://ggo.kvicloud.ru/content/files/v96/{name}"
-        entry["sha256"] = digest
-        entry["size"] = target.stat().st_size
-        entry["version"] = "v96-candidate"
-        replaced[key] = True
+        if path.startswith("mods/gungloryonline-core-runtime-v1-"):
+            entry["path"] = f"mods/{CORE_NAME}"
+            entry["url"] = f"https://ggo.kvicloud.ru/content/files/v96/{CORE_NAME}"
+            entry["sha256"] = CORE_SHA
+            entry["size"] = (files_dir / CORE_NAME).stat().st_size
+            entry["version"] = "v96-candidate"
+            replaced["core"] = True
+        elif path.startswith("mods/gungloryonline-ui-runtime-v1-"):
+            entry["path"] = f"mods/{UI_NAME}"
+            entry["url"] = f"https://ggo.kvicloud.ru/content/files/v96/{UI_NAME}"
+            entry["sha256"] = UI_SHA
+            entry["size"] = (files_dir / UI_NAME).stat().st_size
+            entry["version"] = "v96-candidate"
+            replaced["ui"] = True
+        elif kind == "resourcepack" and path.endswith("GunGloryOnline-Official.zip"):
+            # Keep the managed local filename stable but use a versioned CDN URL so
+            # an old Cloudflare-cached 404 cannot poison a freshly published candidate.
+            entry["path"] = "resourcepacks/GunGloryOnline-Official.zip"
+            entry["url"] = f"https://ggo.kvicloud.ru/content/files/v96/{RP_PUBLISHED_NAME}"
+            entry["sha256"] = RP_SHA
+            entry["size"] = (files_dir / RP_PUBLISHED_NAME).stat().st_size
+            entry["version"] = "v96-candidate"
+            replaced["resourcepack"] = True
 
     missing = [k for k, ok in replaced.items() if not ok]
     if missing:
@@ -122,11 +124,18 @@ def main() -> None:
 
     atomic_json(output_manifest, data)
 
-    # Final on-disk verification after publication.
-    for name, expected in required.items():
+    published = {
+        CORE_NAME: CORE_SHA,
+        UI_NAME: UI_SHA,
+        RP_PUBLISHED_NAME: RP_SHA,
+    }
+    for name, expected in published.items():
         actual = sha256(files_dir / name)
         if actual != expected:
             raise SystemExit(f"published SHA-256 mismatch for {name}")
+
+    for p in [files_dir / CORE_NAME, files_dir / UI_NAME, files_dir / RP_PUBLISHED_NAME, output_manifest]:
+        os.chmod(p, 0o644)
 
     print("Stage96 candidate published")
     print(f"manifest={output_manifest}")
@@ -134,6 +143,7 @@ def main() -> None:
     print(f"core_sha256={CORE_SHA}")
     print(f"ui_sha256={UI_SHA}")
     print(f"resource_pack_sha256={RP_SHA}")
+    print(f"resource_pack_url=https://ggo.kvicloud.ru/content/files/v96/{RP_PUBLISHED_NAME}")
     print("server allowlist additions:")
     print(f"  GGO_ALLOWED_CLIENT_BUILDS=...,{BUILD_ID}")
     print(f"  GGO_ALLOWED_CORE_SHA256=...,{CORE_SHA}")
