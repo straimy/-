@@ -16,6 +16,7 @@ fi
 
 install -m 0755 "$SRC_DIR/server.py" /opt/ggo-auth/server.py
 install -m 0755 "$SRC_DIR/secure_server.py" /opt/ggo-auth/secure_server.py
+install -m 0644 "$SRC_DIR/news_seed.json" /opt/ggo-auth/news_seed.json
 install -m 0644 "$SRC_DIR/ggo-auth.service" /etc/systemd/system/ggo-auth.service
 chown -R ggo-auth:ggo-auth /var/lib/ggo-auth
 chmod 0750 /var/lib/ggo-auth
@@ -36,4 +37,9 @@ with urllib.request.urlopen('http://127.0.0.1:8787/api/v1/health', timeout=3) as
     assert data.get('support_tickets') is True, data
     assert data.get('staff_roles') is True, data
     print('GGO auth health: PASS', data)
+with urllib.request.urlopen('http://127.0.0.1:8787/api/v1/news', timeout=3) as r:
+    news=json.load(r)
+    assert news.get('schemaVersion') == 1, news
+    assert len(news.get('items', [])) >= 8, news
+    print('GGO news feed: PASS', len(news['items']))
 PY
