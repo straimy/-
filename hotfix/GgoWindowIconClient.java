@@ -15,7 +15,7 @@ import org.lwjgl.glfw.GLFWImage;
 import org.lwjgl.stb.STBImage;
 import org.lwjgl.system.MemoryStack;
 
-/** Installs the first-party GGO native window/taskbar icon once the GLFW window exists. */
+/** Installs first-party GGO native window branding once the GLFW window exists. */
 @Mod.EventBusSubscriber(value = Dist.CLIENT, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class GgoWindowIconClient {
     private static boolean attempted;
@@ -32,6 +32,14 @@ public final class GgoWindowIconClient {
     }
 
     private static void install(long windowHandle) {
+        // Use GLFW directly instead of a Window#setTitle mixin. Runtime method names are
+        // remapped/obfuscated under Forge and a critical mixin here can prevent startup.
+        try {
+            GLFW.glfwSetWindowTitle(windowHandle, "GunGloryOnline");
+        } catch (Exception ignored) {
+            // Branding failure must never prevent the game from starting.
+        }
+
         try (InputStream stream = GgoWindowIconClient.class.getResourceAsStream("/assets/ggo/icon.png")) {
             if (stream == null) return;
             byte[] encoded = stream.readAllBytes();
