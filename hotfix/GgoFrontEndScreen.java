@@ -14,11 +14,11 @@ import net.minecraft.network.chat.Component;
  *
  * The launcher starts the game into this screen. Mode selection belongs here, not on the
  * desktop launcher. Vanilla title/server-selection surfaces are intentionally not exposed.
+ * This canonical source is overlaid after the legacy frontend patches in Stage96 builds.
  */
 public final class GgoFrontEndScreen extends Screen {
     private static final String OFFICIAL_SERVER = "play.kvicloud.ru:24842";
     private static final int ACCENT = 0xFFC83245;
-    private static final int ACCENT_DARK = 0xFF6D1D2A;
     private static final int TEXT = 0xFFF2F4F7;
     private static final int MUTED = 0xFF8792A3;
     private static final int SOFT = 0xFFBAC2CD;
@@ -107,7 +107,6 @@ public final class GgoFrontEndScreen extends Screen {
         int cardTop = Math.max(116, height / 6);
         int cardBottom = Math.min(height - 60, cardTop + 420);
 
-        // Brand block.
         g.drawString(font, "GUN GLORY ONLINE", marginX, top, TEXT, false);
         g.drawString(font, "CLOSED BETA  /  RUNTIME STAGE96", marginX, top + 22, ACCENT, false);
 
@@ -147,7 +146,6 @@ public final class GgoFrontEndScreen extends Screen {
                 marginX, heroY + 198, 0xFFB47A83, false);
         }
 
-        // Action card.
         g.fill(cardX, cardTop, cardX + cardW, cardBottom, 0xD90B0E14);
         g.fill(cardX, cardTop, cardX + 3, cardBottom, ACCENT);
         g.fill(cardX + 18, cardTop + 58, cardX + cardW - 18, cardTop + 59, 0xFF242A34);
