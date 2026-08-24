@@ -12,6 +12,7 @@ const FORGE_JAVA_COMPAT: &str = "--add-opens=java.base/java.lang.invoke=ALL-UNNA
 // Must match the StartupWMClass emitted by the Tauri AppImage desktop entry so GNOME groups
 // the Java/Forge render window with the GunGloryOnline application instead of Minecraft/Java.
 const GGO_LINUX_RESOURCE_NAME: &str = "gungloryonline-launcher";
+const DARK_MOJANG_OPTION: &str = "darkMojangStudiosBackground:true";
 
 pub fn launch_with_natives(
     install_dir: &Path,
@@ -53,6 +54,11 @@ pub fn launch_with_natives_environment(
     let natives_dir = install_dir.join("natives").join(&forge_id);
     minecraft_natives::prepare_natives(install_dir, &[&vanilla, &forge], &natives_dir)?;
 
+    // Forge's immediate window exists before normal client mods and mixins can paint GGO chrome.
+    // Force Minecraft's accessibility background flag to dark so the unavoidable pre-hook frame is
+    // black instead of Mojang red. The later Stage104 overlay then takes over the whole framebuffer.
+    ensure_dark_early_background(install_dir)?;
+
     let previous = env::var("JDK_JAVA_OPTIONS").ok().unwrap_or_default();
     let mut combined = previous;
     if !combined.contains(FORGE_JAVA_COMPAT) {
@@ -85,6 +91,38 @@ pub fn launch_with_natives_environment(
     )
 }
 
+fn ensure_dark_early_background(install_dir: &Path) -> Result<(), LaunchError> {
+    let path = install_dir.join("options.txt");
+    let current = match fs::read_to_string(&path) {
+        Ok(value) => value,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(error) => return Err(LaunchError::Io(error)),
+    };
+
+    let mut found = false;
+    let mut lines = Vec::new();
+    for line in current.lines() {
+        if line.starts_with("darkMojangStudiosBackground:") {
+            if !found {
+                lines.push(DARK_MOJANG_OPTION.to_string());
+                found = true;
+            }
+        } else {
+            lines.push(line.to_string());
+        }
+    }
+    if !found {
+        lines.push(DARK_MOJANG_OPTION.to_string());
+    }
+
+    let mut next = lines.join("\n");
+    next.push('\n');
+    if next != current {
+        fs::write(path, next)?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -113,5 +151,13 @@ mod tests {
         assert!(runtime_source.contains("RESOURCE_NAME"));
         assert!(runtime_source.contains("gungloryonline-launcher"));
         assert!(runtime_source.contains("cfg(target_os = \"linux\")"));
+    }
+
+    #[test]
+    fn early_mojang_frame_is_forced_dark_before_spawn() {
+        let source = include_str!("minecraft_process.rs");
+        let runtime_source = source.split("#[cfg(test)]").next().unwrap_or(source);
+        assert!(runtime_source.contains("darkMojangStudiosBackground:true"));
+        assert!(runtime_source.contains("ensure_dark_early_background(install_dir)?"));
     }
 }
