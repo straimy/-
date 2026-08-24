@@ -46,6 +46,8 @@ jobs:
         id: gate
         run: |
           set -euo pipefail
+          grep -Fq 'beta-stage106-candidate.json' src-tauri/src/core/bootstrap.rs
+          grep -Fq 'game_version: "v106-candidate"' src-tauri/src/core/bootstrap.rs
           grep -Fq '"GGO_READY_FILE".to_string()' src-tauri/src/lib.rs
           grep -Fq 'fn game_surface_ready(' src-tauri/src/lib.rs
           grep -Fq 'game_surface_ready,' src-tauri/src/lib.rs
@@ -112,6 +114,8 @@ jobs:
           run_id=${GITHUB_RUN_ID}
           source_sha=${GITHUB_SHA}
           launcher_version=0.2.8
+          game_version=v106-candidate
+          manifest=beta-stage106-candidate.json
           ready_marker_handshake=true
           launcher_startup_cover=true
           waits_for_client_ready=true
