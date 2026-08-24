@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import runpy
 from pathlib import Path
 
 # CI invokes this patch in two contexts:
@@ -141,3 +142,15 @@ print(" - absolute ticket expiry is passed to the child without exposing the tic
 print(" - launcher readiness is based on zero pending manifest files")
 print(" - launcher home has one INSTALL / UPDATE / PLAY primary action")
 print(" - Training and Repair removed from primary home surface")
+
+# Stage76 is the canonical packaging entrypoint. Any workflow that applies menu-first hardening
+# must also receive integrity metadata and ticket binding; building only Stage76 would create a
+# launcher that looks correct but cannot complete the authenticated Online flow.
+SCRIPT_DIR = Path(__file__).resolve().parent
+for followup in ("apply_client_integrity_stage84.py", "apply_ticket_binding_stage90.py"):
+    path = SCRIPT_DIR / followup
+    if not path.is_file():
+        raise SystemExit(f"required launcher hardening transform missing: {path}")
+    runpy.run_path(str(path), run_name="__main__")
+
+print("Applied canonical launcher chain: Stage76 -> Stage84 -> Stage90")
