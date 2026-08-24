@@ -1,4 +1,4 @@
-name: GGO Runtime Stage104 Shell Lock
+name: GGO Runtime Stage104 GGO Only Shell
 
 on:
   workflow_dispatch:
@@ -10,12 +10,14 @@ on:
       - 'hotfix/GgoVanillaRuntimeFence.java'
       - 'hotfix/GgoEntryExperience.java'
       - 'hotfix/GgoForgeLoadingOverlayMixin.java'
+      - 'hotfix/GgoWindowIconClient.java'
       - 'hotfix/apply_ggo_shell_lock_stage104.py'
       - 'hotfix/apply_ggo_hub_stage101.py'
+      - 'hotfix/apply_ggo_legacy_routes_stage101.py'
       - 'hotfix/apply_ggo_startup_brand_stage98.py'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -27,12 +29,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: client/runtime-migration-v1
+          ref: ${{ github.sha }}
           fetch-depth: 0
+
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
+
       - name: Prepare Forge wrapper
         run: |
           set -euo pipefail
@@ -40,12 +44,14 @@ jobs:
           curl -fL --retry 3 -o /tmp/ggo-mdk.zip https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-mdk.zip
           mkdir -p /tmp/ggo-mdk
           unzip -q /tmp/ggo-mdk.zip 'gradlew' 'gradlew.bat' 'gradle/*' -d /tmp/ggo-mdk
-      - name: Build Stage104 shell-locked UI
+
+      - name: Build Stage104 GGO-only shell
         id: ui
         run: |
           set -euo pipefail
           rm -rf ga-build stage104 && mkdir ga-build stage104
           unzip -q "$SOURCE_ZIP" -d ga-build
+
           for patch in \
             apply_ggo_ui_shell_stage1.py apply_ggo_ui_shell_stage2.py apply_ggo_ui_shell_stage3.py \
             apply_ggo_hud_stage4.py apply_ggo_frontend_stage5.py apply_ggo_settings_stage6.py \
@@ -61,71 +67,71 @@ jobs:
             apply_ggo_launcher_authority_stage58.py apply_ggo_session_verification_stage61.py apply_ggo_ui_packets_stage65.py \
             apply_ggo_surface_fence_stage66.py apply_ggo_chat_shell_stage67.py apply_ggo_brand_leak_cleanup_stage68.py \
             apply_ggo_training_stage77.py apply_ggo_startup_brand_stage98.py apply_ggo_hub_stage101.py \
-            apply_ggo_shell_lock_stage104.py; do
+            apply_ggo_legacy_routes_stage101.py apply_ggo_shell_lock_stage104.py; do
             python3 "hotfix/$patch"
           done
+
           SHELL=ga-build/client-ui/src/main/java/arena/client/shell
-          grep -q 'screen instanceof TitleScreen' "$SHELL/GgoVanillaRuntimeFence.java"
-          grep -q 'screen instanceof OptionsScreen' "$SHELL/GgoVanillaRuntimeFence.java"
-          grep -q 'screen instanceof SelectWorldScreen' "$SHELL/GgoVanillaRuntimeFence.java"
-          grep -q 'screen instanceof JoinMultiplayerScreen' "$SHELL/GgoVanillaRuntimeFence.java"
-          grep -q 'screen instanceof PauseScreen' "$SHELL/GgoVanillaRuntimeFence.java"
-          grep -q 'GgoLaunchTicketClient.isOfficialLaunch()' "$SHELL/GgoVanillaRuntimeFence.java"
-          grep -q 'requestReturnToFrontend' "$SHELL/GgoEntryExperience.java"
+          UIJAVA=ga-build/client-ui/src/main/java/arena/client/ui
+
+          # Source contract: official launcher sessions can never escape to vanilla navigation.
+          for token in \
+            'screen instanceof TitleScreen' \
+            'screen instanceof OptionsScreen' \
+            'screen instanceof SelectWorldScreen' \
+            'screen instanceof JoinMultiplayerScreen' \
+            'screen instanceof PauseScreen' \
+            'GgoLaunchTicketClient.isOfficialLaunch()'; do
+            grep -q "$token" "$SHELL/GgoVanillaRuntimeFence.java"
+          done
           grep -q 'GgoEntryExperience.requestReturnToFrontend();' "$SHELL/GgoShellScreen.java"
           ! grep -q 'mc.execute(() -> mc.setScreen(new GgoFrontEndScreen()))' "$SHELL/GgoShellScreen.java"
+          grep -q 'RETURNING_TO_FRONTEND.getAndSet(false)' "$SHELL/GgoEntryExperience.java"
           grep -q 'pose().last().pose().identity()' ga-build/client-ui/src/main/java/arena/mixin/GgoForgeLoadingOverlayMixin.java
+
+          # Preserve the mature server-driven routes while replacing their old shell.
+          grep -q 'sendCommand("menu")' "$SHELL/GgoShellHooks.java"
+          grep -q 'new GgoShellScreen(GgoShellScreen.Page.HOME)' "$UIJAVA/ClientUiOpener.java"
+          grep -q 'GgoLegacyUiBridge.openShop()' "$SHELL/GgoShellScreen.java"
+          grep -q 'GgoLegacyUiBridge.openProfile()' "$SHELL/GgoShellScreen.java"
+          grep -q 'GgoLegacyUiBridge.openSkills()' "$SHELL/GgoShellScreen.java"
+
           cp /tmp/ggo-mdk/gradlew ga-build/client-ui/gradlew
           cp /tmp/ggo-mdk/gradlew.bat ga-build/client-ui/gradlew.bat
           rm -rf ga-build/client-ui/gradle && cp -a /tmp/ggo-mdk/gradle ga-build/client-ui/gradle
           chmod +x ga-build/client-ui/gradlew
           (cd ga-build/client-ui && ./gradlew --no-daemon clean build --stacktrace)
+
           UI="$(find ga-build/client-ui/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
           test -n "$UI" && test -f "$UI"
-          jar tf "$UI" | grep -q '^arena/client/shell/GgoVanillaRuntimeFence.class$'
-          jar tf "$UI" | grep -q '^arena/client/shell/GgoEntryExperience.class$'
-          jar tf "$UI" | grep -q '^arena/client/shell/GgoShellScreen.class$'
+
+          for c in GgoVanillaRuntimeFence GgoEntryExperience GgoShellScreen GgoShellHooks GgoWindowIconClient; do
+            jar tf "$UI" | grep -q "^arena/client/shell/$c.class$"
+          done
+          for c in MainArenaScreen ShopScreen ProfileScreen SkillsScreen GgoLegacyUiBridge ClientUiOpener; do
+            jar tf "$UI" | grep -q "^arena/client/ui/$c.class$"
+          done
           jar tf "$UI" | grep -q '^arena/mixin/GgoForgeLoadingOverlayMixin.class$'
-          cp "$UI" stage104/gungloryonline-ui-runtime-v1-stage104-shell-lock.jar
+          jar tf "$UI" | grep -q '^assets/ggo/icon.png$'
+          ! jar tf "$UI" | grep -q '^arena/mixin/GgoWindowTitleMixin.class$'
+
+          unzip -p "$UI" arena/client/shell/GgoShellScreen.class | strings | grep -q 'EXIT TO GGO'
+          unzip -p "$UI" arena/client/shell/GgoShellScreen.class | strings | grep -q 'GGO HUB'
+          unzip -p "$UI" arena/client/ui/GgoLegacyUiBridge.class | strings | grep -q 'ShopScreen'
+          unzip -p "$UI" arena/client/ui/GgoLegacyUiBridge.class | strings | grep -q 'ProfileScreen'
+          unzip -p "$UI" arena/client/ui/GgoLegacyUiBridge.class | strings | grep -q 'SkillsScreen'
+          ! unzip -p "$UI" arena/client/shell/GgoShellScreen.class | strings | grep -qi 'KVICloud'
+          ! unzip -p "$UI" arena/client/shell/GgoShellScreen.class | strings | grep -qi 'GUNNER ARENA'
+
+          cp "$UI" stage104/gungloryonline-ui-runtime-v1-stage104-ggo-only-shell.jar
+          sha256sum stage104/gungloryonline-ui-runtime-v1-stage104-ggo-only-shell.jar > stage104/SHA256SUMS.txt
           echo "sha256=$(sha256sum "$UI" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@v4
-        id: upload
+          echo "bytes=$(stat -c%s "$UI")" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Stage104 runtime UI
+        uses: actions/upload-artifact@v4
         with:
-          name: GunGloryOnline-Runtime-Stage104-Shell-Lock
-          path: stage104/*.jar
+          name: GunGloryOnline-Runtime-Stage104-GGO-Only-Shell
+          path: stage104/**
           if-no-files-found: error
           retention-days: 30
-      - name: Publish Stage104 receipt
-        if: always()
-        env:
-          UI_OUTCOME: ${{ steps.ui.outcome }}
-          UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
-        run: |
-          set -euo pipefail
-          result=failure
-          [ "$UI_OUTCOME" = success ] && [ "$UPLOAD_OUTCOME" = success ] && result=success
-          mkdir -p ci-results
-          cat > ci-results/stage104-shell-lock.txt <<EOF
-          workflow=${GITHUB_WORKFLOW}
-          run_id=${GITHUB_RUN_ID}
-          client_sha=${GITHUB_SHA}
-          build_id=runtime-stage104
-          ui_sha256=${{ steps.ui.outputs.sha256 }}
-          vanilla_title_fenced=true
-          vanilla_options_fenced=true
-          vanilla_world_browser_fenced=true
-          vanilla_server_browser_fenced=true
-          vanilla_pause_fenced=true
-          intentional_disconnect_coordinated=true
-          startup_transform_reset=true
-          ui_build=$UI_OUTCOME
-          upload=$UPLOAD_OUTCOME
-          result=$result
-          EOF
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add ci-results/stage104-shell-lock.txt
-          git commit -m "ci: record Stage104 shell lock ${GITHUB_RUN_ID}" || exit 0
-          git fetch origin client/runtime-migration-v1
-          git rebase origin/client/runtime-migration-v1
-          git push origin HEAD:client/runtime-migration-v1
