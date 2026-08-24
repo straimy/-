@@ -112,7 +112,11 @@ export default function App(){
       <div className="sidebar-footer"><span>{identityLabel}</span><small>{info.gameVersion} · {info.channel}</small></div>
     </aside>
     <main className="main-area">
-      {page==="home"&&<section className="home-page">
+      {page==="home"&&<section className="home-page ggo-character-home">
+        <div className="ggo-character-art" aria-hidden="true">
+          <img className="ggo-character ggo-character-headphones" src="https://ggo.kvicloud.ru/images/launcher/ggo-hero-headphones.webp" alt=""/>
+          <img className="ggo-character ggo-character-lantern" src="https://ggo.kvicloud.ru/images/launcher/ggo-hero-lantern.webp" alt=""/>
+        </div>
         <div className="home-copy"><span className="eyebrow">GUNGLORYONLINE · {info.channel.toUpperCase()}</span><h1>READY TO<br/><em>DROP IN?</em></h1><p>{t.requiredRp}</p><div className="ready-row"><span className={gameInstalled&&!updateAvailable?"ready":"warn"}></span>{statusLabel}<small>{production?t.remote:t.localFallback}</small></div><div className="home-actions"><button className="play-button" disabled={busy||checkingGame} onClick={()=>void ((!gameInstalled||updateAvailable)?installGame():launch())}>{busy?t.preparing:!gameInstalled?t.install:updateAvailable?t.updateGame:t.play}</button></div></div>
         <div className="install-card"><div><span>{t.version}</span><b>{info.gameVersion}</b></div><div><span>Client runtime</span><b>1.20.1 · Forge 47.4.10</b></div><div><span>GGO Network</span><b>{info.server}</b></div></div>
       </section>}

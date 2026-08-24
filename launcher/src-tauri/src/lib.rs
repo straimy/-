@@ -486,7 +486,9 @@ async fn ggo_login(
 
 #[tauri::command]
 async fn ggo_auth_status(store: State<'_, GgoSessionStore>) -> Result<GgoAuthStatus, String> {
-    Ok(ggo_auth::status(store.inner()).await)
+    let http = updater::client().map_err(|error| error.to_string())?;
+    let api_url = BootstrapInfo::current().account_api_url;
+    Ok(ggo_auth::status(&http, &api_url, store.inner()).await)
 }
 
 #[tauri::command]

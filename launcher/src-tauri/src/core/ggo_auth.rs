@@ -393,16 +393,35 @@ pub async fn issue_game_ticket(
         .map_err(|e| e.to_string())
 }
 
-pub async fn status(store: &GgoSessionStore) -> GgoAuthStatus {
-    match store.snapshot().await {
-        Some(s) => GgoAuthStatus {
-            authenticated: true,
-            profile: Some(s.profile),
-        },
-        None => GgoAuthStatus {
-            authenticated: false,
-            profile: None,
-        },
+pub async fn status(
+    http: &Client,
+    api_url: &str,
+    store: &GgoSessionStore,
+) -> GgoAuthStatus {
+    let Some(session) = store.snapshot().await else {
+        return GgoAuthStatus { authenticated: false, profile: None };
+    };
+
+    match fetch_profile(http, api_url, &session.access_token).await {
+        Ok(profile) => {
+            if profile.id != session.profile.id
+                || profile.display_name != session.profile.display_name
+                || profile.skin_source != session.profile.skin_source
+            {
+                store.replace(GgoSession {
+                    access_token: session.access_token,
+                    refresh_token: session.refresh_token,
+                    profile: profile.clone(),
+                }).await;
+            }
+            GgoAuthStatus { authenticated: true, profile: Some(profile) }
+        }
+        Err(_) => {
+            // A persisted file is not proof of authentication.  Fail closed and clear
+            // stale credentials so Home cannot display a false Game-ready PLAY state.
+            store.clear().await;
+            GgoAuthStatus { authenticated: false, profile: None }
+        }
     }
 }
 
