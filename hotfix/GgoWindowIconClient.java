@@ -15,31 +15,40 @@ import org.lwjgl.glfw.GLFWImage;
 import org.lwjgl.stb.STBImage;
 import org.lwjgl.system.MemoryStack;
 
-/** Installs first-party GGO native window branding once the GLFW window exists. */
+/** Keeps first-party GGO native window branding after Minecraft/Forge title rewrites. */
 @Mod.EventBusSubscriber(value = Dist.CLIENT, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class GgoWindowIconClient {
-    private static boolean attempted;
+    private static boolean iconAttempted;
+    private static long lastTitleUpdate;
 
     private GgoWindowIconClient() {}
 
     @SubscribeEvent
     public static void onClientTick(TickEvent.ClientTickEvent event) {
-        if (attempted || event.phase != TickEvent.Phase.END) return;
+        if (event.phase != TickEvent.Phase.END) return;
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.getWindow() == null || mc.getWindow().getWindow() == 0L) return;
-        attempted = true;
-        install(mc.getWindow().getWindow());
-    }
+        long handle = mc.getWindow().getWindow();
+        long now = System.currentTimeMillis();
 
-    private static void install(long windowHandle) {
-        // Use GLFW directly instead of a Window#setTitle mixin. Runtime method names are
-        // remapped/obfuscated under Forge and a critical mixin here can prevent startup.
-        try {
-            GLFW.glfwSetWindowTitle(windowHandle, "GunGloryOnline");
-        } catch (Exception ignored) {
-            // Branding failure must never prevent the game from starting.
+        // Minecraft and Forge rewrite the native title when entering a world/server.
+        // Re-assert GGO periodically without touching mapped Window methods.
+        if (now - lastTitleUpdate >= 1000L) {
+            lastTitleUpdate = now;
+            try {
+                GLFW.glfwSetWindowTitle(handle, "GunGloryOnline");
+            } catch (RuntimeException ignored) {
+                // Branding must remain fail-open.
+            }
         }
 
+        if (!iconAttempted) {
+            iconAttempted = true;
+            installIcon(handle);
+        }
+    }
+
+    private static void installIcon(long windowHandle) {
         try (InputStream stream = GgoWindowIconClient.class.getResourceAsStream("/assets/ggo/icon.png")) {
             if (stream == null) return;
             byte[] encoded = stream.readAllBytes();
