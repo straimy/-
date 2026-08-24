@@ -1,10 +1,10 @@
 workflow=GGO Launcher Stage 84 Integrity
-run_id=32744475380
+run_id=32765828632
 run_attempt=1
-run_url=https://github.com/straimy/-/actions/runs/32744475380
-launcher_sha=87425327af11067798614fed97018d6ad109a177
-patch=success
-integrity_gates=failure
+run_url=https://github.com/straimy/-/actions/runs/32765828632
+launcher_sha=67aa299ef5a662c2cd4017a2a118fae0c7d1102f
+patch=failure
+integrity_gates=skipped
 web_build=skipped
 rustfmt=skipped
 rust_check=skipped
