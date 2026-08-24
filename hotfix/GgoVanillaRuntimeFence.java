@@ -8,6 +8,7 @@ import net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.ScreenEvent;
+import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -43,6 +44,20 @@ public final class GgoVanillaRuntimeFence {
             Minecraft mc = Minecraft.getInstance();
             if (mc.player != null && mc.gameMode != null && mc.gameMode.getPlayerMode().isCreative()) return;
             event.setNewScreen(new GgoShellScreen(GgoShellScreen.Page.INVENTORY));
+        }
+    }
+
+    /**
+     * Do not let Minecraft's C418/menu music leak into the GGO frontend. The regular sound engine
+     * remains enabled, so the Audio settings page still controls master/music/player/block/etc.
+     * A dedicated GGO soundtrack can be started by the shell later without competing vanilla music.
+     */
+    @SubscribeEvent
+    public static void onClientTick(TickEvent.ClientTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) return;
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.screen instanceof GgoFrontEndScreen || mc.screen instanceof GgoSettingsScreen) {
+            mc.getMusicManager().stopPlaying();
         }
     }
 }
