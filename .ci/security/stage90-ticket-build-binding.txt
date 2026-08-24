@@ -1,6 +1,6 @@
 workflow=GGO Stage 90 Ticket Build Binding
-run_id=32708583619
-launcher_sha=9b8423a2ec004d86a6c48b89e0c3e1769278922e
+run_id=32751427695
+launcher_sha=9adb0e72f736546f4dcf5fb75c8a0350af0fd802
 ticket_build_binding=true
 launcher_metadata_bound=true
 auth_metadata_persisted=true
