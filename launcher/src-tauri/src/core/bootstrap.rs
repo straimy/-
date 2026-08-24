@@ -45,7 +45,7 @@ impl BootstrapInfo {
             content_base_url: Some(content_base_url),
             manifest_url: Some(manifest_url),
             servers_url: Some(format!("{content_base_url}/api/servers.json")),
-            news_url: Some(format!("{content_base_url}/api/news.json")),
+            news_url: Some(format!("{site_url}/api/v1/news")),
             site_url,
             account_api_url: format!("{site_url}/api/v1"),
         }
