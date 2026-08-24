@@ -13,15 +13,18 @@ if not SRC.is_file():
 shutil.copy2(SRC, DST)
 
 text = DST.read_text(encoding="utf-8")
+# Stage58 owns launcher authority and trusted online routing. Do not pin this guard to
+# historical visual copy such as "GGO CLIENT • BETA"/"ACTIVITIES": later frontend revisions
+# are allowed to change presentation while preserving these security/flow invariants.
 for required in [
     "PLAY ONLINE",
     "TRAINING",
     "GgoLaunchTicketClient.isOfficialLaunch()",
+    "GgoLaunchTicketClient.canStartOnline()",
     "ConnectScreen.startConnecting",
     "ServerAddress.parseString(OFFICIAL_SERVER)",
     'OFFICIAL_SERVER = "play.kvicloud.ru:24842"',
-    "GGO CLIENT  •  BETA",
-    "ACTIVITIES",
+    "RETURN TO GGO LAUNCHER",
     "new GgoSettingsScreen(this)",
 ]:
     if required not in text:
