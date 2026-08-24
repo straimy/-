@@ -36,6 +36,44 @@ TRACKS = {
     },
 }
 
+# Java Edition 1.20.1 normal background-music events.  Do not rely on the
+# source resource pack already declaring these: a missing override falls back
+# to vanilla assets and lets a Minecraft track leak through when the player
+# enters the corresponding biome/dimension.
+VANILLA_MUSIC_EVENTS = {
+    "music.creative",
+    "music.credits",
+    "music.dragon",
+    "music.end",
+    "music.game",
+    "music.menu",
+    "music.nether.basalt_deltas",
+    "music.nether.crimson_forest",
+    "music.nether.nether_wastes",
+    "music.nether.soul_sand_valley",
+    "music.nether.warped_forest",
+    "music.overworld.badlands",
+    "music.overworld.bamboo_jungle",
+    "music.overworld.cherry_grove",
+    "music.overworld.deep_dark",
+    "music.overworld.desert",
+    "music.overworld.dripstone_caves",
+    "music.overworld.flower_forest",
+    "music.overworld.forest",
+    "music.overworld.frozen_peaks",
+    "music.overworld.grove",
+    "music.overworld.jagged_peaks",
+    "music.overworld.jungle",
+    "music.overworld.lush_caves",
+    "music.overworld.meadow",
+    "music.overworld.old_growth_taiga",
+    "music.overworld.snowy_slopes",
+    "music.overworld.sparse_jungle",
+    "music.overworld.stony_peaks",
+    "music.overworld.swamp",
+    "music.under_water",
+}
+
 
 def sha256(path: Path) -> str:
     h = hashlib.sha256()
@@ -85,36 +123,13 @@ def main() -> None:
             {"name": "ggo/music/distant_current", "stream": True},
         ]
 
-        # Keep vanilla timing/context machinery, but make every normal music event
-        # choose from the same GGO pool. This gives Minecraft-like random music and
-        # pauses without binding individual songs to biomes, dimensions or sectors.
-        music_keys = [key for key in sounds if key.startswith("music.")]
-        if not music_keys:
-            music_keys = [
-                "music.game",
-                "music.creative",
-                "music.menu",
-                "music.end",
-                "music.dragon",
-                "music.nether.basalt_deltas",
-                "music.nether.crimson_forest",
-                "music.nether.nether_wastes",
-                "music.nether.soul_sand_valley",
-                "music.nether.warped_forest",
-                "music.overworld.deep_dark",
-                "music.overworld.dripstone_caves",
-                "music.overworld.frozen_peaks",
-                "music.overworld.grove",
-                "music.overworld.jagged_peaks",
-                "music.overworld.jungle_and_forest",
-                "music.overworld.lush_caves",
-                "music.overworld.meadow",
-                "music.overworld.old_growth_taiga",
-                "music.overworld.snowy_slopes",
-                "music.overworld.stony_peaks",
-            ]
-
-        for key in music_keys:
+        # Replace BOTH events already declared by the pack and every normal
+        # Java 1.20.1 background-music event.  Explicitly declaring the full
+        # set is important: otherwise an undeclared biome event falls through
+        # to Minecraft's built-in sounds.json and can play one vanilla track.
+        music_keys = {key for key in sounds if key.startswith("music.")}
+        music_keys.update(VANILLA_MUSIC_EVENTS)
+        for key in sorted(music_keys):
             sounds[key] = {"replace": True, "sounds": global_pool}
 
         sounds_path.write_text(json.dumps(sounds, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -137,11 +152,12 @@ def main() -> None:
                 if path.is_file():
                     out.write(path, path.relative_to(root).as_posix())
 
-    print("GGO OST Stage 14/55 complete")
+    print("GGO OST Stage 14/102 complete")
     print(" - Digital Horizon / Red Skyline / Lost Signal / GGO Track 04 / Afterglow Protocol / Distant Current")
-    print(" - one global music pool for every normal Minecraft music event")
+    print(f" - {len(VANILLA_MUSIC_EVENTS)} explicit Java 1.20.1 music events replaced")
+    print(" - existing resource-pack music.* events replaced too")
+    print(" - no normal biome/dimension/menu music event may fall back to vanilla")
     print(" - streaming OGG resources")
-    print(" - original Minecraft music references replaced in the GGO resource pack")
     print(f" - output: {args.output}")
 
 
