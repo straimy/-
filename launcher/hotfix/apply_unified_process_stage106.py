@@ -106,16 +106,8 @@ if marker not in css:
 '''
 CSS.write_text(css, encoding="utf-8")
 
-# This launcher build will be distinguishable from the Stage103 0.2.7 binary.
-for path in (PACKAGE, TAURI):
-    text = path.read_text(encoding="utf-8")
-    text = text.replace('"version": "0.2.7"', '"version": "0.2.8"', 1)
-    path.write_text(text, encoding="utf-8")
-text = CARGO.read_text(encoding="utf-8")
-text = text.replace('version = "0.2.7"', 'version = "0.2.8"', 1)
-CARGO.write_text(text, encoding="utf-8")
-
-# Fail closed if any part of the visible handoff was not applied.
+# Stage106 owns only lifecycle behavior. Launcher versioning belongs to the active packaging stage.
+# Keeping this transform version-neutral makes it safe and idempotent for Stage107+ candidates.
 checks = {
     "ready environment": '"GGO_READY_FILE".to_string()' in LIB.read_text(encoding="utf-8"),
     "ready command": "fn game_surface_ready(" in LIB.read_text(encoding="utf-8"),
@@ -123,7 +115,6 @@ checks = {
     "launcher stays visible": 'setStatus("STARTING GUNGLORYONLINE…")' in APP.read_text(encoding="utf-8"),
     "old immediate hide removed": 'setClientRunning(true);await getCurrentWindow().hide()' not in APP.read_text(encoding="utf-8"),
     "startup cover": 'className="ggo-boot-cover"' in APP.read_text(encoding="utf-8"),
-    "0.2.8 cargo": 'version = "0.2.8"' in CARGO.read_text(encoding="utf-8"),
 }
 for label, ok in checks.items():
     if not ok:
@@ -132,3 +123,4 @@ for label, ok in checks.items():
 print("Applied GGO Stage106 unified launcher lifecycle")
 for label in checks:
     print(f" - {label}: ok")
+print(" - launcher version: preserved by active packaging stage")
