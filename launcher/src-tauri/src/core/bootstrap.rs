@@ -18,7 +18,7 @@ pub struct BootstrapInfo {
 
 impl BootstrapInfo {
     pub fn current() -> Self {
-        // Stage107 is the current closed-beta polished unified candidate; env overrides remain available for staging.
+        // Stage108 is the current closed-beta unified GGO shell candidate; env overrides remain available for staging.
         let content_base_url = option_env!("GGO_CONTENT_BASE_URL")
             .map(str::trim)
             .filter(|value| !value.is_empty())
@@ -34,12 +34,12 @@ impl BootstrapInfo {
             .filter(|value| !value.is_empty())
             .map(ToOwned::to_owned)
             .unwrap_or_else(|| {
-                format!("{content_base_url}/manifests/beta-stage107-candidate.json")
+                format!("{content_base_url}/manifests/beta-stage108-candidate.json")
             });
 
         Self {
             launcher_version: env!("CARGO_PKG_VERSION"),
-            game_version: "v107-candidate",
+            game_version: "v108-candidate",
             channel: "beta",
             runtime: "minecraft-forge",
             server: "play.kvicloud.ru:24842",
