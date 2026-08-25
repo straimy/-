@@ -30,6 +30,9 @@ UI = {
 }
 EXPECTED_RP_SHA = "b10b3228004b8d3068c93122c39e766df9778a1b277fef4a97d835c5ab0005ba"
 
+if not SRC.is_file():
+    raise SystemExit(f"Stage108 base manifest missing: {SRC}")
+
 m = json.loads(SRC.read_text(encoding="utf-8"))
 m["gameVersion"] = "v108-candidate"
 out = []
@@ -64,6 +67,12 @@ if len(rp_entries) != 1 or rp_entries[0].get("sha256") != EXPECTED_RP_SHA:
     raise SystemExit("Stage108 must preserve the proven Stage100 official OST resource pack")
 if "stage108" not in CORE["path"] or "stage108" not in UI["path"]:
     raise SystemExit("Stage108 Core/UI local paths must use the same stage number")
+if CORE["version"] != m["gameVersion"] or UI["version"] != m["gameVersion"]:
+    raise SystemExit("Stage108 Core/UI version metadata must match gameVersion")
+if not CORE["url"].startswith("https://ggo.kvicloud.ru/content/files/"):
+    raise SystemExit("Stage108 Core must come from the official immutable CDN")
+if UI["url"] != "https://ggo.kvicloud.ru/content/files/v108/gungloryonline-ui-runtime-v1-stage108-unified-shell.jar":
+    raise SystemExit("Stage108 UI URL must point to the immutable v108 slot")
 
 DST.parent.mkdir(parents=True, exist_ok=True)
 DST.write_text(json.dumps(m, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
