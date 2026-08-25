@@ -28,6 +28,7 @@ UI = {
     "version": "v108-candidate",
     "kind": "mod",
 }
+EXPECTED_RP_SHA = "b10b3228004b8d3068c93122c39e766df9778a1b277fef4a97d835c5ab0005ba"
 
 m = json.loads(SRC.read_text(encoding="utf-8"))
 m["gameVersion"] = "v108-candidate"
@@ -53,9 +54,21 @@ if not seen_core or not seen_ui:
     raise SystemExit("Stage100 manifest does not contain canonical GGO Core/UI entries")
 
 m["files"] = out
+
+core_entries = [e for e in out if e.get("path", "").startswith("mods/gungloryonline-core-runtime")]
+ui_entries = [e for e in out if e.get("path", "").startswith("mods/gungloryonline-ui-runtime")]
+rp_entries = [e for e in out if e.get("path") == "resourcepacks/GunGloryOnline-Official.zip"]
+if core_entries != [CORE] or ui_entries != [UI]:
+    raise SystemExit("Stage108 must contain exactly one canonical matching Core/UI pair")
+if len(rp_entries) != 1 or rp_entries[0].get("sha256") != EXPECTED_RP_SHA:
+    raise SystemExit("Stage108 must preserve the proven Stage100 official OST resource pack")
+if "stage108" not in CORE["path"] or "stage108" not in UI["path"]:
+    raise SystemExit("Stage108 Core/UI local paths must use the same stage number")
+
 DST.parent.mkdir(parents=True, exist_ok=True)
 DST.write_text(json.dumps(m, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-# Fail closed on the exact invariants that previously caused stale/mismatched candidates.
-text = DST.read_text(encoding="utf-8")nif False:
-    pass
+print("Stage108 candidate manifest built:", DST)
+print("Core:", CORE["sha256"])
+print("UI:", UI["sha256"])
+print("Official OST RP preserved:", EXPECTED_RP_SHA)
