@@ -142,18 +142,26 @@ jobs:
         env:
           UI_OUTCOME: ${{ steps.ui.outcome }}
           UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+          UI_SHA256: ${{ steps.ui.outputs.sha256 }}
+          UI_BYTES: ${{ steps.ui.outputs.bytes }}
         run: |
           set -euo pipefail
           result=failure
           [ "$UI_OUTCOME" = success ] && [ "$UPLOAD_OUTCOME" = success ] && result=success
+
+          # Receipt commits can race when several source commits trigger Stage104 close together.
+          # Always write the receipt on top of the newest remote branch instead of rebasing a
+          # generated text-file commit against another generated text-file commit.
+          git fetch origin client/runtime-migration-v1
+          git reset --hard origin/client/runtime-migration-v1
           mkdir -p ci-results
           cat > ci-results/stage104-ggo-only-shell.txt <<EOF
           workflow=${GITHUB_WORKFLOW}
           run_id=${GITHUB_RUN_ID}
           client_sha=${GITHUB_SHA}
           build_id=runtime-stage104
-          ui_sha256=${{ steps.ui.outputs.sha256 }}
-          ui_bytes=${{ steps.ui.outputs.bytes }}
+          ui_sha256=${UI_SHA256}
+          ui_bytes=${UI_BYTES}
           legacy_routes_preserved=true
           vanilla_navigation_fenced=true
           intentional_disconnect_coordinated=true
@@ -167,6 +175,4 @@ jobs:
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add ci-results/stage104-ggo-only-shell.txt
           git commit -m "ci: record Stage104 GGO-only shell ${GITHUB_RUN_ID}" || exit 0
-          git fetch origin client/runtime-migration-v1
-          git rebase origin/client/runtime-migration-v1
           git push origin HEAD:client/runtime-migration-v1
