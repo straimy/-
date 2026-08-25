@@ -31,20 +31,29 @@ if 'process.exitCode===0?"Ready"' not in app and 'process.exitCode === 0 ? "Read
             changed = True
             break
     if not changed:
-        # Compatibility with an older non-ternary Stage105/106 canonicalization.
         old = 'setStatus("GunGloryOnline closed")'
         if old in app:
             app = app.replace(old, 'setStatus("Ready")', 1)
             changed = True
     if not changed:
         raise SystemExit("Stage107 App patch: normal-exit status anchor not found")
+
+# The engine is an implementation detail. Launcher-visible copy must describe GGO, not the
+# Minecraft/Forge substrate that the player should never need to interact with.
+for old, new in [
+    ('runtimeInstalling:"Installing client runtime 1.20.1 + Forge 47.4.10…"', 'runtimeInstalling:"Installing GGO runtime…"'),
+    ('runtimeInstalling:"Устанавливаю runtime клиента 1.20.1 + Forge 47.4.10…"', 'runtimeInstalling:"Устанавливаю GGO runtime…"'),
+    ('runtimeInstalling:"Встановлюю runtime клієнта 1.20.1 + Forge 47.4.10…"', 'runtimeInstalling:"Встановлюю GGO runtime…"'),
+    ('<div><span>Client runtime</span><b>1.20.1 · Forge 47.4.10</b></div>', '<div><span>GGO Runtime</span><b>Managed automatically</b></div>'),
+]:
+    app = app.replace(old, new)
 APP.write_text(app, encoding="utf-8")
 
 lib = LIB.read_text(encoding="utf-8")
 
-# Do not let a user-requested fullscreen Java window cover the Tauri startup surface while Forge
-# is still showing its early engine window. Start the child windowed, pass the preference only
-# to the child environment, and let GgoUnifiedSurfaceBridge apply fullscreen after GGO is ready.
+# Do not let a user-requested fullscreen Java window cover the Tauri startup surface while the
+# engine is still bootstrapping. Start the child windowed, pass the preference only to the child
+# environment, and let the GGO surface bridge apply fullscreen after GGO is ready.
 if 'GGO_FULLSCREEN_AFTER_READY' not in lib:
     marker = '    let child_environment = vec![\n'
     launch_idx = lib.find('async fn launch_game(')
@@ -72,7 +81,6 @@ if 'GGO_FULLSCREEN_AFTER_READY' not in lib:
         raise SystemExit("Stage107 launcher could not append deferred fullscreen env")
     lib = lib[:block_idx] + replacement + lib[block_idx + len(ready_block):]
 else:
-    # Canonical/idempotent source must still keep the preference before forcing windowed startup.
     if 'let requested_fullscreen = options.fullscreen;' not in lib or 'options.fullscreen = false;' not in lib:
         raise SystemExit("Stage107 deferred fullscreen exists without windowed-start contract")
 
@@ -104,6 +112,8 @@ checks = {
     "deferred fullscreen env": '"GGO_FULLSCREEN_AFTER_READY".to_string()' in lib,
     "fullscreen forced windowed before spawn": 'options.fullscreen = false;' in lib,
     "fullscreen preference preserved": 'let requested_fullscreen = options.fullscreen;' in lib,
+    "launcher runtime copy is GGO-owned": '<span>GGO Runtime</span><b>Managed automatically</b>' in app,
+    "no visible Forge fingerprint": '1.20.1 · Forge 47.4.10' not in app and 'runtime 1.20.1 + Forge 47.4.10' not in app,
     "0.2.9 cargo": 'version = "0.2.9"' in CARGO.read_text(encoding="utf-8"),
     "0.2.9 tauri": '"version": "0.2.9"' in TAURI.read_text(encoding="utf-8"),
     "0.2.9 package": '"version": "0.2.9"' in PACKAGE.read_text(encoding="utf-8"),
