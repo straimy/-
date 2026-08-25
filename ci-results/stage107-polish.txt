@@ -1,0 +1,14 @@
+workflow=GGO Runtime Stage107 Polish
+run_id=32798548775
+client_sha=3f57fd751b1d1afe1f5917dbe2f960433ed798e7
+build_id=runtime-stage107
+ui_sha256=de26cedb6195c81380ac3244488c639e2c7134ee043cba2050adf6de9be27882
+ui_bytes=210496
+canonical_settings=true
+duplicate_home_widgets_removed=true
+exit_returns_to_launcher=true
+music_fade_in=true
+vanilla_navigation_fenced=true
+ui_build=success
+upload=success
+result=success
