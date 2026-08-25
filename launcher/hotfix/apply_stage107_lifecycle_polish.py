@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from pathlib import Path
 import re
+import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "src/App.tsx"
@@ -105,6 +106,14 @@ if 'version = "0.2.9"' not in text:
     text = text.replace('version = "0.2.8"', 'version = "0.2.9"', 1)
     CARGO.write_text(text, encoding="utf-8")
 
+# Stage106/107 synthesize Rust directly into the temporary build tree. Normalize it here so every
+# caller receives the same rustfmt-clean lifecycle source before cargo check/test/package.
+subprocess.run(
+    ["cargo", "fmt", "--manifest-path", str(CARGO), "--all"],
+    cwd=ROOT,
+    check=True,
+)
+
 app = APP.read_text(encoding="utf-8")
 lib = LIB.read_text(encoding="utf-8")
 checks = {
@@ -125,3 +134,4 @@ for label, ok in checks.items():
 print("Applied GGO Stage107 launcher lifecycle polish")
 for label in checks:
     print(f" - {label}: ok")
+print(" - generated Rust: rustfmt clean")
