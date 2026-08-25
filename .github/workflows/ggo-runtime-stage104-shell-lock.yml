@@ -10,7 +10,9 @@ on:
       - 'hotfix/GgoVanillaRuntimeFence.java'
       - 'hotfix/GgoEntryExperience.java'
       - 'hotfix/GgoForgeLoadingOverlayMixin.java'
+      - 'hotfix/GgoButtonMixin.java'
       - 'hotfix/GgoWindowIconClient.java'
+      - 'hotfix/ggo-startup.mixins.json'
       - 'hotfix/apply_ggo_shell_lock_stage104.py'
       - 'hotfix/apply_ggo_hub_stage101.py'
       - 'hotfix/apply_ggo_legacy_routes_stage101.py'
@@ -86,6 +88,8 @@ jobs:
           ! grep -q 'mc.execute(() -> mc.setScreen(new GgoFrontEndScreen()))' "$SHELL/GgoShellScreen.java"
           grep -q 'RETURNING_TO_FRONTEND.getAndSet(false)' "$SHELL/GgoEntryExperience.java"
           grep -q 'pose().last().pose().identity()' ga-build/client-ui/src/main/java/arena/mixin/GgoForgeLoadingOverlayMixin.java
+          grep -q 'renderFirstPartyButton' ga-build/client-ui/src/main/java/arena/mixin/GgoButtonMixin.java
+          grep -q 'GgoButtonMixin' ga-build/client-ui/src/main/resources/ggo-startup.mixins.json
           grep -q 'sendCommand("menu")' "$SHELL/GgoShellHooks.java"
           grep -q 'new GgoShellScreen(GgoShellScreen.Page.HOME)' "$UIJAVA/ClientUiOpener.java"
           grep -q 'GgoLegacyUiBridge.openShop()' "$SHELL/GgoShellScreen.java"
@@ -107,8 +111,10 @@ jobs:
             jar tf "$UI" | grep -q "^arena/client/ui/$c.class$"
           done
           jar tf "$UI" | grep -q '^arena/mixin/GgoForgeLoadingOverlayMixin.class$'
+          jar tf "$UI" | grep -q '^arena/mixin/GgoButtonMixin.class$'
           jar tf "$UI" | grep -q '^assets/ggo/icon.png$'
           ! jar tf "$UI" | grep -q '^arena/mixin/GgoWindowTitleMixin.class$'
+          unzip -p "$UI" ggo-startup.mixins.json | grep -q 'GgoButtonMixin'
           unzip -p "$UI" arena/client/shell/GgoShellScreen.class | strings | grep -q 'EXIT TO GGO'
           unzip -p "$UI" arena/client/shell/GgoShellScreen.class | strings | grep -q 'GGO HUB'
           unzip -p "$UI" arena/client/ui/GgoLegacyUiBridge.class | strings | grep -q 'ShopScreen'
@@ -152,6 +158,7 @@ jobs:
           vanilla_navigation_fenced=true
           intentional_disconnect_coordinated=true
           startup_transform_reset=true
+          first_party_button_renderer=true
           ui_build=$UI_OUTCOME
           upload=$UPLOAD_OUTCOME
           result=$result
