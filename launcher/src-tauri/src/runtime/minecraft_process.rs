@@ -13,6 +13,7 @@ const FORGE_JAVA_COMPAT: &str = "--add-opens=java.base/java.lang.invoke=ALL-UNNA
 // the Java/Forge render window with the GunGloryOnline application instead of Minecraft/Java.
 const GGO_LINUX_RESOURCE_NAME: &str = "gungloryonline-launcher";
 const DARK_MOJANG_OPTION: &str = "darkMojangStudiosBackground:true";
+const FML_EARLY_WINDOW_CONTROL: &str = "earlyWindowControl = false";
 
 pub fn launch_with_natives(
     install_dir: &Path,
@@ -54,10 +55,13 @@ pub fn launch_with_natives_environment(
     let natives_dir = install_dir.join("natives").join(&forge_id);
     minecraft_natives::prepare_natives(install_dir, &[&vanilla, &forge], &natives_dir)?;
 
-    // Forge's immediate window exists before normal client mods and mixins can paint GGO chrome.
-    // Force Minecraft's accessibility background flag to dark so the unavoidable pre-hook frame is
-    // black instead of Mojang red. The later Stage104 overlay then takes over the whole framebuffer.
+    // Forge's immediate FML window is created before normal client mods/mixins exist and therefore
+    // cannot carry the complete GGO UI. In an official unified launch the Tauri application owns
+    // startup visibility, so disable that immediate window and let Minecraft create the render
+    // window only at the later handoff where GGO hooks can brand/fence it. Keep the dark Mojang
+    // preference as a fail-safe for installations where Forge repairs the config.
     ensure_dark_early_background(install_dir)?;
+    ensure_forge_early_window_disabled(install_dir)?;
 
     let previous = env::var("JDK_JAVA_OPTIONS").ok().unwrap_or_default();
     let mut combined = previous;
@@ -72,10 +76,6 @@ pub fn launch_with_natives_environment(
     child_environment.retain(|(key, _)| key != "JDK_JAVA_OPTIONS" && key != "RESOURCE_NAME");
     child_environment.push(("JDK_JAVA_OPTIONS".to_string(), combined));
 
-    // GLFW creates Forge's early native window before normal GGO client hooks are loaded.
-    // On X11 it uses RESOURCE_NAME as the WM_CLASS instance when present. The Tauri AppImage
-    // advertises StartupWMClass=gungloryonline-launcher, so using the same value on the child
-    // makes GNOME associate the render window with the existing GGO desktop/icon identity.
     #[cfg(target_os = "linux")]
     child_environment.push((
         "RESOURCE_NAME".to_string(),
@@ -123,6 +123,45 @@ fn ensure_dark_early_background(install_dir: &Path) -> Result<(), LaunchError> {
     Ok(())
 }
 
+fn ensure_forge_early_window_disabled(install_dir: &Path) -> Result<(), LaunchError> {
+    let config_dir = install_dir.join("config");
+    fs::create_dir_all(&config_dir)?;
+    let path = config_dir.join("fml.toml");
+    let current = match fs::read_to_string(&path) {
+        Ok(value) => value,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(error) => return Err(LaunchError::Io(error)),
+    };
+
+    let mut found = false;
+    let mut lines = Vec::new();
+    for line in current.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("earlyWindowControl") && trimmed.contains('=') {
+            if !found {
+                lines.push(FML_EARLY_WINDOW_CONTROL.to_string());
+                found = true;
+            }
+        } else {
+            lines.push(line.to_string());
+        }
+    }
+    if !found {
+        if !lines.is_empty() && !lines.last().is_some_and(|line| line.is_empty()) {
+            lines.push(String::new());
+        }
+        lines.push("# GunGloryOnline owns the visible startup surface.".to_string());
+        lines.push(FML_EARLY_WINDOW_CONTROL.to_string());
+    }
+
+    let mut next = lines.join("\n");
+    next.push('\n');
+    if next != current {
+        fs::write(path, next)?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -154,10 +193,11 @@ mod tests {
     }
 
     #[test]
-    fn early_mojang_frame_is_forced_dark_before_spawn() {
+    fn early_engine_window_is_suppressed_behind_ggo_surface() {
         let source = include_str!("minecraft_process.rs");
         let runtime_source = source.split("#[cfg(test)]").next().unwrap_or(source);
         assert!(runtime_source.contains("darkMojangStudiosBackground:true"));
-        assert!(runtime_source.contains("ensure_dark_early_background(install_dir)?"));
+        assert!(runtime_source.contains("earlyWindowControl = false"));
+        assert!(runtime_source.contains("ensure_forge_early_window_disabled(install_dir)?"));
     }
 }
