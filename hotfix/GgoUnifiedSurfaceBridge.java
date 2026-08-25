@@ -18,11 +18,17 @@ import java.nio.file.StandardOpenOption;
  * engine initializes and passes a private local marker path through GGO_READY_FILE. Once a real
  * GGO surface exists, this class writes the literal word "ready" exactly once. No ticket, account
  * identifier or other credential is ever written to disk.
+ *
+ * Fullscreen is deliberately deferred until this point. Starting Forge directly in fullscreen
+ * lets its unavoidable early window cover the launcher before GGO code exists. Stage107 starts
+ * the engine windowed behind the launcher, then applies the user's fullscreen preference here.
  */
 @Mod.EventBusSubscriber(value = Dist.CLIENT, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class GgoUnifiedSurfaceBridge {
     private static final Path READY_FILE = readReadyFile();
+    private static final boolean FULLSCREEN_AFTER_READY = "1".equals(System.getenv("GGO_FULLSCREEN_AFTER_READY"));
     private static boolean signaled;
+    private static boolean fullscreenApplied;
     private static int stableTicks;
 
     private GgoUnifiedSurfaceBridge() {}
@@ -42,8 +48,18 @@ public final class GgoUnifiedSurfaceBridge {
             return;
         }
 
-        // Give the native title/icon hook a few render ticks before exposing the engine window.
-        if (++stableTicks < 4) return;
+        // Apply fullscreen only after a first-party GGO surface exists. Give GLFW a few ticks to
+        // settle before telling the launcher it is safe to reveal the engine window.
+        if (FULLSCREEN_AFTER_READY && !fullscreenApplied) {
+            fullscreenApplied = true;
+            if (!mc.getWindow().isFullscreen()) {
+                mc.getWindow().toggleFullScreen();
+            }
+            stableTicks = 0;
+            return;
+        }
+
+        if (++stableTicks < 8) return;
 
         try {
             Path parent = READY_FILE.getParent();
