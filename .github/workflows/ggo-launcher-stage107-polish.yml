@@ -90,7 +90,7 @@ jobs:
         id: upload
         with:
           name: GunGloryOnline-Linux-Stage107-Polish-0.2.9
-          path: launcher/src-tauri/target/release/bundle/appimage/*.AppImage
+          path: src-tauri/target/release/bundle/appimage/*.AppImage
           if-no-files-found: error
           retention-days: 30
       - name: Publish Stage107 launcher receipt
