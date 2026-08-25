@@ -1,3 +1,4 @@
+# Stage108 final retrigger: generated lifecycle Rust is formatted before compile.
 name: GGO Launcher Stage108 Final Linux
 
 on:
