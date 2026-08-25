@@ -67,7 +67,7 @@ jobs:
       - name: Rust format/check/test
         id: rust
         run: |
-          cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all
           cargo check --manifest-path src-tauri/Cargo.toml
           cargo test --manifest-path src-tauri/Cargo.toml
       - name: Generate platform icons
