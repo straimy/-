@@ -79,6 +79,8 @@ jobs:
           grep -Fq 'mc.stop();' "$SHELL/GgoShellScreen.java"
           ! grep -Fq 'case HOME -> initHome();' "$SHELL/GgoShellScreen.java"
           grep -Fq 'screen instanceof TitleScreen' "$SHELL/GgoVanillaRuntimeFence.java"
+          grep -Fq 'GGO_FULLSCREEN_AFTER_READY' "$SHELL/GgoUnifiedSurfaceBridge.java"
+          grep -Fq 'toggleFullScreen()' "$SHELL/GgoUnifiedSurfaceBridge.java"
           cp /tmp/ggo-mdk/gradlew ga-build/client-ui/gradlew
           cp /tmp/ggo-mdk/gradlew.bat ga-build/client-ui/gradlew.bat
           rm -rf ga-build/client-ui/gradle && cp -a /tmp/ggo-mdk/gradle ga-build/client-ui/gradle
@@ -122,6 +124,7 @@ jobs:
           exit_returns_to_launcher=true
           music_fade_in=true
           vanilla_navigation_fenced=true
+          fullscreen_deferred=true
           ui_build=$UI_OUTCOME
           upload=$UPLOAD_OUTCOME
           result=$result
