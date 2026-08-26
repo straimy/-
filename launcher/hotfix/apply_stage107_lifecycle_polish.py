@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Stage108 final package retrigger: lifecycle behavior unchanged.
 from pathlib import Path
 import re
 import subprocess
