@@ -83,6 +83,8 @@ jobs:
           APP="$(find src-tauri/target/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage' | head -n1)"
           test -n "$APP" && test -f "$APP"
           case "$(basename "$APP")" in *0.2.9*) ;; *) echo "unexpected launcher filename: $APP" >&2; exit 1;; esac
+          APP_ABS="$(realpath "$APP")"
+          test -x "$APP_ABS" || chmod +x "$APP_ABS"
 
           # AppImage is a compressed filesystem; grepping the outer container is not a
           # reliable proof that strings embedded in the Tauri executable are present.
@@ -91,7 +93,7 @@ jobs:
           mkdir -p /tmp/ggo-stage108-appimage
           (
             cd /tmp/ggo-stage108-appimage
-            "$GITHUB_WORKSPACE/$APP" --appimage-extract >/dev/null
+            "$APP_ABS" --appimage-extract >/dev/null
           )
           test -d /tmp/ggo-stage108-appimage/squashfs-root
           grep -aRFl --include='*' 'beta-stage108-candidate.json' /tmp/ggo-stage108-appimage/squashfs-root >/tmp/ggo-stage108-manifest-hit
