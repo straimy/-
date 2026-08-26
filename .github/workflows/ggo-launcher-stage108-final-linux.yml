@@ -67,8 +67,6 @@ jobs:
       - name: Rust format/check/test
         id: rust
         run: |
-          # Stage106/107 deliberately generate lifecycle Rust in the ephemeral build tree.
-          # Canonicalize that generated source before enforcing rustfmt and compiling it.
           cargo fmt --manifest-path src-tauri/Cargo.toml --all
           cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
           cargo check --manifest-path src-tauri/Cargo.toml
@@ -85,8 +83,24 @@ jobs:
           APP="$(find src-tauri/target/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage' | head -n1)"
           test -n "$APP" && test -f "$APP"
           case "$(basename "$APP")" in *0.2.9*) ;; *) echo "unexpected launcher filename: $APP" >&2; exit 1;; esac
-          grep -aFq 'beta-stage108-candidate.json' "$APP"
-          grep -aFq 'v108-candidate' "$APP"
+
+          # AppImage is a compressed filesystem; grepping the outer container is not a
+          # reliable proof that strings embedded in the Tauri executable are present.
+          # Extract it and verify the actual packaged executable/resources instead.
+          rm -rf /tmp/ggo-stage108-appimage
+          mkdir -p /tmp/ggo-stage108-appimage
+          (
+            cd /tmp/ggo-stage108-appimage
+            "$GITHUB_WORKSPACE/$APP" --appimage-extract >/dev/null
+          )
+          test -d /tmp/ggo-stage108-appimage/squashfs-root
+          grep -aRFl --include='*' 'beta-stage108-candidate.json' /tmp/ggo-stage108-appimage/squashfs-root >/tmp/ggo-stage108-manifest-hit
+          grep -aRFl --include='*' 'v108-candidate' /tmp/ggo-stage108-appimage/squashfs-root >/tmp/ggo-stage108-version-hit
+          test -s /tmp/ggo-stage108-manifest-hit
+          test -s /tmp/ggo-stage108-version-hit
+          echo "Packaged Stage108 manifest marker: $(head -n1 /tmp/ggo-stage108-manifest-hit)"
+          echo "Packaged Stage108 version marker: $(head -n1 /tmp/ggo-stage108-version-hit)"
+
           echo "sha256=$(sha256sum "$APP" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
           echo "bytes=$(stat -c%s "$APP")" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
