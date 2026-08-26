@@ -1,4 +1,4 @@
-# Stage108 final retrigger: generated lifecycle Rust is formatted before compile.
+# Stage108 final retrigger: runtime candidate is GREEN; generated lifecycle Rust is formatted before compile.
 name: GGO Launcher Stage108 Final Linux
 
 on:
@@ -13,7 +13,6 @@ on:
       - 'launcher/src/**'
       - 'launcher/src-tauri/src/**'
       - 'launcher/src-tauri/Cargo.toml'
-      - 'launcher/src-tauri/tauri.conf.json'
       - 'launcher/package.json'
 
 permissions:
