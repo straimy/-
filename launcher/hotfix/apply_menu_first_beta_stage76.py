@@ -90,8 +90,18 @@ old_launch = '''async function launch(training=false,server?:RemoteServer){if(!i
 new_launch = '''async function launch(){if(!installDir){setStatus("Choose a GGO data folder");return;}if(!gameInstalled){setStatus(t.notInstalled);return;}if(!ggoAccount.connected){setStatus("GGO Account is required. Sign in first.");setPage("accounts");return;}setBusy(true);try{const runtimeCheck=await ensureRuntime();const profile=auth.minecraftProfile;const display=ggoAccount.displayName||nickname.trim()||"GGOPlayer";await invoke("write_identity_bridge",{installDir,ggoPlayerId:ggoAccount.playerId,displayName:display,skinSource:ggoAccount.skinSource,provider:"ggo"});const extraJvmArgs=extraJvmText.split(/\\r?\\n/).map(v=>v.trim()).filter(Boolean);const opts:LaunchOptions={ramMb,minRamMb:Math.min(minRamMb,ramMb),extraJvmArgs,width:resolution[0],height:resolution[1],fullscreen};const launchProfile:MinecraftProfile=profile??{id:"ggo",name:display};const result=await invoke<LaunchResult>("launch_game",{installDir,customJava:javaPath||runtimeCheck.java?.path||null,options:opts,training:false,profile:launchProfile});setStatus(`GGO Client · PID ${result.pid}`);}catch(error){setStatus(String(error));}finally{setBusy(false);}}'''
 if old_launch in app:
     app = app.replace(old_launch, new_launch, 1)
-elif new_launch not in app:
-    raise SystemExit("launcher launch() block not found")
+else:
+    # Stage106+ intentionally extends the canonical launch() with process lifecycle state,
+    # readiness handoff, and launcher visibility control. Do not rewrite that newer function
+    # back to the Stage76 byte-for-byte form. Validate its semantic contract instead.
+    unified_launch_ok = all(token in app for token in [
+        "async function launch(){",
+        "if(!ggoAccount.connected)",
+        'invoke<LaunchResult>("launch_game"',
+        "training:false",
+    ])
+    if not unified_launch_ok:
+        raise SystemExit("launcher launch() block not found")
 
 old_home = '''<div className="home-actions"><button className="play-button" disabled={busy||!gameInstalled||updateAvailable} onClick={()=>void launch(false)}>{busy?t.preparing:t.play}</button><button className="training-button" disabled={busy||!gameInstalled} onClick={()=>void launch(true)}>{t.training}<small>{t.trainingHint}</small></button></div>'''
 new_home = '''<div className="home-actions"><button className="play-button" disabled={busy||checkingGame} onClick={()=>void ((!gameInstalled||updateAvailable)?installGame():launch())}>{busy?t.preparing:!gameInstalled?t.install:updateAvailable?t.updateGame:t.play}</button></div>'''
@@ -142,7 +152,7 @@ for token in [
 
 print("Applied GGO launcher Stage 76 menu-first beta hardening")
 print(f" - resolved launcher root: {ROOT}")
-print(" - idempotent on already-canonical launcher source")
+print(" - idempotent on canonical and Stage106+ unified lifecycle launcher source")
 print(" - one public game launch command")
 print(" - official launch boots to GGO client menu before network connect")
 print(" - absolute ticket expiry is passed to the child without exposing the ticket to UI")
