@@ -1,6 +1,6 @@
 workflow=GGO Launcher Stage109 Unified Linux
-run_id=33065253788
-source_sha=d5b13b24fd17829f09cfb1d0b5be8847404e455a
+run_id=33065266974
+source_sha=9fb1ef88e927bae6ddf5a619ff4a45c5edd7ea46
 launcher_version=0.2.10
 game_version=v109-candidate
 manifest=beta-stage109-candidate.json
