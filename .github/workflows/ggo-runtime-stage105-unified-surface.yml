@@ -7,6 +7,7 @@ on:
       - client/runtime-migration-v1
     paths:
       - '.github/workflows/ggo-runtime-stage105-unified-surface.yml'
+      - 'hotfix/GgoUnifiedSurfaceClient.java'
       - 'hotfix/GgoButton.java'
       - 'hotfix/apply_ggo_widget_stage105.py'
       - 'hotfix/GgoVanillaRuntimeFence.java'
@@ -16,6 +17,7 @@ on:
       - 'hotfix/assets/ggo-window-icon.png'
       - 'hotfix/apply_ggo_shell_lock_stage104.py'
       - 'hotfix/apply_ggo_hub_stage101.py'
+      - 'hotfix/apply_ggo_legacy_routes_stage101.py'
       - 'hotfix/apply_ggo_startup_brand_stage98.py'
 
 permissions:
@@ -31,7 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: client/runtime-migration-v1
+          ref: ${{ github.sha }}
           fetch-depth: 0
       - uses: actions/setup-java@v5
         with:
@@ -65,10 +67,11 @@ jobs:
             apply_ggo_launcher_authority_stage58.py apply_ggo_session_verification_stage61.py apply_ggo_ui_packets_stage65.py \
             apply_ggo_surface_fence_stage66.py apply_ggo_chat_shell_stage67.py apply_ggo_brand_leak_cleanup_stage68.py \
             apply_ggo_training_stage77.py apply_ggo_startup_brand_stage98.py apply_ggo_hub_stage101.py \
-            apply_ggo_shell_lock_stage104.py apply_ggo_widget_stage105.py; do
+            apply_ggo_legacy_routes_stage101.py apply_ggo_shell_lock_stage104.py apply_ggo_widget_stage105.py; do
             python3 "hotfix/$patch"
           done
           SHELL=ga-build/client-ui/src/main/java/arena/client/shell
+          cp hotfix/GgoUnifiedSurfaceClient.java "$SHELL/GgoUnifiedSurfaceClient.java"
           grep -q 'screen instanceof TitleScreen' "$SHELL/GgoVanillaRuntimeFence.java"
           grep -q 'screen instanceof OptionsScreen' "$SHELL/GgoVanillaRuntimeFence.java"
           grep -q 'screen instanceof SelectWorldScreen' "$SHELL/GgoVanillaRuntimeFence.java"
@@ -77,6 +80,8 @@ jobs:
           grep -q 'GgoButton.builder' "$SHELL/GgoShellScreen.java"
           ! grep -q 'net.minecraft.client.gui.components.Button' "$SHELL/GgoShellScreen.java"
           grep -q 'extends AbstractButton' "$SHELL/GgoButton.java"
+          grep -q 'GGO_READY_FILE' "$SHELL/GgoUnifiedSurfaceClient.java"
+          grep -q 'Files.writeString' "$SHELL/GgoUnifiedSurfaceClient.java"
           grep -q 'glfwSetWindowTitle' "$SHELL/GgoWindowIconClient.java"
           grep -q 'glfwSetWindowIcon' "$SHELL/GgoWindowIconClient.java"
           test -s ga-build/client-ui/src/main/resources/assets/ggo/icon.png
@@ -87,15 +92,22 @@ jobs:
           (cd ga-build/client-ui && ./gradlew --no-daemon clean build --stacktrace)
           UI="$(find ga-build/client-ui/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
           test -n "$UI" && test -f "$UI"
+          jar tf "$UI" | grep -q '^arena/client/shell/GgoUnifiedSurfaceClient.class$'
           jar tf "$UI" | grep -q '^arena/client/shell/GgoButton.class$'
           jar tf "$UI" | grep -q '^arena/client/shell/GgoVanillaRuntimeFence.class$'
           jar tf "$UI" | grep -q '^arena/client/shell/GgoEntryExperience.class$'
           jar tf "$UI" | grep -q '^arena/client/shell/GgoWindowIconClient.class$'
           jar tf "$UI" | grep -q '^arena/client/shell/GgoShellScreen.class$'
+          jar tf "$UI" | grep -q '^arena/client/ui/GgoLegacyUiBridge.class$'
+          jar tf "$UI" | grep -q '^arena/client/ui/ShopScreen.class$'
+          jar tf "$UI" | grep -q '^arena/client/ui/ProfileScreen.class$'
+          jar tf "$UI" | grep -q '^arena/client/ui/SkillsScreen.class$'
           jar tf "$UI" | grep -q '^arena/mixin/GgoForgeLoadingOverlayMixin.class$'
           jar tf "$UI" | grep -q '^assets/ggo/icon.png$'
+          unzip -p "$UI" arena/client/shell/GgoUnifiedSurfaceClient.class | strings | grep -q 'GGO_READY_FILE'
           cp "$UI" stage105/gungloryonline-ui-runtime-v1-stage105-unified-surface.jar
           echo "sha256=$(sha256sum "$UI" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "bytes=$(stat -c%s "$UI")" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         id: upload
         with:
@@ -112,6 +124,8 @@ jobs:
           set -euo pipefail
           result=failure
           [ "$UI_OUTCOME" = success ] && [ "$UPLOAD_OUTCOME" = success ] && result=success
+          git fetch origin client/runtime-migration-v1
+          git reset --hard origin/client/runtime-migration-v1
           mkdir -p ci-results
           cat > ci-results/stage105-unified-surface.txt <<EOF
           workflow=${GITHUB_WORKFLOW}
@@ -119,6 +133,8 @@ jobs:
           client_sha=${GITHUB_SHA}
           build_id=runtime-stage105
           ui_sha256=${{ steps.ui.outputs.sha256 }}
+          ui_bytes=${{ steps.ui.outputs.bytes }}
+          ggo_ready_signal=true
           vanilla_navigation_fenced=true
           intentional_disconnect_coordinated=true
           startup_transform_reset=true
@@ -135,6 +151,4 @@ jobs:
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add ci-results/stage105-unified-surface.txt
           git commit -m "ci: record Stage105 unified surface ${GITHUB_RUN_ID}" || exit 0
-          git fetch origin client/runtime-migration-v1
-          git rebase origin/client/runtime-migration-v1
           git push origin HEAD:client/runtime-migration-v1
