@@ -11,6 +11,8 @@ on:
       - 'hotfix/GgoVanillaRuntimeFence.java'
       - 'hotfix/GgoEntryExperience.java'
       - 'hotfix/GgoForgeLoadingOverlayMixin.java'
+      - 'hotfix/GgoWindowIconClient.java'
+      - 'hotfix/GgoUnifiedSurfaceReady.java'
       - 'hotfix/apply_ggo_hub_stage101.py'
       - 'hotfix/apply_ggo_legacy_routes_stage101.py'
 
@@ -73,6 +75,7 @@ jobs:
           cp hotfix/GgoVanillaRuntimeFence.java "$SHELL/GgoVanillaRuntimeFence.java"
           cp hotfix/GgoEntryExperience.java "$SHELL/GgoEntryExperience.java"
           cp hotfix/GgoWindowIconClient.java "$SHELL/GgoWindowIconClient.java"
+          cp hotfix/GgoUnifiedSurfaceReady.java "$SHELL/GgoUnifiedSurfaceReady.java"
 
           # Re-apply Stage104 after canonical copies so the generated shell keeps the race-free exit path.
           python3 hotfix/apply_ggo_shell_lock_stage104.py
@@ -86,7 +89,7 @@ jobs:
           UI="$(find ga-build/client-ui/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
           test -n "$UI" && test -f "$UI"
 
-          for c in GgoShellScreen GgoShellHooks GgoVanillaRuntimeFence GgoEntryExperience GgoWindowIconClient; do
+          for c in GgoShellScreen GgoShellHooks GgoVanillaRuntimeFence GgoEntryExperience GgoWindowIconClient GgoUnifiedSurfaceReady; do
             jar tf "$UI" | grep -q "^arena/client/shell/$c.class$"
           done
           for c in ShopScreen ProfileScreen SkillsScreen GgoLegacyUiBridge; do
@@ -102,6 +105,9 @@ jobs:
           unzip -p "$UI" arena/client/shell/GgoShellScreen.class | strings | grep -q 'EXIT TO GGO'
           unzip -p "$UI" arena/client/shell/GgoShellScreen.class | strings | grep -q 'GGO HUB'
           unzip -p "$UI" arena/client/shell/GgoEntryExperience.class | strings | grep -q 'RETURNING_TO_FRONTEND'
+          unzip -p "$UI" arena/client/shell/GgoUnifiedSurfaceReady.class | strings | grep -q 'GGO_READY_FILE'
+          unzip -p "$UI" arena/client/shell/GgoUnifiedSurfaceReady.class | strings | grep -q 'GGO_FULLSCREEN_AFTER_READY'
+          unzip -p "$UI" arena/client/shell/GgoWindowIconClient.class | strings | grep -q 'glfwSetWindowIcon'
           unzip -p "$UI" arena/mixin/GgoForgeLoadingOverlayMixin.class | strings | grep -q 'INITIALIZING GGO'
 
           mkdir -p stage104
