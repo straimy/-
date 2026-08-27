@@ -12,7 +12,6 @@ ICON = HOTFIX / "assets/ggo-window-icon.png"
 
 for required in (
     HOTFIX / "GgoForgeLoadingOverlayMixin.java",
-    HOTFIX / "GgoButtonMixin.java",
     HOTFIX / "GgoWindowIconClient.java",
     HOTFIX / "ggo-startup.mixins.json",
     ICON,
@@ -25,12 +24,20 @@ MIXIN_JAVA.mkdir(parents=True, exist_ok=True)
 SHELL_JAVA.mkdir(parents=True, exist_ok=True)
 (RES / "assets/ggo").mkdir(parents=True, exist_ok=True)
 shutil.copy2(HOTFIX / "GgoForgeLoadingOverlayMixin.java", MIXIN_JAVA / "GgoForgeLoadingOverlayMixin.java")
-shutil.copy2(HOTFIX / "GgoButtonMixin.java", MIXIN_JAVA / "GgoButtonMixin.java")
-# A previous Window#setTitle mixin crashed in Forge runtime because the target method
-# name is remapped/obfuscated. Keep title branding in the safe GLFW client hook only.
+
+# First-party button styling must never be a required startup mixin. In the real
+# Forge/SRG 1.20.1 runtime Button#renderWidget is remapped, so the old source-name
+# injection could crash the entire client before the GGO shell appeared.
+stale_button_mixin = MIXIN_JAVA / "GgoButtonMixin.java"
+if stale_button_mixin.exists():
+    stale_button_mixin.unlink()
+
+# A previous Window#setTitle mixin had the same remapping problem. Keep title
+# branding in the safe GLFW client hook only.
 stale_title_mixin = MIXIN_JAVA / "GgoWindowTitleMixin.java"
 if stale_title_mixin.exists():
     stale_title_mixin.unlink()
+
 shutil.copy2(HOTFIX / "GgoWindowIconClient.java", SHELL_JAVA / "GgoWindowIconClient.java")
 shutil.copy2(HOTFIX / "ggo-startup.mixins.json", RES / "ggo-startup.mixins.json")
 shutil.copy2(ICON, RES / "assets/ggo/icon.png")
@@ -51,7 +58,6 @@ tasks.named('jar') {
     BUILD.write_text(text, encoding="utf-8")
 
 mixin = (MIXIN_JAVA / "GgoForgeLoadingOverlayMixin.java").read_text(encoding="utf-8")
-button_mixin = (MIXIN_JAVA / "GgoButtonMixin.java").read_text(encoding="utf-8")
 window_brand = (SHELL_JAVA / "GgoWindowIconClient.java").read_text(encoding="utf-8")
 config = (RES / "ggo-startup.mixins.json").read_text(encoding="utf-8")
 build = BUILD.read_text(encoding="utf-8")
@@ -62,12 +68,11 @@ checks = {
     "non-cancelling TAIL injection": '@At("TAIL")' in mixin and "CallbackInfo ci" in mixin,
     "runtime method": 'method = "m_88315_"' in mixin,
     "GGO brand": '"GUNGLORYONLINE"' in mixin,
-    "first-party button renderer": 'method = "renderWidget"' in button_mixin and "GgoShellScreen" in button_mixin,
     "safe GLFW title installer": "glfwSetWindowTitle" in window_brand and '"GunGloryOnline"' in window_brand,
     "native GLFW icon installer": "glfwSetWindowIcon" in window_brand and '"/assets/ggo/icon.png"' in window_brand,
     "native icon packaged": packaged_icon.is_file() and packaged_icon.stat().st_size > 0,
     "client loading mixin config": '"GgoForgeLoadingOverlayMixin"' in config,
-    "client button mixin config": '"GgoButtonMixin"' in config,
+    "unsafe button mixin absent": '"GgoButtonMixin"' not in config and not stale_button_mixin.exists(),
     "unsafe title mixin absent": '"GgoWindowTitleMixin"' not in config and not stale_title_mixin.exists(),
     "jar manifest wiring": "attributes('MixinConfigs': 'ggo-startup.mixins.json')" in build,
 }
