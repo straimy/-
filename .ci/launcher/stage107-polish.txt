@@ -1,6 +1,6 @@
 workflow=GGO Launcher Stage107 Polish
-run_id=33054583898
-source_sha=52327cf03a5e9dfe297a92d99fd56064c7ed41e3
+run_id=33054621410
+source_sha=12967c794443fa3748683c0af266d20a9234050b
 launcher_version=0.2.9
 game_version=v107-candidate
 manifest=beta-stage107-candidate.json
