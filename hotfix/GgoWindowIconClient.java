@@ -15,11 +15,12 @@ import org.lwjgl.glfw.GLFWImage;
 import org.lwjgl.stb.STBImage;
 import org.lwjgl.system.MemoryStack;
 
-/** Keeps first-party GGO native window branding after Minecraft/Forge title rewrites. */
+/** Keeps first-party GGO native window branding after engine title/icon rewrites. */
 @Mod.EventBusSubscriber(value = Dist.CLIENT, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class GgoWindowIconClient {
-    private static boolean iconAttempted;
+    private static long firstWindowSeenAt;
     private static long lastTitleUpdate;
+    private static long lastIconUpdate;
 
     private GgoWindowIconClient() {}
 
@@ -30,9 +31,9 @@ public final class GgoWindowIconClient {
         if (mc == null || mc.getWindow() == null || mc.getWindow().getWindow() == 0L) return;
         long handle = mc.getWindow().getWindow();
         long now = System.currentTimeMillis();
+        if (firstWindowSeenAt == 0L) firstWindowSeenAt = now;
 
-        // Minecraft and Forge rewrite the native title when entering a world/server.
-        // Re-assert GGO periodically without touching mapped Window methods.
+        // The engine rewrites its title on world/server transitions. Keep the public identity GGO.
         if (now - lastTitleUpdate >= 1000L) {
             lastTitleUpdate = now;
             try {
@@ -42,8 +43,12 @@ public final class GgoWindowIconClient {
             }
         }
 
-        if (!iconAttempted) {
-            iconAttempted = true;
+        // Some Linux compositors observe a later engine icon write than our first client tick.
+        // Re-assert the GGO icon aggressively during startup, then occasionally for transitions.
+        long age = now - firstWindowSeenAt;
+        long interval = age < 15_000L ? 1_000L : 10_000L;
+        if (lastIconUpdate == 0L || now - lastIconUpdate >= interval) {
+            lastIconUpdate = now;
             installIcon(handle);
         }
     }
