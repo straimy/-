@@ -1,6 +1,6 @@
 workflow=GunGloryOnline Launcher Packages
 run_id=33049953185
-run_attempt=1
+run_attempt=2
 run_url=https://github.com/straimy/-/actions/runs/33049953185
 head_sha=9139fb067f41ef98c47365d8aade1605b42820b8
 build_status=failure
