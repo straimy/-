@@ -1,8 +1,8 @@
 workflow=GGO Runtime Stage110 Button Mixin Hotfix
-run_id=33099985371
-client_sha=1722eac24137317a75685b56fb350c55ffa5cc85
+run_id=33100644729
+client_sha=fb934f841a8b672d4b808c1b0bb2c874f101c4b6
 build_id=runtime-stage110
-ui_sha256=5101170b5628c3a9fa6fdb8bfb415d80ceb49d06b6797e048475ed88fc73c530
+ui_sha256=48a6216779d76e4d43852e78be921f149d7b382c0a4e801abf691df9a8adbf12
 ui_bytes=211701
 unsafe_button_mixin_absent=true
 unsafe_title_mixin_absent=true
