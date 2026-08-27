@@ -1,4 +1,5 @@
 name: GGO Launcher Stage110 Hotfix Linux
+# Stage110 retrigger: crash-safe client package
 
 on:
   workflow_dispatch:
