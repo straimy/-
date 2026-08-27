@@ -4,8 +4,7 @@
   "package": "arena.mixin",
   "compatibilityLevel": "JAVA_17",
   "client": [
-    "GgoForgeLoadingOverlayMixin",
-    "GgoButtonMixin"
+    "GgoForgeLoadingOverlayMixin"
   ],
   "injectors": {
     "defaultRequire": 1
