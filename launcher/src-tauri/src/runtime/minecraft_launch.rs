@@ -109,11 +109,13 @@ pub struct GameProcessStatus {
 static GAME_PROCESS_STATUS: OnceLock<Mutex<GameProcessStatus>> = OnceLock::new();
 
 fn game_process_state() -> &'static Mutex<GameProcessStatus> {
-    GAME_PROCESS_STATUS.get_or_init(|| Mutex::new(GameProcessStatus {
-        running: false,
-        pid: None,
-        exit_code: None,
-    }))
+    GAME_PROCESS_STATUS.get_or_init(|| {
+        Mutex::new(GameProcessStatus {
+            running: false,
+            pid: None,
+            exit_code: None,
+        })
+    })
 }
 
 pub fn game_process_status() -> GameProcessStatus {
@@ -171,7 +173,9 @@ pub fn launch_with_environment(
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         if status.running {
-            return Err(LaunchError::Spawn("GunGloryOnline is already running".to_string()));
+            return Err(LaunchError::Spawn(
+                "GunGloryOnline is already running".to_string(),
+            ));
         }
     }
 
@@ -182,7 +186,11 @@ pub fn launch_with_environment(
         let mut status = game_process_state()
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        *status = GameProcessStatus { running: true, pid: Some(pid), exit_code: None };
+        *status = GameProcessStatus {
+            running: true,
+            pid: Some(pid),
+            exit_code: None,
+        };
     }
 
     // Keep ownership of the Java child until it exits. This reaps the process and gives

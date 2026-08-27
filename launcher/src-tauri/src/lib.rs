@@ -339,46 +339,6 @@ fn ggo_integrity_pair(root: &std::path::Path) -> Result<(String, String, String)
     Err("GGO managed Core/UI pair is incomplete. Repair the game before launching.".to_string())
 }
 
-fn unified_ready_file() -> PathBuf {
-    std::env::temp_dir().join(format!("ggo-ready-{}.flag", uuid::Uuid::new_v4()))
-}
-
-fn supervise_unified_surface(app: AppHandle, ready_file: PathBuf) {
-    tauri::async_runtime::spawn(async move {
-        let main = app.get_webview_window("main");
-        if let Some(window) = main.as_ref() {
-            let _ = window.set_always_on_top(true);
-            let _ = window.show();
-            let _ = window.set_focus();
-        }
-
-        let mut revealed = false;
-        loop {
-            let status = minecraft_launch::game_process_status();
-            if !status.running {
-                break;
-            }
-
-            if !revealed && std::fs::read_to_string(&ready_file).is_ok_and(|value| value.trim() == "ready") {
-                if let Some(window) = main.as_ref() {
-                    let _ = window.set_always_on_top(false);
-                    let _ = window.hide();
-                }
-                revealed = true;
-            }
-            sleep(Duration::from_millis(125)).await;
-        }
-
-        let _ = std::fs::remove_file(&ready_file);
-        if let Some(window) = main {
-            let _ = window.set_always_on_top(false);
-            let _ = window.show();
-            let _ = window.unminimize();
-            let _ = window.set_focus();
-        }
-    });
-}
-
 #[tauri::command]
 async fn launch_game(
     app: AppHandle,
@@ -658,19 +618,34 @@ mod tests {
     #[test]
     fn managed_stage_parser_accepts_candidate_suffixes() {
         assert_eq!(
-            managed_stage_from_name("gungloryonline-core-runtime-v1-stage100-ost-branding.jar", "gungloryonline-core-runtime-v1-"),
+            managed_stage_from_name(
+                "gungloryonline-core-runtime-v1-stage100-ost-branding.jar",
+                "gungloryonline-core-runtime-v1-"
+            ),
             Some(100)
         );
         assert_eq!(
-            managed_stage_from_name("gungloryonline-ui-runtime-v1-stage99-clean-hub.jar", "gungloryonline-ui-runtime-v1-"),
+            managed_stage_from_name(
+                "gungloryonline-ui-runtime-v1-stage99-clean-hub.jar",
+                "gungloryonline-ui-runtime-v1-"
+            ),
             Some(99)
         );
     }
 
     #[test]
     fn managed_stage_parser_rejects_non_managed_names() {
-        assert_eq!(managed_stage_from_name("example.jar", "gungloryonline-core-runtime-v1-"), None);
-        assert_eq!(managed_stage_from_name("gungloryonline-core-runtime-v1-legacy.jar", "gungloryonline-core-runtime-v1-"), None);
+        assert_eq!(
+            managed_stage_from_name("example.jar", "gungloryonline-core-runtime-v1-"),
+            None
+        );
+        assert_eq!(
+            managed_stage_from_name(
+                "gungloryonline-core-runtime-v1-legacy.jar",
+                "gungloryonline-core-runtime-v1-"
+            ),
+            None
+        );
     }
 
     #[test]
@@ -678,6 +653,10 @@ mod tests {
         let first = unified_ready_file();
         let second = unified_ready_file();
         assert_ne!(first, second);
-        assert!(first.file_name().and_then(|v| v.to_str()).unwrap_or_default().starts_with("ggo-ready-"));
+        assert!(first
+            .file_name()
+            .and_then(|v| v.to_str())
+            .unwrap_or_default()
+            .starts_with("ggo-ready-"));
     }
 }
