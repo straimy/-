@@ -7,6 +7,7 @@ pub mod minecraft_natives;
 pub mod minecraft_process;
 pub mod official_resource_pack;
 pub mod official_server;
+pub mod unified_surface;
 use std::path::Path;
 
 pub trait GameRuntime {
