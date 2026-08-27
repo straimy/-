@@ -23,15 +23,22 @@ pub fn supervise(app: AppHandle, ready_file: PathBuf) {
                 break;
             }
 
-            if !game_revealed
-                && std::fs::read_to_string(&ready_file)
-                    .is_ok_and(|value| value.trim() == "ready")
-            {
+            let ready = std::fs::read_to_string(&ready_file)
+                .is_ok_and(|value| value.trim() == "ready");
+            if !game_revealed && ready {
                 if let Some(window) = main.as_ref() {
                     let _ = window.set_always_on_top(false);
                     let _ = window.hide();
                 }
                 game_revealed = true;
+            } else if !game_revealed {
+                // Stage105 React builds used to hide immediately after spawn. Keep the launcher
+                // authoritative and visible throughout Forge bootstrap until the GGO client writes
+                // its explicit ready signal; the first-party game surface then replaces it.
+                if let Some(window) = main.as_ref() {
+                    let _ = window.set_always_on_top(true);
+                    let _ = window.show();
+                }
             }
             sleep(Duration::from_millis(125)).await;
         }
