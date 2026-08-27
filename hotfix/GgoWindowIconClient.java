@@ -15,7 +15,10 @@ import org.lwjgl.glfw.GLFWImage;
 import org.lwjgl.stb.STBImage;
 import org.lwjgl.system.MemoryStack;
 
-/** Keeps first-party GGO native window branding after engine title/icon rewrites. */
+/**
+ * Keeps first-party GGO native window branding after engine title/icon rewrites.
+ * Stage110 deliberately re-asserts this identity across startup and world transitions.
+ */
 @Mod.EventBusSubscriber(value = Dist.CLIENT, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class GgoWindowIconClient {
     private static long firstWindowSeenAt;
