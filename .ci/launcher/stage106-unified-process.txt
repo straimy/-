@@ -1,6 +1,6 @@
 workflow=GGO Launcher Stage106 Unified Process
-run_id=33054600440
-source_sha=08ff38707076356efde0aecc8b0298ef567c81a0
+run_id=33054621384
+source_sha=12967c794443fa3748683c0af266d20a9234050b
 launcher_version=0.2.8
 game_version=v106-candidate
 manifest=beta-stage106-candidate.json
