@@ -1,8 +1,10 @@
 workflow=GGO Runtime Stage105 Unified Surface
-run_id=32799807325
-client_sha=e015c6e2ba0c9c40cb21f53c58ed035eb7e555bc
+run_id=33053818669
+client_sha=953e2f4c68204b88b2a6c529aabdfede3b13106a
 build_id=runtime-stage105
-ui_sha256=fac80ae88c77179edcbff8bcc03ab9bb0174e1029c0401cd97aaf37ebaab4d00
+ui_sha256=7f3fc9762bf1cc88d1db4b21ca46cbdef7850841d684274b57518f424dc41ea0
+ui_bytes=205322
+ggo_ready_signal=true
 vanilla_navigation_fenced=true
 intentional_disconnect_coordinated=true
 startup_transform_reset=true
