@@ -1,6 +1,6 @@
 workflow=GGO Launcher Stage103 Final Linux
-run_id=32804986878
-source_sha=088bf3d5204b2e565093171be80bea552865f036
+run_id=33049953177
+source_sha=9139fb067f41ef98c47365d8aade1605b42820b8
 launcher_version=0.2.7
 game_version=v103-candidate
 manifest=beta-stage103-candidate.json
