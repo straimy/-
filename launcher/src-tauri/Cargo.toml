@@ -1,6 +1,6 @@
 [package]
 name = "gungloryonline-launcher"
-version = "0.2.9"
+version = "0.2.10"
 description = "GunGloryOnline Launcher"
 authors = ["GunGloryOnline"]
 edition = "2021"
