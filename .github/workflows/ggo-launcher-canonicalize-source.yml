@@ -39,8 +39,6 @@ jobs:
           set -euo pipefail
           python3 hotfix/apply_menu_first_beta_stage76.py
           python3 hotfix/apply_launcher_surface_stage99.py
-          python3 hotfix/apply_session_validation_stage104.py
-          python3 hotfix/apply_character_art_stage104.py
           python3 hotfix/apply_unified_lifecycle_stage105.py
           grep -Fq 'play:"PLAY"' src/App.tsx
           ! grep -Fq 'play:"PLAY ONLINE"' src/App.tsx
