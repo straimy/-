@@ -19,7 +19,7 @@ use runtime::{
     minecraft::{self, JavaRuntimeInfo, LaunchPreparation, RuntimeCheck},
     minecraft_install::{self, RuntimeInstallReport},
     minecraft_launch::{self, GameProcessStatus, LaunchOptions, LaunchResult},
-    minecraft_process,
+    minecraft_process, unified_surface,
 };
 use sha2::{Digest, Sha256};
 use std::{
@@ -30,7 +30,7 @@ use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 use tokio::{
     net::TcpStream,
-    time::{sleep, timeout, Duration},
+    time::{timeout, Duration},
 };
 
 #[tauri::command]
@@ -366,7 +366,7 @@ async fn launch_game(
 
     let fullscreen_after_ready = options.fullscreen;
     options.fullscreen = false;
-    let ready_file = unified_ready_file();
+    let ready_file = unified_surface::ready_file();
     let _ = std::fs::remove_file(&ready_file);
 
     let root = PathBuf::from(&install_dir);
@@ -443,7 +443,7 @@ async fn launch_game(
 
     match result {
         Ok(result) => {
-            supervise_unified_surface(app, ready_file);
+            unified_surface::supervise(app, ready_file);
             Ok(result)
         }
         Err(error) => {
@@ -500,69 +500,110 @@ async fn microsoft_logout(store: State<'_, MicrosoftSessionStore>) -> Result<(),
 }
 
 #[tauri::command]
-async fn ggo_login(store: State<'_, GgoSessionStore>) -> Result<GgoAuthStatus, String> {
+async fn ggo_login(
+    store: State<'_, GgoSessionStore>,
+    api_url: String,
+    username: Option<String>,
+    password: Option<String>,
+) -> Result<GgoAuthStatus, String> {
     let http = updater::client().map_err(|error| error.to_string())?;
-    let api_url = BootstrapInfo::current().account_api_url;
-    ggo_auth::login(&http, &api_url, store.inner()).await
-}
-
-#[tauri::command]
-async fn ggo_auth_status(store: State<'_, GgoSessionStore>) -> Result<GgoAuthStatus, String> {
-    let Some(session) = store.snapshot().await else {
-        return Ok(GgoAuthStatus::signed_out());
-    };
-    let http = updater::client().map_err(|error| error.to_string())?;
-    let api_url = BootstrapInfo::current().account_api_url;
-    match ggo_auth::fetch_current_profile(&http, &api_url, &session.access_token).await {
-        Ok(profile) => {
-            if profile.id != session.profile.id {
-                store.clear().await;
-                return Ok(GgoAuthStatus::signed_out());
-            }
-            Ok(GgoAuthStatus {
-                authenticated: true,
-                profile: Some(profile),
-                linked_minecraft: session.linked_minecraft,
-            })
+    match (
+        username
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty()),
+        password.as_deref().filter(|value| !value.is_empty()),
+    ) {
+        (Some(username), Some(password)) => {
+            ggo_auth::login_password(&http, &api_url, username, password, store.inner()).await
         }
-        Err(ggo_auth::GgoAuthError::Unauthorized) => {
-            store.clear().await;
-            Ok(GgoAuthStatus::signed_out())
+        (None, None) => ggo_auth::login(&http, &api_url, store.inner()).await,
+        _ => {
+            Err("Provide both GGO username and password, or neither for browser login".to_string())
         }
-        Err(error) => Err(error.to_string()),
     }
 }
 
 #[tauri::command]
-async fn ggo_logout(store: State<'_, GgoSessionStore>) -> Result<(), String> {
-    store.clear().await;
-    Ok(())
+async fn ggo_auth_status(store: State<'_, GgoSessionStore>) -> Result<GgoAuthStatus, String> {
+    let http = updater::client().map_err(|error| error.to_string())?;
+    let api_url = BootstrapInfo::current().account_api_url;
+    Ok(ggo_auth::status(&http, &api_url, store.inner()).await)
+}
+
+#[tauri::command]
+async fn ggo_logout(store: State<'_, GgoSessionStore>, api_url: String) -> Result<(), String> {
+    let http = updater::client().map_err(|error| error.to_string())?;
+    ggo_auth::logout(&http, &api_url, store.inner()).await
+}
+
+#[tauri::command]
+async fn ggo_set_skin_source(
+    store: State<'_, GgoSessionStore>,
+    api_url: String,
+    source: String,
+) -> Result<GgoAuthStatus, String> {
+    let http = updater::client().map_err(|error| error.to_string())?;
+    ggo_auth::set_skin_source(&http, &api_url, &source, store.inner()).await
 }
 
 #[tauri::command]
 async fn ggo_link_minecraft(
     ggo_store: State<'_, GgoSessionStore>,
     microsoft_store: State<'_, MicrosoftSessionStore>,
+    api_url: String,
 ) -> Result<MinecraftLinkResult, String> {
+    let microsoft = microsoft_store
+        .snapshot()
+        .await
+        .ok_or_else(|| "Microsoft/Minecraft account is not authenticated".to_string())?;
     let http = updater::client().map_err(|error| error.to_string())?;
-    let api_url = BootstrapInfo::current().account_api_url;
-    ggo_auth::link_minecraft(&http, &api_url, ggo_store.inner(), microsoft_store.inner()).await
+    ggo_auth::link_minecraft(
+        &http,
+        &api_url,
+        &microsoft.minecraft_access_token,
+        ggo_store.inner(),
+    )
+    .await
 }
 
 #[tauri::command]
-async fn remote_content_status(url: String) -> Result<UpdatePlan, String> {
+async fn check_game(manifest_url: String, install_dir: String) -> Result<UpdatePlan, String> {
     let http = updater::client().map_err(|error| error.to_string())?;
-    ggo_remote_install::plan(&http, &url)
+    let manifest = updater::fetch_manifest(&http, &manifest_url)
+        .await
+        .map_err(|error| error.to_string())?;
+    updater::build_plan(&manifest, &PathBuf::from(install_dir))
         .await
         .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
-async fn install_remote_content(app: AppHandle, url: String) -> Result<SyncReport, String> {
-    let http = updater::client().map_err(|error| error.to_string())?;
-    ggo_remote_install::install(&app, &http, &url)
+async fn sync_game(
+    app: AppHandle,
+    manifest_url: String,
+    install_dir: String,
+) -> Result<SyncReport, String> {
+    let root = PathBuf::from(&install_dir);
+    let report = updater::sync(&app, &manifest_url, &root, false)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+    ggo_remote_install::finalize_remote_install(&root).map_err(|error| error.to_string())?;
+    Ok(report)
+}
+
+#[tauri::command]
+async fn repair_game(
+    app: AppHandle,
+    manifest_url: String,
+    install_dir: String,
+) -> Result<SyncReport, String> {
+    let root = PathBuf::from(&install_dir);
+    let report = updater::sync(&app, &manifest_url, &root, true)
+        .await
+        .map_err(|error| error.to_string())?;
+    ggo_remote_install::finalize_remote_install(&root).map_err(|error| error.to_string())?;
+    Ok(report)
 }
 
 pub fn run() {
@@ -603,9 +644,11 @@ pub fn run() {
             ggo_login,
             ggo_auth_status,
             ggo_logout,
+            ggo_set_skin_source,
             ggo_link_minecraft,
-            remote_content_status,
-            install_remote_content,
+            check_game,
+            sync_game,
+            repair_game,
         ])
         .run(tauri::generate_context!())
         .expect("error while running GunGloryOnline launcher");
@@ -646,17 +689,5 @@ mod tests {
             ),
             None
         );
-    }
-
-    #[test]
-    fn unified_ready_file_is_unique_and_private_to_child_contract() {
-        let first = unified_ready_file();
-        let second = unified_ready_file();
-        assert_ne!(first, second);
-        assert!(first
-            .file_name()
-            .and_then(|v| v.to_str())
-            .unwrap_or_default()
-            .starts_with("ggo-ready-"));
     }
 }

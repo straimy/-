@@ -23,8 +23,8 @@ pub fn supervise(app: AppHandle, ready_file: PathBuf) {
                 break;
             }
 
-            let ready = std::fs::read_to_string(&ready_file)
-                .is_ok_and(|value| value.trim() == "ready");
+            let ready =
+                std::fs::read_to_string(&ready_file).is_ok_and(|value| value.trim() == "ready");
             if !game_revealed && ready {
                 if let Some(window) = main.as_ref() {
                     let _ = window.set_always_on_top(false);
