@@ -1,0 +1,176 @@
+name: GGO Runtime Stage110 Button Mixin Hotfix
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - client/runtime-migration-v1
+    paths:
+      - '.github/workflows/ggo-runtime-stage110-button-mixin-hotfix.yml'
+      - 'hotfix/ggo-startup.mixins.json'
+      - 'hotfix/apply_ggo_startup_brand_stage98.py'
+      - 'hotfix/GgoForgeLoadingOverlayMixin.java'
+      - 'hotfix/GgoWindowIconClient.java'
+      - 'hotfix/GgoUnifiedSurfaceBridge.java'
+      - 'hotfix/GgoMusicFadeClient.java'
+      - 'hotfix/GgoSettingsScreen.java'
+      - 'hotfix/GgoVanillaRuntimeFence.java'
+      - 'hotfix/GgoEntryExperience.java'
+      - 'hotfix/GgoButton.java'
+      - 'hotfix/apply_ggo_legacy_routes_stage101.py'
+      - 'hotfix/apply_ggo_shell_lock_stage104.py'
+      - 'hotfix/apply_ggo_widget_stage105.py'
+      - 'hotfix/apply_ggo_unified_process_stage106.py'
+      - 'hotfix/apply_ggo_polish_stage107.py'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      SOURCE_ZIP: gunner-arena-forge-1.20.1-0.6.0-test52-GREPFIX-SOURCE.zip
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Capture exact ref
+        id: refs
+        run: echo "client_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Prepare Forge wrapper
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/ggo-mdk /tmp/ggo-mdk.zip
+          curl -fL --retry 3 -o /tmp/ggo-mdk.zip https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/forge-1.20.1-47.4.10-mdk.zip
+          mkdir -p /tmp/ggo-mdk
+          unzip -q /tmp/ggo-mdk.zip 'gradlew' 'gradlew.bat' 'gradle/*' -d /tmp/ggo-mdk
+
+      - name: Build Stage110 crash-safe unified UI
+        id: ui
+        run: |
+          set -euo pipefail
+          rm -rf ga-build stage110 && mkdir ga-build stage110
+          unzip -q "$SOURCE_ZIP" -d ga-build
+          for patch in \
+            apply_ggo_ui_shell_stage1.py apply_ggo_ui_shell_stage2.py apply_ggo_ui_shell_stage3.py \
+            apply_ggo_hud_stage4.py apply_ggo_frontend_stage5.py apply_ggo_settings_stage6.py \
+            apply_ggo_identity_minimap_stage7.py apply_ggo_weapon_navigation_stage8.py apply_ggo_ping_stage9.py \
+            apply_ggo_navigation_zoom_stage10.py apply_ggo_squad_ping_stage11.py apply_ggo_ping_wheel_stage12.py \
+            apply_ggo_tab_squad_stage13.py apply_ggo_objective_squad_stage15.py apply_ggo_runtime_network_stage17.py \
+            apply_ggo_jeg_telemetry_stage18.py apply_ggo_squad_map_stage19.py apply_ggo_server_hud_stage20.py \
+            apply_ggo_br_hud_stage21.py apply_ggo_contracts_stage23.py apply_ggo_br_map_client_stage24.py \
+            apply_ggo_contract_map_stage27_fixed.py apply_ggo_contract_session_stage35.py apply_ggo_contract_reward_ui_stage37.py \
+            apply_ggo_client_compile_baseline_stage28.py apply_ggo_deminecraft_client_stage40.py apply_ggo_inventory_stage42.py \
+            apply_ggo_input_fence_stage45.py apply_ggo_combat_hud_stage47.py apply_ggo_death_recap_stage48.py \
+            apply_ggo_inventory_stage50.py apply_ggo_launch_ticket_stage55.py apply_ggo_entry_ux_stage57.py \
+            apply_ggo_launcher_authority_stage58.py apply_ggo_session_verification_stage61.py apply_ggo_ui_packets_stage65.py \
+            apply_ggo_surface_fence_stage66.py apply_ggo_chat_shell_stage67.py apply_ggo_brand_leak_cleanup_stage68.py \
+            apply_ggo_training_stage77.py apply_ggo_startup_brand_stage98.py apply_ggo_hub_stage101.py \
+            apply_ggo_legacy_routes_stage101.py apply_ggo_shell_lock_stage104.py apply_ggo_widget_stage105.py \
+            apply_ggo_unified_process_stage106.py apply_ggo_polish_stage107.py; do
+            python3 "hotfix/$patch"
+          done
+
+          SHELL=ga-build/client-ui/src/main/java/arena/client/shell
+          UIJAVA=ga-build/client-ui/src/main/java/arena/client/ui
+          MIXINS=ga-build/client-ui/src/main/java/arena/mixin
+          CONFIG=ga-build/client-ui/src/main/resources/ggo-startup.mixins.json
+
+          grep -Fq 'sendCommand("menu")' "$SHELL/GgoShellHooks.java"
+          grep -Fq 'new GgoShellScreen(GgoShellScreen.Page.HOME)' "$UIJAVA/ClientUiOpener.java"
+          grep -Fq 'GgoLegacyUiBridge.openShop()' "$SHELL/GgoShellScreen.java"
+          grep -Fq 'GgoLegacyUiBridge.openProfile()' "$SHELL/GgoShellScreen.java"
+          grep -Fq 'GgoLegacyUiBridge.openSkills()' "$SHELL/GgoShellScreen.java"
+          grep -Fq 'mc.stop();' "$SHELL/GgoShellScreen.java"
+          grep -Fq 'enum Page { AUDIO, VIDEO, CONTROLS }' "$SHELL/GgoSettingsScreen.java"
+          grep -Fq 'FADE_TICKS = 20 * 8' "$SHELL/GgoMusicFadeClient.java"
+          grep -Fq 'System.getenv("GGO_READY_FILE")' "$SHELL/GgoUnifiedSurfaceBridge.java"
+          grep -Fq 'screen instanceof TitleScreen' "$SHELL/GgoVanillaRuntimeFence.java"
+          grep -Fq 'screen instanceof OptionsScreen' "$SHELL/GgoVanillaRuntimeFence.java"
+          grep -Fq 'screen instanceof SelectWorldScreen' "$SHELL/GgoVanillaRuntimeFence.java"
+          grep -Fq 'screen instanceof JoinMultiplayerScreen' "$SHELL/GgoVanillaRuntimeFence.java"
+          grep -Fq 'screen instanceof PauseScreen' "$SHELL/GgoVanillaRuntimeFence.java"
+          grep -Fq 'pose().last().pose().identity()' "$MIXINS/GgoForgeLoadingOverlayMixin.java"
+          grep -Fq 'GgoButton.builder' "$SHELL/GgoShellScreen.java"
+
+          test ! -e "$MIXINS/GgoButtonMixin.java"
+          ! grep -Fq 'GgoButtonMixin' "$CONFIG"
+          grep -Fq 'GgoForgeLoadingOverlayMixin' "$CONFIG"
+
+          cp /tmp/ggo-mdk/gradlew ga-build/client-ui/gradlew
+          cp /tmp/ggo-mdk/gradlew.bat ga-build/client-ui/gradlew.bat
+          rm -rf ga-build/client-ui/gradle && cp -a /tmp/ggo-mdk/gradle ga-build/client-ui/gradle
+          chmod +x ga-build/client-ui/gradlew
+          (cd ga-build/client-ui && ./gradlew --no-daemon clean build --stacktrace)
+
+          UI="$(find ga-build/client-ui/build/libs -type f -name '*.jar' ! -name '*sources*' ! -name '*dev*' | head -n1)"
+          test -n "$UI" && test -f "$UI"
+          for c in GgoUnifiedSurfaceBridge GgoMusicFadeClient GgoSettingsScreen GgoVanillaRuntimeFence GgoShellScreen GgoButton GgoWindowIconClient; do
+            jar tf "$UI" | grep -q "^arena/client/shell/$c.class$"
+          done
+          for c in GgoLegacyUiBridge ClientUiOpener ShopScreen ProfileScreen SkillsScreen; do
+            jar tf "$UI" | grep -q "^arena/client/ui/$c.class$"
+          done
+          jar tf "$UI" | grep -q '^arena/mixin/GgoForgeLoadingOverlayMixin.class$'
+          ! jar tf "$UI" | grep -q '^arena/mixin/GgoButtonMixin.class$'
+          ! jar tf "$UI" | grep -q '^arena/mixin/GgoWindowTitleMixin.class$'
+          jar tf "$UI" | grep -q '^assets/ggo/icon.png$'
+          unzip -p "$UI" ggo-startup.mixins.json | grep -q 'GgoForgeLoadingOverlayMixin'
+          ! unzip -p "$UI" ggo-startup.mixins.json | grep -q 'GgoButtonMixin'
+          unzip -p "$UI" arena/client/shell/GgoUnifiedSurfaceBridge.class | strings | grep -q 'GGO_READY_FILE'
+          unzip -p "$UI" arena/client/shell/GgoShellHooks.class | strings | grep -q 'menu'
+
+          cp "$UI" stage110/gungloryonline-ui-runtime-v1-stage110-button-mixin-hotfix.jar
+          sha256sum stage110/gungloryonline-ui-runtime-v1-stage110-button-mixin-hotfix.jar > stage110/SHA256SUMS.txt
+          echo "sha256=$(sha256sum "$UI" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "bytes=$(stat -c%s "$UI")" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        id: upload
+        with:
+          name: GunGloryOnline-Runtime-Stage110-Button-Mixin-Hotfix
+          path: stage110/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish Stage110 receipt
+        if: always()
+        env:
+          UI_OUTCOME: ${{ steps.ui.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+        run: |
+          set -euo pipefail
+          result=failure
+          [ "$UI_OUTCOME" = success ] && [ "$UPLOAD_OUTCOME" = success ] && result=success
+          git fetch origin client/runtime-migration-v1
+          git reset --hard origin/client/runtime-migration-v1
+          mkdir -p ci-results
+          cat > ci-results/stage110-button-mixin-hotfix.txt <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_id=${GITHUB_RUN_ID}
+          client_sha=${{ steps.refs.outputs.client_sha }}
+          build_id=runtime-stage110
+          ui_sha256=${{ steps.ui.outputs.sha256 }}
+          ui_bytes=${{ steps.ui.outputs.bytes }}
+          unsafe_button_mixin_absent=true
+          unsafe_title_mixin_absent=true
+          startup_overlay_preserved=true
+          unified_shell_preserved=true
+          vanilla_navigation_fenced=true
+          ui_build=$UI_OUTCOME
+          upload=$UPLOAD_OUTCOME
+          result=$result
+          EOF
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add ci-results/stage110-button-mixin-hotfix.txt
+          git commit -m "ci: record Stage110 button mixin hotfix ${GITHUB_RUN_ID}" || exit 0
+          git push origin HEAD:client/runtime-migration-v1
