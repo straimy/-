@@ -3,6 +3,8 @@ use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 use tokio::time::{sleep, Duration};
 
+// Stage110 lifecycle contract: the launcher owns bootstrap visibility, yields only after the
+// first-party GGO client signals ready, and returns when the engine process exits.
 pub fn ready_file() -> PathBuf {
     std::env::temp_dir().join(format!("ggo-ready-{}.flag", uuid::Uuid::new_v4()))
 }
