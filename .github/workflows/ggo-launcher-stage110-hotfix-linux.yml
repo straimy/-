@@ -106,8 +106,23 @@ jobs:
             *0.2.11*) ;;
             *) echo "unexpected launcher filename: $APP" >&2; exit 1 ;;
           esac
-          grep -aFq 'beta-stage110-candidate.json' "$APP"
-          grep -aFq 'v110-candidate' "$APP"
+
+          # AppImage payload is SquashFS-compressed, so grepping the outer binary is not a
+          # reliable integrity check. Extract it and verify the actual packaged launcher.
+          chmod +x "$APP"
+          rm -rf /tmp/ggo-stage110-appimage
+          mkdir -p /tmp/ggo-stage110-appimage
+          (
+            cd /tmp/ggo-stage110-appimage
+            "$GITHUB_WORKSPACE/launcher/$APP" --appimage-extract >/dev/null
+          )
+          ROOT=/tmp/ggo-stage110-appimage/squashfs-root
+          test -d "$ROOT"
+          BIN="$(find "$ROOT/usr/bin" -maxdepth 1 -type f -executable | head -n1)"
+          test -n "$BIN" && test -f "$BIN"
+          strings "$BIN" | grep -aFq 'beta-stage110-candidate.json'
+          strings "$BIN" | grep -aFq 'v110-candidate'
+
           sha256sum "$APP"
           echo "sha256=$(sha256sum "$APP" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
           echo "bytes=$(stat -c%s "$APP")" >> "$GITHUB_OUTPUT"
