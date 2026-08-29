@@ -1,6 +1,6 @@
 workflow=GGO Launcher Stage108 Final Linux
-run_id=33236384490
-source_sha=3d9dc3f3b99078005226ead59be394de746a5805
+run_id=33273345109
+source_sha=1b2876dca210210a5ba46aedaf430e3b93a94453
 launcher_version=0.2.9
 game_version=v108-candidate
 manifest=beta-stage108-candidate.json
