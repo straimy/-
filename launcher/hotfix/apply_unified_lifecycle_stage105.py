@@ -173,7 +173,7 @@ if "setClientRunning" not in a:
     a = a.replace(state_anchor, state_anchor + 'const[clientRunning,setClientRunning]=useState(false);', 1)
 
 lifecycle_effect = '''
-  useEffect(()=>{if(!clientRunning)return;let disposed=false;const poll=async()=>{try{const process=await invoke<GameProcessStatus>("game_process_status");if(disposed||process.running)return;disposed=true;setClientRunning(false);const window=getCurrentWindow();await window.show().catch(()=>undefined);await window.setFocus().catch(()=>undefined);setStatus(process.exitCode===0?"GunGloryOnline closed":`GGO client exited (${process.exitCode??"signal"})`);}catch{/* keep the launcher hidden only while the known child is being tracked */}};const timer=window.setInterval(()=>void poll(),800);void poll();return()=>{disposed=true;window.clearInterval(timer);};},[clientRunning]);
+  useEffect(()=>{if(!clientRunning)return;let disposed=false;const poll=async()=>{try{const process=await invoke<GameProcessStatus>("game_process_status");if(disposed||process.running)return;disposed=true;setClientRunning(false);const window=getCurrentWindow();await window.show().catch(()=>undefined);await window.setFocus().catch(()=>undefined);setStatus(process.exitCode===0?"GunGloryOnline closed":`GGO client exited (${process.exitCode??"signal"})`);}catch{/* keep the launcher visible state owned by the Rust supervisor while the known child is tracked */}};const timer=window.setInterval(()=>void poll(),800);void poll();return()=>{disposed=true;window.clearInterval(timer);};},[clientRunning]);
 '''
 if 'invoke<GameProcessStatus>("game_process_status")' not in a:
     anchor = '  useEffect(()=>{if(page==="logs")void loadLogs();},[page,installDir]);\n'
@@ -181,19 +181,29 @@ if 'invoke<GameProcessStatus>("game_process_status")' not in a:
         raise SystemExit("Stage105 App effect anchor not found")
     a = a.replace(anchor, anchor + lifecycle_effect, 1)
 
-old_tail = 'const result=await invoke<LaunchResult>("launch_game",{installDir,customJava:javaPath||runtimeCheck.java?.path||null,options:opts,training:false,profile:launchProfile});setStatus(`GGO Client · PID ${result.pid}`);'
-new_tail = 'const result=await invoke<LaunchResult>("launch_game",{installDir,customJava:javaPath||runtimeCheck.java?.path||null,options:opts,training:false,profile:launchProfile});setStatus(`GGO Client · PID ${result.pid}`);setClientRunning(true);await getCurrentWindow().hide().catch(()=>undefined);'
-if old_tail in a:
-    a = a.replace(old_tail, new_tail, 1)
-elif 'setClientRunning(true);await getCurrentWindow().hide()' not in a:
-    raise SystemExit("Stage105 App launch tail anchor not found")
+# Stage105 only records lifecycle state in React. Rust unified_surface owns all hide/show timing.
+# Normalize legacy/repeated applications instead of stacking another hide() block.
+legacy = 'setClientRunning(true);await getCurrentWindow().hide().catch(()=>undefined);'
+a = a.replace(legacy, '')
+marker = 'setStatus(`GGO Client · PID ${result.pid}`);'
+if marker not in a:
+    raise SystemExit("Stage105 App launch status anchor not found")
+# Remove any duplicate naked transitions immediately following the launch status, then insert one.
+a = a.replace(marker + 'setClientRunning(true);', marker)
+while marker + 'setClientRunning(true);' in a:
+    a = a.replace(marker + 'setClientRunning(true);', marker)
+a = a.replace(marker, marker + 'setClientRunning(true);', 1)
+if 'getCurrentWindow().hide()' in a:
+    raise SystemExit("Stage105 direct React hide survived normalization")
+if a.count('setClientRunning(true);') != 1:
+    raise SystemExit("Stage105 expected exactly one clientRunning transition")
 APP.write_text(a, encoding="utf-8")
 
 # --- Contract checks ------------------------------------------------------
 checks = {
     PROCESS: ["pub struct GameProcessStatus", "std::thread::spawn(move ||", "child.wait()", "GunGloryOnline is already running"],
     LIB: ["minecraft_launch::{self, GameProcessStatus", "fn game_process_status() -> GameProcessStatus", "            game_process_status,"],
-    APP: ['getCurrentWindow', 'invoke<GameProcessStatus>("game_process_status")', 'setClientRunning(true)', 'getCurrentWindow().hide()', 'window.show()', 'window.setFocus()'],
+    APP: ['getCurrentWindow', 'invoke<GameProcessStatus>("game_process_status")', 'setClientRunning(true)', 'window.show()', 'window.setFocus()'],
 }
 for path, needles in checks.items():
     text = path.read_text(encoding="utf-8")
@@ -204,5 +214,6 @@ for path, needles in checks.items():
 print("Stage105 unified launcher/game lifecycle applied")
 print(" - launcher owns and reaps the GGO Java child")
 print(" - duplicate PLAY is rejected while the client is running")
-print(" - launcher hides after PLAY and restores/focuses after client exit")
+print(" - Rust unified_surface exclusively owns launcher hide/show timing")
+print(" - exactly one React clientRunning transition remains")
 print(" - abnormal client exit returns to launcher instead of looking like a launcher crash")
