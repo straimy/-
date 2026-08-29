@@ -1,0 +1,14 @@
+workflow=GGO Runtime Stage111 UX Shell
+run_id=33271436945
+client_sha=afe287fc2e739060bef63036d512419532c42ffe
+build_id=runtime-stage111
+ui_sha256=
+ui_bytes=
+local_m_hub=true
+squad_only_tab=true
+launcher_auto_connect=true
+process_exit_to_launcher=true
+vanilla_navigation_fenced=true
+ui_build=failure
+upload=skipped
+result=failure
