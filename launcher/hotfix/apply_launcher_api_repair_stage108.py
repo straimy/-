@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import re
 
 ROOT = Path(__file__).resolve().parents[1]
 LIB = ROOT / "src-tauri/src/lib.rs"
@@ -13,12 +14,18 @@ for path in (LIB, MOD, UNIFIED):
 lib = LIB.read_text(encoding="utf-8")
 
 # The ready-file lifecycle lives in a dedicated runtime module so Stage76 cannot accidentally
-# delete helper functions while canonicalizing launch_game.
-if "    unified_surface,\n" not in lib:
-    anchor = "    minecraft_process,\n"
-    if anchor not in lib:
+# delete helper functions while canonicalizing launch_game. rustfmt may keep minecraft_process
+# and unified_surface on the same line, so treat any unified_surface token inside the runtime use
+# block as canonical instead of depending on one exact whitespace layout.
+runtime_use = re.search(r"use runtime::\{(?P<body>.*?)\n\};", lib, re.S)
+if runtime_use is None:
+    raise SystemExit("Stage108 runtime use block missing")
+if re.search(r"\bunified_surface\b", runtime_use.group("body")) is None:
+    body = runtime_use.group("body")
+    if re.search(r"\bminecraft_process\b", body) is None:
         raise SystemExit("Stage108 runtime import anchor missing")
-    lib = lib.replace(anchor, anchor + "    unified_surface,\n", 1)
+    body = re.sub(r"\bminecraft_process\b", "minecraft_process, unified_surface", body, count=1)
+    lib = lib[: runtime_use.start("body")] + body + lib[runtime_use.end("body") :]
 lib = lib.replace("let ready_file = unified_ready_file();", "let ready_file = unified_surface::ready_file();")
 lib = lib.replace(
     "supervise_unified_surface(app, ready_file);",
@@ -220,6 +227,7 @@ for forbidden in [
         raise SystemExit(f"Stage108 stale launcher API survived: {forbidden}")
 
 print("Stage108 launcher API repair applied")
+print(" - rustfmt-grouped runtime imports are accepted idempotently")
 print(" - stale GGO session validation uses the real ggo_auth::status API")
 print(" - Minecraft linking uses the Microsoft access token contract")
 print(" - check/sync/repair commands use core::updater and finalize the managed runtime")
