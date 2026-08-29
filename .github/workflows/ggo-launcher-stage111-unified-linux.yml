@@ -1,4 +1,5 @@
 name: GGO Launcher Stage111 Unified Linux
+# exact Stage111 retrigger after legacy launcher workflows settled
 
 on:
   workflow_dispatch:
@@ -52,8 +53,6 @@ jobs:
           grep -Fq 'version = "0.2.12"' src-tauri/Cargo.toml
           grep -Fq 'beta-stage111-candidate.json' src-tauri/src/core/bootstrap.rs
           grep -Fq 'game_version: "v111-candidate"' src-tauri/src/core/bootstrap.rs
-
-          # One-application lifecycle: launcher owns/reaps the Java child and hides while it runs.
           grep -Fq 'child.wait()' src-tauri/src/runtime/minecraft_launch.rs
           grep -Fq 'GameProcessStatus' src-tauri/src/runtime/minecraft_launch.rs
           grep -Fq 'unified_surface::supervise' src-tauri/src/lib.rs
@@ -61,14 +60,10 @@ jobs:
           grep -Fq 'window.show()' src-tauri/src/runtime/unified_surface.rs
           grep -Fq 'window.unminimize()' src-tauri/src/runtime/unified_surface.rs
           grep -Fq 'game_process_status()' src-tauri/src/runtime/unified_surface.rs
-
-          # Suppress the separate Forge early window and group the JVM renderer as GGO on Linux.
           grep -Fq 'earlyWindowControl = false' src-tauri/src/runtime/minecraft_process.rs
           grep -Fq 'darkMojangStudiosBackground:true' src-tauri/src/runtime/minecraft_process.rs
           grep -Fq 'RESOURCE_NAME' src-tauri/src/runtime/minecraft_process.rs
           grep -Fq 'gungloryonline-launcher' src-tauri/src/runtime/minecraft_process.rs
-
-          # Account/session and current launcher UX remain canonical.
           grep -Fq 'fetch_profile(http, api_url, &session.access_token)' src-tauri/src/core/ggo_auth.rs
           grep -Fq 'store.clear().await' src-tauri/src/core/ggo_auth.rs
           grep -Fq 'ggo-hero-headphones.webp' src/App.tsx
