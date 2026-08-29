@@ -8,6 +8,7 @@ on:
     paths:
       - '.github/workflows/ggo-runtime-stage111-ux-shell.yml'
       - 'hotfix/GgoFrontEndScreen.java'
+      - 'hotfix/apply_ggo_launcher_authority_stage58.py'
       - 'hotfix/apply_ggo_legacy_routes_stage101.py'
       - 'hotfix/apply_ggo_stage111_ux.py'
       - 'hotfix/GgoVanillaRuntimeFence.java'
