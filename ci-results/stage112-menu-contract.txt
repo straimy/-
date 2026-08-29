@@ -1,0 +1,16 @@
+workflow=GGO Runtime Stage112 Menu Contract
+run_id=33279190396
+client_sha=1848561aee6922e0549edaaadf4d1a3a3ffb01fa
+build_id=runtime-stage112
+ui_sha256=11939368888d8f2638a173844bd3137b5454aeb5784c006ca11c97c5bab989d1
+ui_bytes=214922
+explicit_play_online=true
+no_auto_connect=true
+manual_m_hub=true
+direct_g_weapon_store=true
+passive_main_route=true
+squad_only_tab=true
+vanilla_navigation_fenced=true
+ui_build=success
+upload=success
+result=success
