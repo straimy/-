@@ -77,7 +77,7 @@ final class ArenaNavigation {
         if (mc.player == null || target == null) return;
         switch (target) {
             case MAIN -> mc.setScreen(new GgoShellScreen(GgoShellScreen.Page.HOME));
-            case SHOP -> mc.setScreen(new LobbyShopScreen());
+            case SHOP -> mc.setScreen(new ShopScreen());
             case PROFILE -> mc.setScreen(new ProfileScreen());
             case SKILLS -> mc.setScreen(new SkillsScreen());
         }
