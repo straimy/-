@@ -1,5 +1,5 @@
 name: GGO Launcher Stage111 Unified Linux
-# exact Stage111 retrigger after legacy launcher workflows settled
+# exact Stage111 unified build after resilient-install idempotence fix
 
 on:
   workflow_dispatch:
