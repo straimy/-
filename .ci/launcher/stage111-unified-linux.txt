@@ -1,6 +1,6 @@
 workflow=GGO Launcher Stage111 Unified Linux
-run_id=33280294146
-source_sha=29087affb68269038c50b5b9b0f2fac0c45d6fd9
+run_id=33280300446
+source_sha=5cdb8b029810668f68cf2eac52e48f41018e3de4
 launcher_version=0.2.12
 game_version=v111-candidate
 manifest=beta-stage111-candidate.json
