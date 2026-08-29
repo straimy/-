@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import subprocess
 
 UPDATER = Path("src-tauri/src/core/updater.rs")
 APP = Path("src/App.tsx")
@@ -125,8 +126,6 @@ replacement = r'''async fn download_and_install(
         match result {
             Ok(()) => return Ok(()),
             Err(error) => {
-                // Bytes from a failed attempt are not real progress. Remove them before retrying
-                // so the aggregate bar never runs past 100%.
                 if attempt_bytes > 0 {
                     downloaded.fetch_sub(attempt_bytes, Ordering::Relaxed);
                 }
@@ -174,6 +173,12 @@ if app.count('setClientRunning(true);') != 1:
 if 'e.payload.currentFile?.split("/").pop()' not in app:
     raise SystemExit("per-file progress label missing")
 APP.write_text(app, encoding="utf-8")
+
+# The patch intentionally rewrites Rust structurally. Normalize it before the immutable --check gate.
+subprocess.run(
+    ["cargo", "fmt", "--manifest-path", "src-tauri/Cargo.toml", "--all"],
+    check=True,
+)
 
 print("Applied Stage111 resilient install + unified visibility patch")
 print(" - stalled downloads timeout and retry up to 3 times")
