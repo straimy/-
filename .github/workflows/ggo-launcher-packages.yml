@@ -1,5 +1,6 @@
 name: GunGloryOnline Launcher Packages
 
+# Stage111 packages are built from the canonical tracked launcher lifecycle.
 on:
   push:
     branches: ["launcher/bootstrap-v0.1"]
