@@ -1,6 +1,6 @@
 workflow=GGO Launcher Stage111 Unified Linux
-run_id=33273367231
-source_sha=dc515a58e6882b89ae27a08d599502836ae53eb6
+run_id=33273457267
+source_sha=28b4a47a80dc478e87ab806f256c1180858c4dc8
 launcher_version=0.2.12
 game_version=v111-candidate
 manifest=beta-stage111-candidate.json
@@ -11,7 +11,7 @@ early_forge_window_suppressed=true
 ggo_linux_window_identity=true
 stale_session_validation=true
 dual_character_art=true
-appimage_sha256=1d9fa238ba40f1626036e6495c92484d5f654a56d7075d6fea61ee8b50300de8
+appimage_sha256=383061bf1a84a8d9704b7ee5f385973638e4dc13a28e100c3403b490fa213469
 appimage_bytes=83372536
 source_gate=success
 frontend=success
