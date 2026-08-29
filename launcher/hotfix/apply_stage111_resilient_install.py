@@ -2,11 +2,13 @@
 from pathlib import Path
 import subprocess
 
-UPDATER = Path("src-tauri/src/core/updater.rs")
-APP = Path("src/App.tsx")
+ROOT = Path(__file__).resolve().parents[1]
+UPDATER = ROOT / "src-tauri/src/core/updater.rs"
+APP = ROOT / "src/App.tsx"
+CARGO = ROOT / "src-tauri/Cargo.toml"
 
-if not UPDATER.is_file() or not APP.is_file():
-    raise SystemExit("run from launcher/ directory")
+if not UPDATER.is_file() or not APP.is_file() or not CARGO.is_file():
+    raise SystemExit(f"launcher sources missing under {ROOT}")
 
 updater = UPDATER.read_text(encoding="utf-8")
 
@@ -157,6 +159,8 @@ new_listener = 'void listen<UpdateProgress>("ggo-update-progress",e=>{setProgres
 if old_listener in app:
     app = app.replace(old_listener, new_listener, 1)
 
+# React only records that the child exists. Rust unified_surface is the single owner of launcher
+# visibility, so repeated application can never stack hide() calls in the canonical source.
 hide_block = 'setClientRunning(true);await getCurrentWindow().hide().catch(()=>undefined);'
 count = app.count(hide_block)
 if count:
@@ -174,14 +178,17 @@ if 'e.payload.currentFile?.split("/").pop()' not in app:
     raise SystemExit("per-file progress label missing")
 APP.write_text(app, encoding="utf-8")
 
-# The patch intentionally rewrites Rust structurally. Normalize it before the immutable --check gate.
+# The patch intentionally rewrites Rust structurally. Normalize it before immutable --check gates.
 subprocess.run(
-    ["cargo", "fmt", "--manifest-path", "src-tauri/Cargo.toml", "--all"],
+    ["cargo", "fmt", "--manifest-path", str(CARGO), "--all"],
+    cwd=ROOT,
     check=True,
 )
 
 print("Applied Stage111 resilient install + unified visibility patch")
+print(f" - launcher root: {ROOT}")
 print(" - stalled downloads timeout and retry up to 3 times")
 print(" - progress identifies the active file")
 print(" - failed retry bytes are rolled back from aggregate progress")
+print(" - exactly one clientRunning transition remains")
 print(" - launcher visibility is owned only by unified_surface supervisor")
