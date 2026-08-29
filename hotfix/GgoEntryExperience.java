@@ -2,6 +2,7 @@ package arena.client.shell;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.screens.ConnectScreen;
 import net.minecraft.client.gui.screens.DisconnectedScreen;
 import net.minecraft.client.gui.screens.ReceivingLevelScreen;
@@ -26,7 +27,7 @@ public final class GgoEntryExperience {
 
     private GgoEntryExperience() {}
 
-    /** Marks a user-requested server exit so disconnect recovery cannot race the GGO frontend. */
+    /** Compatibility marker for older exit flows; Stage111 exits the engine process directly. */
     public static void requestReturnToFrontend() {
         RETURNING_TO_FRONTEND.set(true);
     }
@@ -39,6 +40,18 @@ public final class GgoEntryExperience {
             return;
         }
         event.setNewScreen(new GgoEntryDisconnectedScreen(readDisconnectReason(disconnected)));
+    }
+
+    /** ConnectScreen normally owns a single Cancel widget; place it below GGO status/progress chrome. */
+    @SubscribeEvent
+    public static void onScreenInit(ScreenEvent.Init.Post event) {
+        if (!(event.getScreen() instanceof ConnectScreen)) return;
+        int targetY = Math.min(event.getScreen().height - 42, event.getScreen().height / 2 + 86);
+        for (var listener : event.getListenersList()) {
+            if (!(listener instanceof AbstractWidget widget)) continue;
+            widget.setX((event.getScreen().width - widget.getWidth()) / 2);
+            widget.setY(targetY);
+        }
     }
 
     @SubscribeEvent
@@ -57,7 +70,7 @@ public final class GgoEntryExperience {
         g.fill(0, 0, width, Math.max(3, height / 120), ACCENT);
 
         int cardWidth = Math.min(520, width - 36);
-        int cardHeight = 210;
+        int cardHeight = 230;
         int x = (width - cardWidth) / 2;
         int y = (height - cardHeight) / 2;
         g.fill(x, y, x + cardWidth, y + cardHeight, 0xF20A0E16);
@@ -70,11 +83,11 @@ public final class GgoEntryExperience {
         String animatedStatus = status + ".".repeat(dots);
 
         g.drawCenteredString(mc.font, Component.literal("GUN GLORY ONLINE"), width / 2, y + 34, TEXT);
-        g.drawCenteredString(mc.font, Component.literal(title), width / 2, y + 60, receiving ? ACCENT_2 : ACCENT);
-        g.drawCenteredString(mc.font, Component.literal(animatedStatus), width / 2, y + 90, MUTED);
+        g.drawCenteredString(mc.font, Component.literal(title), width / 2, y + 58, receiving ? ACCENT_2 : ACCENT);
+        g.drawCenteredString(mc.font, Component.literal(animatedStatus), width / 2, y + 88, MUTED);
 
         int barX = x + 44;
-        int barY = y + 126;
+        int barY = y + 120;
         int barWidth = cardWidth - 88;
         g.fill(barX, barY, barX + barWidth, barY + 7, 0xFF151C28);
         int sweep = Math.max(48, barWidth / 5);
@@ -88,7 +101,7 @@ public final class GgoEntryExperience {
             mc.font,
             Component.literal("OFFICIAL GGO NETWORK  •  VERIFIED ENTRY"),
             width / 2,
-            y + 162,
+            y + 154,
             0xFF657287
         );
     }
