@@ -13,10 +13,9 @@ if not SRC.is_file():
 shutil.copy2(SRC, DST)
 
 text = DST.read_text(encoding="utf-8")
-# Stage58 owns launcher authority and trusted online routing. Presentation may evolve,
-# but Online must remain gated by the launcher ticket and locked to the official server.
+# Stage58 owns launcher authority and trusted online routing. Presentation may evolve.
+# Old builds exposed a PLAY ONLINE button; Stage111+ launcher sessions auto-connect instead.
 for required in [
-    "PLAY ONLINE",
     "PRACTICE · COMING SOON",
     "GgoLaunchTicketClient.isOfficialLaunch()",
     "GgoLaunchTicketClient.canStartOnline()",
@@ -27,6 +26,8 @@ for required in [
 ]:
     if required not in text:
         raise SystemExit(f"stage58 frontend missing: {required}")
+if "PLAY ONLINE" not in text and "mc.execute(this::connectOfficial);" not in text:
+    raise SystemExit("stage58 frontend missing trusted online entry action")
 for forbidden in [
     "ServerListScreen",
     "DirectJoinServerScreen",
@@ -43,6 +44,6 @@ for forbidden in [
 
 print("Applied GGO Stage 58 launcher-authenticated clean entry")
 print(" - launcher owns authentication and short-lived session credential")
-print(" - client exposes Online plus a clearly disabled future Practice surface")
-print(" - Online uses only the trusted official route; no server browser or manual address")
-print(" - settings stay inside first-party GGO UI")
+print(" - trusted official entry supports button-era and Stage111 auto-connect UX")
+print(" - Practice remains a clearly disabled future surface")
+print(" - no server browser or manual-address route is exposed")
