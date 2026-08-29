@@ -1,6 +1,6 @@
 workflow=GGO Launcher Stage110 Hotfix Linux
-run_id=33280305392
-source_sha=b2469665ab978460beaeee6a5572ef5742ff9d99
+run_id=33280300501
+source_sha=5cdb8b029810668f68cf2eac52e48f41018e3de4
 launcher_version=0.2.11
 game_version=v110-candidate
 manifest=beta-stage110-candidate.json
