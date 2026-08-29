@@ -31,6 +31,10 @@ jobs:
           node-version: '22'
       - uses: dtolnay/rust-toolchain@stable
 
+      - name: Apply Stage111 resilient install patch
+        id: stage111
+        run: python3 hotfix/apply_stage111_resilient_install.py
+
       - name: Install Tauri Linux dependencies
         id: deps
         working-directory: .
@@ -95,6 +99,7 @@ jobs:
       - name: Publish immutable Linux receipt
         if: always()
         env:
+          STAGE111_OUTCOME: ${{ steps.stage111.outcome }}
           DEPS_OUTCOME: ${{ steps.deps.outcome }}
           INSTALL_OUTCOME: ${{ steps.install.outcome }}
           ICONS_OUTCOME: ${{ steps.icons.outcome }}
@@ -107,12 +112,12 @@ jobs:
         run: |
           set -euo pipefail
           result=success
-          for value in "$DEPS_OUTCOME" "$INSTALL_OUTCOME" "$ICONS_OUTCOME" "$FRONTEND_OUTCOME" "$RUST_FMT_OUTCOME" "$RUST_CHECK_OUTCOME" "$RUNTIME_TESTS_OUTCOME" "$PACKAGE_OUTCOME" "$VERIFY_OUTCOME"; do
+          for value in "$STAGE111_OUTCOME" "$DEPS_OUTCOME" "$INSTALL_OUTCOME" "$ICONS_OUTCOME" "$FRONTEND_OUTCOME" "$RUST_FMT_OUTCOME" "$RUST_CHECK_OUTCOME" "$RUNTIME_TESTS_OUTCOME" "$PACKAGE_OUTCOME" "$VERIFY_OUTCOME"; do
             if [ "$value" != success ]; then result=failure; fi
           done
           cd ..
-          # Tauri/icon/npm steps may touch tracked generated files. The immutable receipt must be
-          # the only commit payload, otherwise a later rebase can fail despite a valid build.
+          # Build-only Stage111 canonicalization and generated Tauri/icon/npm files are intentionally
+          # discarded before publishing the immutable receipt.
           git restore --staged --worktree .
           mkdir -p .ci/linux
           receipt=".ci/linux/${GITHUB_RUN_ID}.txt"
@@ -122,6 +127,7 @@ jobs:
           run_attempt=${GITHUB_RUN_ATTEMPT}
           run_url=https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
           source_sha=${GITHUB_SHA}
+          stage111_patch=$STAGE111_OUTCOME
           deps=$DEPS_OUTCOME
           install=$INSTALL_OUTCOME
           icons=$ICONS_OUTCOME
