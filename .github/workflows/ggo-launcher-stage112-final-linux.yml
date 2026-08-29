@@ -1,4 +1,5 @@
 name: GGO Launcher Stage112 Final Linux
+# clean retrigger after legacy launcher workflow receipt storm
 
 on:
   workflow_dispatch:
