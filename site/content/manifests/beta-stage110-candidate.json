@@ -125,10 +125,10 @@
       "kind": "mod"
     },
     {
-      "path": "mods/gungloryonline-ui-runtime-v1-stage110-unified-hotfix.jar",
-      "url": "https://ggo.kvicloud.ru/content/files/v110/gungloryonline-ui-runtime-v1-stage110-unified-hotfix.jar",
-      "sha256": "48a6216779d76e4d43852e78be921f149d7b382c0a4e801abf691df9a8adbf12",
-      "size": 211701,
+      "path": "mods/gungloryonline-ui-runtime-v1-stage110-button-mixin-hotfix.jar",
+      "url": "https://ggo.kvicloud.ru/content/files/v110/gungloryonline-ui-runtime-v1-stage110-button-mixin-hotfix.jar",
+      "sha256": "7561cec1da67dcd7877eb904b8b3db109f1c09c91f087c1ea820031fef25d4dc",
+      "size": 211625,
       "required": true,
       "side": "client",
       "version": "v110-candidate",
