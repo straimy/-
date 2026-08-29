@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
-import re, shutil
+import re, shutil, runpy
 
 ROOT = Path("ga-build") if Path("ga-build").exists() else Path(".")
 SHELL_DIR = ROOT / "client-ui/src/main/java/arena/client/shell"
@@ -101,6 +101,9 @@ public final class GgoStage111TabOverlay {
 '''
 (SHELL_DIR / "GgoStage111TabOverlay.java").write_text(tab, encoding="utf-8")
 
+# Merge the retained real-data Shop/Profile/Skills screens into the same graphite/red GGO shell.
+runpy.run_path("hotfix/apply_ggo_stage111_legacy_style.py", run_name="__main__")
+
 # Final invariants.
 final_hooks = HOOKS.read_text(encoding="utf-8")
 final_shell = SHELL.read_text(encoding="utf-8")
@@ -116,3 +119,4 @@ print(" - launcher PLAY auto-connects to official server")
 print(" - M opens GGO Hub locally with zero server round-trip")
 print(" - TAB is GGO squad-only overlay; vanilla player list is always canceled")
 print(" - EXIT TO GGO terminates engine cleanly for launcher supervisor")
+print(" - retained Shop/Profile/Skills are visually merged into GGO")
