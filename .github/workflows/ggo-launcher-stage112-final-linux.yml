@@ -1,0 +1,188 @@
+name: GGO Launcher Stage112 Final Linux
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - launcher/bootstrap-v0.1
+    paths:
+      - '.github/workflows/ggo-launcher-stage112-final-linux.yml'
+      - 'launcher/src/**'
+      - 'launcher/src-tauri/src/**'
+      - 'launcher/src-tauri/Cargo.toml'
+      - 'launcher/src-tauri/tauri.conf.json'
+      - 'launcher/package.json'
+      - 'launcher/hotfix/**'
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 80
+    defaults:
+      run:
+        working-directory: launcher
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Install Linux prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Apply canonical launcher chain in build workspace
+        run: |
+          set -euo pipefail
+          python3 hotfix/apply_menu_first_beta_stage76.py
+          python3 hotfix/apply_launcher_surface_stage99.py
+          python3 hotfix/apply_unified_lifecycle_stage105.py
+          python3 hotfix/apply_launcher_api_repair_stage108.py
+          python3 hotfix/apply_stage111_resilient_install.py
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all
+
+      - name: Install frontend dependencies
+        run: npm install
+
+      - name: Stage112 source and public-manifest gate
+        id: source_gate
+        run: |
+          set -euo pipefail
+          grep -Fq '"version": "0.2.13"' package.json
+          grep -Fq 'version = "0.2.13"' src-tauri/Cargo.toml
+          grep -Fq '"version": "0.2.13"' src-tauri/tauri.conf.json
+          grep -Fq 'beta-stage112-candidate.json' src-tauri/src/core/bootstrap.rs
+          grep -Fq 'game_version: "v112-candidate"' src-tauri/src/core/bootstrap.rs
+
+          grep -Fq '(["home","accounts","news","settings"] as Page[])' src/App.tsx
+          grep -Fq 'play:"PLAY"' src/App.tsx
+          ! grep -Fq 'play:"PLAY ONLINE"' src/App.tsx
+          ! grep -Fq '>TRAINING<' src/App.tsx
+          grep -Fq 'ggo-hero-headphones.webp' src/App.tsx
+          grep -Fq 'ggo-hero-lantern.webp' src/App.tsx
+
+          grep -Fq 'child.wait()' src-tauri/src/runtime/minecraft_launch.rs
+          grep -Fq 'GameProcessStatus' src-tauri/src/runtime/minecraft_launch.rs
+          grep -Fq 'unified_surface::supervise' src-tauri/src/lib.rs
+          grep -Fq 'window.hide()' src-tauri/src/runtime/unified_surface.rs
+          grep -Fq 'window.show()' src-tauri/src/runtime/unified_surface.rs
+          grep -Fq 'window.unminimize()' src-tauri/src/runtime/unified_surface.rs
+          grep -Fq 'fetch_profile(http, api_url, &session.access_token)' src-tauri/src/core/ggo_auth.rs
+          grep -Fq 'store.clear().await' src-tauri/src/core/ggo_auth.rs
+
+          curl -fsSL --retry 3 https://ggo.kvicloud.ru/content/manifests/beta-stage112-candidate.json -o /tmp/stage112.json
+          python3 - <<'PY'
+          import json
+          m=json.load(open('/tmp/stage112.json'))
+          assert m['gameVersion']=='v112-candidate'
+          f={x['path']:x for x in m['files']}
+          core=f['mods/gungloryonline-core-runtime-v1-stage112-menu-contract.jar']
+          ui=f['mods/gungloryonline-ui-runtime-v1-stage112-menu-contract.jar']
+          assert core['sha256']=='fe2f4a277fec6609ee5144d5a7e29c13cdb533091c9878eba5f213f1e2aba342'
+          assert ui['sha256']=='11939368888d8f2638a173844bd3137b5454aeb5784c006ca11c97c5bab989d1'
+          print('PUBLIC STAGE112 MANIFEST: PASS')
+          PY
+
+      - name: Frontend build
+        id: frontend
+        run: npm run build
+
+      - name: Rust format/check/test
+        id: rust
+        run: |
+          set -euo pipefail
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+          cargo check --manifest-path src-tauri/Cargo.toml
+          cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Generate platform icons
+        run: npm run tauri icon src-tauri/icons/icon.png
+
+      - name: Build Stage112 AppImage
+        id: package
+        run: npm run tauri build -- --bundles appimage
+
+      - name: Verify Stage112 AppImage payload
+        id: verify
+        run: |
+          set -euo pipefail
+          APP="$(find src-tauri/target/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage' | head -n1)"
+          test -n "$APP" && test -f "$APP"
+          case "$(basename "$APP")" in *0.2.13*) ;; *) echo "unexpected launcher filename: $APP" >&2; exit 1;; esac
+          chmod +x "$APP"
+          rm -rf /tmp/ggo-stage112-launcher && mkdir -p /tmp/ggo-stage112-launcher
+          (cd /tmp/ggo-stage112-launcher && "$GITHUB_WORKSPACE/launcher/$APP" --appimage-extract >/dev/null)
+          BIN="$(find /tmp/ggo-stage112-launcher/squashfs-root/usr/bin -maxdepth 1 -type f -executable | head -n1)"
+          test -n "$BIN" && test -f "$BIN"
+          strings "$BIN" | grep -aFq 'beta-stage112-candidate.json'
+          strings "$BIN" | grep -aFq 'v112-candidate'
+          strings "$BIN" | grep -aFq 'gungloryonline-launcher'
+          echo "sha256=$(sha256sum "$APP" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "bytes=$(stat -c%s "$APP")" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        id: upload
+        with:
+          name: GunGloryOnline-Linux-Stage112-Final-0.2.13
+          path: launcher/src-tauri/target/release/bundle/appimage/*.AppImage
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish receipt
+        if: always()
+        env:
+          SOURCE_GATE: ${{ steps.source_gate.outcome }}
+          FRONTEND: ${{ steps.frontend.outcome }}
+          RUST: ${{ steps.rust.outcome }}
+          PACKAGE: ${{ steps.package.outcome }}
+          VERIFY: ${{ steps.verify.outcome }}
+          UPLOAD: ${{ steps.upload.outcome }}
+        working-directory: .
+        run: |
+          set -euo pipefail
+          result=failure
+          [ "$SOURCE_GATE" = success ] && [ "$FRONTEND" = success ] && [ "$RUST" = success ] && [ "$PACKAGE" = success ] && [ "$VERIFY" = success ] && [ "$UPLOAD" = success ] && result=success
+          git fetch origin launcher/bootstrap-v0.1
+          git reset --hard origin/launcher/bootstrap-v0.1
+          mkdir -p .ci/launcher
+          cat > .ci/launcher/stage112-final-linux.txt <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_id=${GITHUB_RUN_ID}
+          source_sha=${GITHUB_SHA}
+          launcher_version=0.2.13
+          game_version=v112-candidate
+          manifest=beta-stage112-candidate.json
+          canonical_ui_applied_in_build=true
+          launcher_supervises_engine=true
+          launcher_hides_during_engine=true
+          launcher_restores_after_engine_exit=true
+          stale_session_validation=true
+          dual_character_art=true
+          appimage_sha256=${{ steps.verify.outputs.sha256 }}
+          appimage_bytes=${{ steps.verify.outputs.bytes }}
+          source_gate=$SOURCE_GATE
+          frontend=$FRONTEND
+          rust=$RUST
+          package=$PACKAGE
+          verify=$VERIFY
+          upload=$UPLOAD
+          result=$result
+          EOF
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .ci/launcher/stage112-final-linux.txt
+          git commit -m "ci: record Stage112 final Linux launcher ${GITHUB_RUN_ID}" || exit 0
+          git push origin HEAD:launcher/bootstrap-v0.1
