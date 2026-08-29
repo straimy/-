@@ -13,11 +13,17 @@ use std::{
 };
 use tauri::{AppHandle, Emitter};
 use thiserror::Error;
-use tokio::{fs, io::AsyncWriteExt};
+use tokio::{
+    fs,
+    io::AsyncWriteExt,
+    time::{sleep, timeout},
+};
 use uuid::Uuid;
 
 const MANIFEST_SCHEMA_VERSION: u32 = 1;
 const DOWNLOAD_CONCURRENCY: usize = 4;
+const DOWNLOAD_ATTEMPTS: usize = 3;
+const DOWNLOAD_STALL_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Error)]
 pub enum UpdateError {
@@ -45,6 +51,8 @@ pub enum UpdateError {
     ChecksumMismatch { path: String },
     #[error("failed to replace {path}: {message}")]
     ReplaceFailed { path: String, message: String },
+    #[error("download stalled while receiving {0}")]
+    DownloadStalled(String),
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -89,7 +97,7 @@ pub fn client() -> Result<Client, UpdateError> {
     // Cloudflare's Browser Integrity Check can reject non-browser-looking HTTP signatures with
     // Error 1010 before the request reaches the GGO API. Keep an explicit stable desktop signature
     // while still identifying the GGO launcher in the product token.
-    const DESKTOP_UA: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 GunGloryOnline-Launcher/0.2.4";
+    const DESKTOP_UA: &str = concat!("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 GunGloryOnline-Launcher/", env!("CARGO_PKG_VERSION"));
     Ok(Client::builder()
         .connect_timeout(Duration::from_secs(15))
         .timeout(Duration::from_secs(300))
@@ -278,60 +286,96 @@ async fn download_and_install(
         .file_name()
         .and_then(|v| v.to_str())
         .ok_or_else(|| UpdateError::UnsafePath(entry.path.clone()))?;
-    let part = parent.join(format!(".{file_name}.ggo-part-{}", Uuid::new_v4()));
 
-    let result = async {
-        let response = http.get(url).send().await?.error_for_status()?;
-        let mut stream = response.bytes_stream();
-        let mut output = fs::File::create(&part).await?;
-        let mut hasher = Sha256::new();
-        let mut file_bytes = 0_u64;
+    let mut last_error = None;
+    for attempt in 1..=DOWNLOAD_ATTEMPTS {
+        let part = parent.join(format!(".{file_name}.ggo-part-{}", Uuid::new_v4()));
+        let mut attempt_bytes = 0_u64;
 
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk?;
-            output.write_all(&chunk).await?;
-            hasher.update(&chunk);
-            file_bytes = file_bytes.saturating_add(chunk.len() as u64);
-            let aggregate =
-                downloaded.fetch_add(chunk.len() as u64, Ordering::Relaxed) + chunk.len() as u64;
+        if attempt > 1 {
             app.emit(
                 "ggo-update-progress",
                 UpdateProgress {
-                    stage: "downloading",
-                    current_file: entry.path.clone(),
-                    downloaded_bytes: aggregate,
+                    stage: "retrying",
+                    current_file: format!("{} · attempt {attempt}/{DOWNLOAD_ATTEMPTS}", entry.path),
+                    downloaded_bytes: downloaded.load(Ordering::Relaxed),
                     total_bytes,
-                    speed_bytes_per_second: average_speed(aggregate, started),
+                    speed_bytes_per_second: average_speed(
+                        downloaded.load(Ordering::Relaxed),
+                        started,
+                    ),
                 },
             )
             .ok();
-        }
-        output.flush().await?;
-        output.sync_all().await?;
-        drop(output);
-
-        if entry.size > 0 && file_bytes != entry.size {
-            return Err(UpdateError::SizeMismatch {
-                path: entry.path.clone(),
-                expected: entry.size,
-                actual: file_bytes,
-            });
-        }
-        let actual_hash = hex::encode(hasher.finalize());
-        if actual_hash != entry.sha256.to_ascii_lowercase() {
-            return Err(UpdateError::ChecksumMismatch {
-                path: entry.path.clone(),
-            });
+            sleep(Duration::from_millis(750 * attempt as u64)).await;
         }
 
-        replace_with_rollback(&part, &target, &entry.path).await
+        let result: Result<(), UpdateError> = async {
+            let response = timeout(DOWNLOAD_STALL_TIMEOUT, http.get(url.clone()).send())
+                .await
+                .map_err(|_| UpdateError::DownloadStalled(entry.path.clone()))??
+                .error_for_status()?;
+            let mut stream = response.bytes_stream();
+            let mut output = fs::File::create(&part).await?;
+            let mut hasher = Sha256::new();
+
+            loop {
+                let next = timeout(DOWNLOAD_STALL_TIMEOUT, stream.next())
+                    .await
+                    .map_err(|_| UpdateError::DownloadStalled(entry.path.clone()))?;
+                let Some(chunk) = next else { break };
+                let chunk = chunk?;
+                output.write_all(&chunk).await?;
+                hasher.update(&chunk);
+                attempt_bytes = attempt_bytes.saturating_add(chunk.len() as u64);
+                let aggregate = downloaded.fetch_add(chunk.len() as u64, Ordering::Relaxed)
+                    + chunk.len() as u64;
+                app.emit(
+                    "ggo-update-progress",
+                    UpdateProgress {
+                        stage: "downloading",
+                        current_file: entry.path.clone(),
+                        downloaded_bytes: aggregate,
+                        total_bytes,
+                        speed_bytes_per_second: average_speed(aggregate, started),
+                    },
+                )
+                .ok();
+            }
+            output.flush().await?;
+            output.sync_all().await?;
+            drop(output);
+
+            if entry.size > 0 && attempt_bytes != entry.size {
+                return Err(UpdateError::SizeMismatch {
+                    path: entry.path.clone(),
+                    expected: entry.size,
+                    actual: attempt_bytes,
+                });
+            }
+            let actual_hash = hex::encode(hasher.finalize());
+            if actual_hash != entry.sha256.to_ascii_lowercase() {
+                return Err(UpdateError::ChecksumMismatch {
+                    path: entry.path.clone(),
+                });
+            }
+            replace_with_rollback(&part, &target, &entry.path).await
+        }
+        .await;
+
+        match result {
+            Ok(()) => return Ok(()),
+            Err(error) => {
+                if attempt_bytes > 0 {
+                    downloaded.fetch_sub(attempt_bytes, Ordering::Relaxed);
+                }
+                let _ = fs::remove_file(&part).await;
+                last_error = Some(error);
+            }
+        }
     }
-    .await;
 
-    if result.is_err() {
-        let _ = fs::remove_file(&part).await;
-    }
-    result
+    Err(last_error.expect("at least one download attempt must run"))
 }
 
 async fn replace_with_rollback(
