@@ -6,21 +6,20 @@ SHELL = ROOT / "client-ui/src/main/java/arena/client/shell/GgoShellScreen.java"
 HOOKS = ROOT / "client-ui/src/main/java/arena/client/shell/GgoShellHooks.java"
 UI.mkdir(parents=True, exist_ok=True)
 
-# Stage101 routing contract: retain the mature server-driven Shop/Profile/Skills screens
-# while replacing only their legacy KVICloud/Gunner Arena navigation shell.
+# Retain the mature server-driven Shop/Profile/Skills screens while replacing their legacy
+# KVICloud/Gunner Arena navigation shell with the first-party GGO Hub.
 bridge = r'''package arena.client.ui;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 
-/** Public bridge from the Stage101 shell into retained server-driven GGO screens. */
+/** Public bridge from the GGO shell into retained server-driven screens. */
 public final class GgoLegacyUiBridge {
     private GgoLegacyUiBridge() {}
 
     public static Screen shop() { return new ShopScreen(); }
     public static Screen profile() { return new ProfileScreen(); }
     public static Screen skills() { return new SkillsScreen(); }
-    public static Screen legacyMain() { return new MainArenaScreen(); }
 
     public static void openShop() { Minecraft.getInstance().setScreen(shop()); }
     public static void openProfile() { Minecraft.getInstance().setScreen(profile()); }
@@ -29,7 +28,7 @@ public final class GgoLegacyUiBridge {
 '''
 (UI / "GgoLegacyUiBridge.java").write_text(bridge)
 
-# Keep the server-driven route protocol, but make /menu (route MAIN/default) land in the new GGO Hub.
+# Server-driven routes remain supported for snapshots/catalog/skills, but MAIN always lands in GGO Hub.
 opener = r'''package arena.client.ui;
 
 import arena.client.net.ArenaClientNetwork;
@@ -80,20 +79,26 @@ s = s.replace(
 )
 SHELL.write_text(s)
 
-# M is now literally the server /menu route. J keeps Activities as the separate local shortcut.
+# M must be latency-independent. Open the cached GGO Hub immediately; server-backed pages refresh
+# their own snapshots/catalog asynchronously when opened. J remains Activities.
 h = HOOKS.read_text()
 h = h.replace(
     'if (event.getKey() == GLFW.GLFW_KEY_M) {\n            mc.setScreen(new GgoShellScreen(GgoShellScreen.Page.HOME));',
+    'if (event.getKey() == GLFW.GLFW_KEY_M) {\n            mc.setScreen(new GgoShellScreen(GgoShellScreen.Page.HOME));',
+)
+h = h.replace(
     'if (event.getKey() == GLFW.GLFW_KEY_M) {\n            mc.player.connection.sendCommand("menu");',
+    'if (event.getKey() == GLFW.GLFW_KEY_M) {\n            mc.setScreen(new GgoShellScreen(GgoShellScreen.Page.HOME));',
 )
 HOOKS.write_text(h)
 
 assert 'GgoLegacyUiBridge.openShop()' in s
 assert 'GgoLegacyUiBridge.openProfile()' in s
 assert 'GgoLegacyUiBridge.openSkills()' in s
-assert 'sendCommand("menu")' in h
+assert 'sendCommand("menu")' not in h
+assert 'new GgoShellScreen(GgoShellScreen.Page.HOME)' in h
 assert 'new GgoShellScreen(GgoShellScreen.Page.HOME)' in opener
-print('Stage101 retained UI routes bridged')
-print(' - M sends /menu')
-print(' - /menu route MAIN opens canonical GGO Hub')
-print(' - Shop/Profile/Skills remain real server-driven screens')
+print('GGO retained UI routes bridged')
+print(' - M opens local GGO Hub immediately (no network round trip)')
+print(' - server MAIN route also opens canonical GGO Hub')
+print(' - Shop/Profile/Skills keep real server-driven data')
