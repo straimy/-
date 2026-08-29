@@ -180,6 +180,11 @@ def init_news_db():
             CREATE INDEX IF NOT EXISTS idx_news_date ON news_items(date DESC,created_at DESC);
             """
         )
+        # Additive migration for databases first created by the older core schema. CREATE TABLE IF NOT EXISTS
+        # intentionally preserves those rows, so explicitly add only the new nullable ownership column.
+        news_columns = {row["name"] for row in db.execute("PRAGMA table_info(news_items)")}
+        if "author_user_id" not in news_columns:
+            db.execute("ALTER TABLE news_items ADD COLUMN author_user_id TEXT")
         seed_path = NEWS_SEED_PATH if NEWS_SEED_PATH.is_file() else Path(__file__).with_name("news_seed.json")
         if seed_path.is_file():
             try:
