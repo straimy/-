@@ -12,26 +12,69 @@ if not UPDATER.is_file() or not APP.is_file() or not CARGO.is_file():
 
 updater = UPDATER.read_text(encoding="utf-8")
 
-updater = updater.replace(
-    'use tokio::{fs, io::AsyncWriteExt};',
-    'use tokio::{fs, io::AsyncWriteExt, time::{sleep, timeout}};',
-)
-updater = updater.replace(
-    'const DOWNLOAD_CONCURRENCY: usize = 4;',
-    'const DOWNLOAD_CONCURRENCY: usize = 4;\nconst DOWNLOAD_ATTEMPTS: usize = 3;\nconst DOWNLOAD_STALL_TIMEOUT: Duration = Duration::from_secs(30);',
-)
-updater = updater.replace(
-    '    #[error("failed to replace {path}: {message}")]\n    ReplaceFailed { path: String, message: String },',
-    '    #[error("failed to replace {path}: {message}")]\n    ReplaceFailed { path: String, message: String },\n    #[error("download stalled while receiving {0}")]\n    DownloadStalled(String),',
-)
+# Stage111 is a canonical source transform and may be run repeatedly by multiple launcher
+# workflows. Accept both the legacy and already-final forms instead of stacking declarations.
+legacy_tokio = 'use tokio::{fs, io::AsyncWriteExt};'
+final_tokio = 'time::{sleep, timeout}'
+if legacy_tokio in updater:
+    updater = updater.replace(
+        legacy_tokio,
+        'use tokio::{fs, io::AsyncWriteExt, time::{sleep, timeout}};',
+        1,
+    )
+elif final_tokio not in updater:
+    raise SystemExit("unable to locate tokio import for Stage111 timeout support")
+
+concurrency = 'const DOWNLOAD_CONCURRENCY: usize = 4;'
+attempts = 'const DOWNLOAD_ATTEMPTS: usize = 3;'
+stall_timeout = 'const DOWNLOAD_STALL_TIMEOUT: Duration = Duration::from_secs(30);'
+if attempts not in updater and install_timeout not in updater:
+    if concurrency not in updater:
+        raise SystemExit("download concurrency constant missing")
+    updater = updater.replace(
+        concurrency,
+        concurrency + '\n' + attempts + '\n' + install_timeout,
+        1,
+    )
+elif attempts not in updater or install_timeout not in updater:
+    raise SystemExit("partial Stage111 download retry constants found")
+if updater.count(attempts) != 1 or updater.count(install_timeout) != 1:
+    raise SystemExit("duplicate Stage111 download retry constants found")
+
+replace_variant = '    #[error("failed to replace {path}: {message}")]\n    ReplaceFailed { path: String, message: String },'
+stalled_variant = '    #[error("download stalled while receiving {0}")]\n    DownloadStalled(String),'
+if stalled_variant not in updater:
+    if replace_variant not in updater:
+        raise SystemExit("UpdateError replacement marker missing")
+    updater = updater.replace(
+        replace_variant,
+        replace_variant + '\n' + stalled_variant,
+        1,
+    )
+if updater.count('DownloadStalled(String),') != 1:
+    raise SystemExit("duplicate Stage111 DownloadStalled variant found")
+
 old_ua = '    const DESKTOP_UA: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 GunGloryOnline-Launcher/0.2.4";'
 new_ua = '    const DESKTOP_UA: &str = concat!("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 GunGloryOnline-Launcher/", env!("CARGO_PKG_VERSION"));'
 if old_ua in updater:
     updater = updater.replace(old_ua, new_ua, 1)
+elif new_ua not in updater:
+    raise SystemExit("desktop user-agent marker missing")
 
 start = updater.index('async fn download_and_install(')
 end = updater.index('\nasync fn replace_with_rollback(', start)
-replacement = r'''async fn download_and_install(
+current_download = updater[start:end]
+
+# If the final Stage111 body is already present, do not rewrite it. This keeps the transform
+# stable across generic Linux verification, unified launcher packaging, and manual dispatches.
+final_markers = [
+    'for attempt in 1..=DOWNLOAD_ATTEMPTS',
+    'timeout(DOWNLOAD_STALL_TIMEOUT, http.get(url.clone()).send())',
+    'stage: "retrying"',
+    'downloaded.fetch_sub(attempt_bytes',
+]
+if not all(marker in current_download for marker in final_markers):
+    replacement = r'''async fn download_and_install(
     app: &AppHandle,
     http: &Client,
     install_dir: &Path,
@@ -140,7 +183,7 @@ replacement = r'''async fn download_and_install(
     Err(last_error.expect("at least one download attempt must run"))
 }
 '''
-updater = updater[:start] + replacement + updater[end:]
+    updater = updater[:start] + replacement + updater[end:]
 
 for required in [
     'DOWNLOAD_ATTEMPTS: usize = 3',
@@ -151,6 +194,12 @@ for required in [
 ]:
     if required not in updater:
         raise SystemExit(f"updater patch missing {required}")
+if updater.count('const DOWNLOAD_ATTEMPTS: usize = 3;') != 1:
+    raise SystemExit("Stage111 retry attempt constant is not unique")
+if updater.count('const DOWNLOAD_STALL_TIMEOUT: Duration = Duration::from_secs(30);') != 1:
+    raise SystemExit("Stage111 stall timeout constant is not unique")
+if updater.count('DownloadStalled(String),') != 1:
+    raise SystemExit("Stage111 stalled error variant is not unique")
 UPDATER.write_text(updater, encoding="utf-8")
 
 app = APP.read_text(encoding="utf-8")
@@ -158,6 +207,8 @@ old_listener = 'void listen<UpdateProgress>("ggo-update-progress",e=>{setProgres
 new_listener = 'void listen<UpdateProgress>("ggo-update-progress",e=>{setProgress(e.payload);const file=e.payload.currentFile?.split("/").pop();setStatus(file?`${e.payload.stage} · ${file}`:e.payload.stage);}).then(v=>u1=v);'
 if old_listener in app:
     app = app.replace(old_listener, new_listener, 1)
+elif new_listener not in app:
+    raise SystemExit("update progress listener is neither legacy nor Stage111 final form")
 
 # React only records that the child exists. Rust unified_surface is the single owner of launcher
 # visibility, so repeated application can never stack hide() calls in the canonical source.
@@ -168,7 +219,8 @@ if count:
     marker = 'setStatus(`GGO Client · PID ${result.pid}`);'
     if marker not in app:
         raise SystemExit("launch status marker missing")
-    app = app.replace(marker, marker + 'setClientRunning(true);', 1)
+    if 'setClientRunning(true);' not in app:
+        app = app.replace(marker, marker + 'setClientRunning(true);', 1)
 
 if 'getCurrentWindow().hide()' in app:
     raise SystemExit("React still hides launcher directly; unified supervisor must own visibility")
@@ -192,3 +244,4 @@ print(" - progress identifies the active file")
 print(" - failed retry bytes are rolled back from aggregate progress")
 print(" - exactly one clientRunning transition remains")
 print(" - launcher visibility is owned only by unified_surface supervisor")
+print(" - transform is idempotent on already-canonical Stage111 source")
