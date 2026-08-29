@@ -28,17 +28,17 @@ elif final_tokio not in updater:
 concurrency = 'const DOWNLOAD_CONCURRENCY: usize = 4;'
 attempts = 'const DOWNLOAD_ATTEMPTS: usize = 3;'
 stall_timeout = 'const DOWNLOAD_STALL_TIMEOUT: Duration = Duration::from_secs(30);'
-if attempts not in updater and install_timeout not in updater:
+if attempts not in updater and stall_timeout not in updater:
     if concurrency not in updater:
         raise SystemExit("download concurrency constant missing")
     updater = updater.replace(
         concurrency,
-        concurrency + '\n' + attempts + '\n' + install_timeout,
+        concurrency + '\n' + attempts + '\n' + stall_timeout,
         1,
     )
-elif attempts not in updater or install_timeout not in updater:
+elif attempts not in updater or stall_timeout not in updater:
     raise SystemExit("partial Stage111 download retry constants found")
-if updater.count(attempts) != 1 or updater.count(install_timeout) != 1:
+if updater.count(attempts) != 1 or updater.count(stall_timeout) != 1:
     raise SystemExit("duplicate Stage111 download retry constants found")
 
 replace_variant = '    #[error("failed to replace {path}: {message}")]\n    ReplaceFailed { path: String, message: String },'
