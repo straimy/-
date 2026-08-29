@@ -3,8 +3,9 @@ use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 use tokio::time::{sleep, Duration};
 
-// Stage110 lifecycle contract: the launcher owns bootstrap visibility, yields only after the
-// first-party GGO client signals ready, and returns when the engine process exits.
+// Stage111 lifecycle: once the Java engine has spawned successfully, the launcher immediately
+// yields the desktop. The private ready marker is still passed to the child for deferred
+// fullscreen/readiness, but launcher visibility no longer waits for Mojang/Forge bootstrap.
 pub fn ready_file() -> PathBuf {
     std::env::temp_dir().join(format!("ggo-ready-{}.flag", uuid::Uuid::new_v4()))
 }
@@ -12,35 +13,18 @@ pub fn ready_file() -> PathBuf {
 pub fn supervise(app: AppHandle, ready_file: PathBuf) {
     tauri::async_runtime::spawn(async move {
         let main = app.get_webview_window("main");
+
+        // supervise() is called only after launch_with_natives succeeded. Hide immediately so
+        // PLAY feels like one application transition rather than two windows fighting for focus.
         if let Some(window) = main.as_ref() {
-            let _ = window.set_always_on_top(true);
-            let _ = window.show();
-            let _ = window.set_focus();
+            let _ = window.set_always_on_top(false);
+            let _ = window.hide();
         }
 
-        let mut game_revealed = false;
         loop {
             let status = minecraft_launch::game_process_status();
             if !status.running {
                 break;
-            }
-
-            let ready =
-                std::fs::read_to_string(&ready_file).is_ok_and(|value| value.trim() == "ready");
-            if !game_revealed && ready {
-                if let Some(window) = main.as_ref() {
-                    let _ = window.set_always_on_top(false);
-                    let _ = window.hide();
-                }
-                game_revealed = true;
-            } else if !game_revealed {
-                // Stage105 React builds used to hide immediately after spawn. Keep the launcher
-                // authoritative and visible throughout Forge bootstrap until the GGO client writes
-                // its explicit ready signal; the first-party game surface then replaces it.
-                if let Some(window) = main.as_ref() {
-                    let _ = window.set_always_on_top(true);
-                    let _ = window.show();
-                }
             }
             sleep(Duration::from_millis(125)).await;
         }
