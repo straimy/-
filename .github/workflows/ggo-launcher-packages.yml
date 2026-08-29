@@ -48,8 +48,11 @@ jobs:
         working-directory: .
       - name: Install frontend dependencies
         run: npm install
-      - name: Apply menu-first beta launcher contract
-        run: python3 hotfix/apply_menu_first_beta_stage76.py
+      - name: Apply canonical Stage111 launcher contract
+        run: |
+          set -euo pipefail
+          python3 hotfix/apply_menu_first_beta_stage76.py
+          python3 hotfix/apply_stage111_resilient_install.py
       - name: Generate platform icons
         run: npm run tauri icon src-tauri/icons/icon.png
       - name: Frontend type/build gate
@@ -71,6 +74,13 @@ jobs:
           ! grep -q 'async fn preview_minecraft_launch(' src-tauri/src/lib.rs
           ! grep -q 'onClick={()=>void launch(true)}' src/App.tsx
           grep -q '?t.install:updateAvailable?t.updateGame:t.play' src/App.tsx
+          test "$(grep -o 'setClientRunning(true);' src/App.tsx | wc -l)" -eq 1
+          ! grep -Fq 'getCurrentWindow().hide()' src/App.tsx
+          grep -Fq 'DOWNLOAD_ATTEMPTS: usize = 3' src-tauri/src/core/updater.rs
+          grep -Fq 'DOWNLOAD_STALL_TIMEOUT' src-tauri/src/core/updater.rs
+          grep -Fq 'env!("CARGO_PKG_VERSION")' src-tauri/src/core/updater.rs
+          grep -Fq 'unified_surface::supervise(app, ready_file)' src-tauri/src/lib.rs
+          grep -Fq 'child.wait()' src-tauri/src/runtime/minecraft_launch.rs
       - name: Build Tauri package
         run: npm run tauri build -- --bundles ${{ matrix.bundle }}
       - name: Normalize Linux packages
@@ -196,10 +206,13 @@ jobs:
         run: |
           set -euo pipefail
           python3 launcher/hotfix/apply_menu_first_beta_stage76.py
+          python3 launcher/hotfix/apply_stage111_resilient_install.py
           grep -q '?t.install:updateAvailable?t.updateGame:t.play' launcher/src/App.tsx
           ! grep -q 'onClick={()=>void launch(true)}' launcher/src/App.tsx
           ! grep -q 'className="repair-link"' launcher/src/App.tsx
           grep -q 'options.connect_server = false;' launcher/src-tauri/src/lib.rs
+          test "$(grep -o 'setClientRunning(true);' launcher/src/App.tsx | wc -l)" -eq 1
+          ! grep -Fq 'getCurrentWindow().hide()' launcher/src/App.tsx
       - name: Validate portal and production manifest
         run: |
           set -euo pipefail
@@ -278,6 +291,7 @@ jobs:
           auth_status=${{ needs.auth.result }}
           website_status=${{ needs.website.result }}
           menu_first_packaging=true
+          stage111_unified_lifecycle=true
           windows_artifact=GunGloryOnline-Launcher-Windows
           windows_installers=GunGloryOnline-Launcher-Windows.exe,GunGloryOnline-Launcher-Windows.msi,GunGloryOnline-Launcher-Windows-Portable.zip
           linux_artifact=GunGloryOnline-Launcher-Linux
