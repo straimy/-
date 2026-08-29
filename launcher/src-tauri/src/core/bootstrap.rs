@@ -18,8 +18,8 @@ pub struct BootstrapInfo {
 
 impl BootstrapInfo {
     pub fn current() -> Self {
-        // Stage110 preserves the Stage109 unified GGO shell while removing the unsafe
-        // source-name Button mixin that crashed the real Forge/SRG 1.20.1 runtime.
+        // Stage111 is the launcher-supervised GGO-only shell: the Java engine remains an
+        // implementation detail while all player-facing navigation stays first-party GGO.
         let content_base_url = option_env!("GGO_CONTENT_BASE_URL")
             .map(str::trim)
             .filter(|value| !value.is_empty())
@@ -35,12 +35,12 @@ impl BootstrapInfo {
             .filter(|value| !value.is_empty())
             .map(ToOwned::to_owned)
             .unwrap_or_else(|| {
-                format!("{content_base_url}/manifests/beta-stage110-candidate.json")
+                format!("{content_base_url}/manifests/beta-stage111-candidate.json")
             });
 
         Self {
             launcher_version: env!("CARGO_PKG_VERSION"),
-            game_version: "v110-candidate",
+            game_version: "v111-candidate",
             channel: "beta",
             runtime: "minecraft-forge",
             server: "play.kvicloud.ru:24842",
