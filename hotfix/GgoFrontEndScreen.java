@@ -9,7 +9,7 @@ import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.client.multiplayer.resolver.ServerAddress;
 import net.minecraft.network.chat.Component;
 
-/** Canonical minimal GunGloryOnline entry hub. Mode selection belongs inside the game, not the launcher. */
+/** Canonical GunGloryOnline entry surface. Official launcher sessions connect automatically. */
 public final class GgoFrontEndScreen extends Screen {
     private static final String OFFICIAL_SERVER = "play.kvicloud.ru:24842";
     private static final int BG = 0xFF05070B;
@@ -19,6 +19,7 @@ public final class GgoFrontEndScreen extends Screen {
     private static final int MUTED = 0xFF8792A3;
     private static final int READY = 0xFF72C391;
     private static final int WARN = 0xFFE26A73;
+    private boolean autoConnectScheduled;
 
     public GgoFrontEndScreen() {
         super(Component.literal("GunGloryOnline"));
@@ -31,6 +32,13 @@ public final class GgoFrontEndScreen extends Screen {
         boolean officialLaunch = GgoLaunchTicketClient.isOfficialLaunch();
         boolean canStartOnline = GgoLaunchTicketClient.canStartOnline();
 
+        // Launcher PLAY is the only online-play action. Do not make the player click PLAY twice.
+        if (!connected && officialLaunch && canStartOnline && !autoConnectScheduled) {
+            autoConnectScheduled = true;
+            mc.execute(this::connectOfficial);
+            return;
+        }
+
         int w = Math.min(370, Math.max(290, width / 3));
         int x = (width - w) / 2;
         int y = Math.max(220, height / 2 - 34);
@@ -39,15 +47,12 @@ public final class GgoFrontEndScreen extends Screen {
             addRenderableWidget(Button.builder(Component.literal("CONTINUE"), b -> mc.setScreen(null))
                 .bounds(x, y, w, 34).build());
         } else {
-            Button play = Button.builder(
-                    Component.literal(officialLaunch && canStartOnline ? "PLAY ONLINE" : "PLAY ONLINE · SIGN IN AGAIN"),
-                    b -> connectOfficial())
+            Button retry = Button.builder(Component.literal("RETURN TO LAUNCHER"), b -> mc.stop())
                 .bounds(x, y, w, 34).build();
-            play.active = officialLaunch && canStartOnline;
-            addRenderableWidget(play);
+            addRenderableWidget(retry);
         }
 
-        Button practice = Button.builder(Component.literal("PRACTICE · COMING SOON"), b -> openPractice())
+        Button practice = Button.builder(Component.literal("PRACTICE · COMING SOON"), b -> {})
             .bounds(x, y + 46, w, 28).build();
         practice.active = false;
         addRenderableWidget(practice);
@@ -66,10 +71,6 @@ public final class GgoFrontEndScreen extends Screen {
         }
         ServerData server = new ServerData("GunGloryOnline", OFFICIAL_SERVER, false);
         ConnectScreen.startConnecting(this, mc, ServerAddress.parseString(OFFICIAL_SERVER), server, false);
-    }
-
-    private void openPractice() {
-        Minecraft.getInstance().setScreen(new GgoTrainingScreen(this));
     }
 
     @Override
@@ -94,33 +95,27 @@ public final class GgoFrontEndScreen extends Screen {
 
         g.drawCenteredString(font, Component.literal("GUN GLORY ONLINE"), center, top, TEXT);
         g.drawCenteredString(font, Component.literal("CLOSED BETA"), center, top + 22, ACCENT);
-
         g.drawCenteredString(font, Component.literal(account.toUpperCase()), center, cardTop + 34, TEXT);
+
         String status;
         int statusColor;
         if (connected) {
             status = "ONLINE SESSION ACTIVE";
             statusColor = READY;
         } else if (officialLaunch && canStartOnline) {
-            status = "READY FOR OFFICIAL ONLINE";
+            status = "CONNECTING TO OFFICIAL GGO";
             statusColor = READY;
         } else {
-            status = "GGO ACCOUNT SESSION REQUIRED";
+            status = "LAUNCHER SESSION REQUIRED";
             statusColor = WARN;
         }
         g.drawCenteredString(font, Component.literal(status), center, cardTop + 58, statusColor);
 
-        if (!connected && officialLaunch && canStartOnline) {
-            g.drawCenteredString(font,
-                Component.literal("Secure entry window · " + GgoLaunchTicketClient.menuSecondsRemaining() + "s"),
-                center, cardTop + 80, MUTED);
-        } else if (!connected && (!officialLaunch || !canStartOnline)) {
-            g.drawCenteredString(font, Component.literal("Return to GGO Launcher, sign in and press PLAY."), center, cardTop + 80, MUTED);
+        if (!connected && (!officialLaunch || !canStartOnline)) {
+            g.drawCenteredString(font, Component.literal("Return to the GGO Launcher and press PLAY."), center, cardTop + 80, MUTED);
         }
 
         g.drawCenteredString(font, Component.literal("Official server · " + OFFICIAL_SERVER), center, cardBottom - 50, MUTED);
-        g.drawCenteredString(font, Component.literal("Practice will be an offline sandbox with no progression rewards."), center, cardBottom - 30, MUTED);
-
         super.render(g, mouseX, mouseY, partialTick);
     }
 
