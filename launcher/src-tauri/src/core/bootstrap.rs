@@ -18,9 +18,9 @@ pub struct BootstrapInfo {
 
 impl BootstrapInfo {
     pub fn current() -> Self {
-        // Stage113 is the current launcher-supervised unified GGO runtime candidate.
+        // Stage114 is the current launcher-supervised unified GGO runtime candidate.
         // The Java/Forge engine remains an implementation detail while player-facing
-        // navigation is owned by the first-party GunGloryOnline shell.
+        // navigation, startup branding and exit flow are owned by GunGloryOnline.
         let content_base_url = option_env!("GGO_CONTENT_BASE_URL")
             .map(str::trim)
             .filter(|value| !value.is_empty())
@@ -36,12 +36,12 @@ impl BootstrapInfo {
             .filter(|value| !value.is_empty())
             .map(ToOwned::to_owned)
             .unwrap_or_else(|| {
-                format!("{content_base_url}/manifests/beta-stage113-candidate.json")
+                format!("{content_base_url}/manifests/beta-stage114-candidate.json")
             });
 
         Self {
             launcher_version: env!("CARGO_PKG_VERSION"),
-            game_version: "v113-candidate",
+            game_version: "v114-candidate",
             channel: "beta",
             runtime: "minecraft-forge",
             server: "play.kvicloud.ru:24842",
