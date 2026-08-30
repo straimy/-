@@ -50,11 +50,14 @@ jobs:
           grep -q 'ADMIN_BUILD_TAG' "$G"
           grep -q 'ADMIN_SPECTATOR_TAG' "$G"
           grep -q 'Legacy /login and /register are never accepted' "$H"
-          grep -q 'GGO-WORLD-ROUTER-V1' "$W"
+          grep -q 'GGO-WORLD-ROUTER-V2' "$W"
           grep -q 'findSafeSurface' "$W"
           grep -q 'Commands.literal("world")' "$W"
           grep -q 'br_drop_point' "$W"
           grep -q 'br_mini_pubg' "$W"
+          grep -q -- '-126, -177' "$W"
+          grep -q '999, 1019' "$W"
+          grep -q '28, -41' "$W"
           grep -q '"source": "world_3"' "$M"
           grep -q '"logical_world_count": 4' "$M"
 
@@ -117,7 +120,7 @@ jobs:
             jar tf "$CORE" | grep -q "^arena/forge/$c.class$"
           done
           unzip -p "$CORE" arena/forge/AdminModeGuard.class | strings | grep -q 'ggo_admin_build_mode'
-          unzip -p "$CORE" arena/forge/GgoWorldRouter.class | strings | grep -q 'GGO-WORLD-ROUTER-V1'
+          unzip -p "$CORE" arena/forge/GgoWorldRouter.class | strings | grep -q 'GGO-WORLD-ROUTER-V2'
           unzip -p "$CORE" arena/forge/GgoWorldRouter.class | strings | grep -q 'br_drop_point'
           unzip -p "$CORE" arena/forge/GgoWorldRouter.class | strings | grep -q 'br_mini_pubg'
           ! unzip -p "$CORE" arena/forge/AdminToolsCommands.class | strings | grep -q '^gm$'
@@ -158,6 +161,7 @@ jobs:
           admin_spectator=true
           legacy_gm_alias=false
           world_router=true
+          map_spawn_anchors=true
           logical_world_count=4
           safe_surface_spawn=true
           result=${{ job.status }}
