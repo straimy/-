@@ -1,4 +1,5 @@
 name: GGO Runtime Stage115 Toggle Transition
+# Stage115 final toggle/world-entry candidate; keep this workflow commit-pinned.
 
 on:
   workflow_dispatch:
