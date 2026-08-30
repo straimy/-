@@ -1,0 +1,11 @@
+workflow=GGO Stage100 Candidate Manifest
+run_id=32715104760
+source_sha=2750b2ef3e580774aa2bf85315d2e23ac934b75e
+build_id=runtime-stage100
+core_sha256=c3c580b456ad5bd17144188a557d6d50ce2d3c23eee5685f7fdf28b632c1f2a1
+ui_sha256=75259d89f12e0f36add0bd82f02674aaad3313e7f807ae38ef2791026ca9e4fc
+resource_pack_sha256=b10b3228004b8d3068c93122c39e766df9778a1b277fef4a97d835c5ab0005ba
+public_assets_verified=true
+manifest_generated=true
+activated=false
+result=success

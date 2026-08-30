@@ -1,0 +1,156 @@
+name: GGO Stage 91 Closed Beta Ready
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - launcher/bootstrap-v0.1
+    paths:
+      - '.github/workflows/ggo-stage91-closed-beta-ready.yml'
+      - '.ci/deploy/stage89-final-beta-preflight.txt'
+      - '.ci/security/stage94-auth-binding-attestation.txt'
+      - '.ci/launcher/stage92-bound-beta-package.txt'
+      - 'launcher/hotfix/apply_ticket_binding_stage90.py'
+      - 'services/ggo-auth/**'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  ready:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout launcher/auth candidate
+        uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+          fetch-depth: 0
+          path: candidate
+
+      - name: Checkout hardened server candidate
+        uses: actions/checkout@v4
+        with:
+          ref: server/runtime-hardening-v1
+          fetch-depth: 0
+          path: server-candidate
+
+      - name: Verify Stage89 final preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          R=candidate/.ci/deploy/stage89-final-beta-preflight.txt
+          test -f "$R"
+          grep -qx 'secret_gate=success' "$R"
+          grep -qx 'runtime_candidate=success' "$R"
+          grep -qx 'build_policy=success' "$R"
+          grep -qx 'launcher_packages=success' "$R"
+          grep -qx 'production_fence=success' "$R"
+          grep -qx 'launcher_candidate_version=0.2.4' "$R"
+          grep -qx 'production_published=false' "$R"
+          grep -qx 'result=success' "$R"
+
+      - name: Verify Stage94 auth binding attestation
+        shell: bash
+        run: |
+          set -euo pipefail
+          R=candidate/.ci/security/stage94-auth-binding-attestation.txt
+          test -f "$R"
+          grep -qx 'run_id=32634349736' "$R"
+          grep -qx 'stage92_bound_launcher=success' "$R"
+          grep -qx 'auth_schema_binding=success' "$R"
+          grep -qx 'auth_one_shot_consume=success' "$R"
+          grep -qx 'ticket_ttl_seconds=180' "$R"
+          grep -qx 'consume_returns_ticket_build=success' "$R"
+          grep -qx 'launcher_requests_bound_ticket=success' "$R"
+          grep -qx 'production_deployed=false' "$R"
+          grep -qx 'result=success' "$R"
+
+      - name: Verify Stage92 ticket-bound launcher package
+        shell: bash
+        run: |
+          set -euo pipefail
+          R=candidate/.ci/launcher/stage92-bound-beta-package.txt
+          test -f "$R"
+          grep -qx 'run_id=32631622570' "$R"
+          grep -qx 'launcher_candidate_version=0.2.4' "$R"
+          grep -qx 'ticket_build_binding=true' "$R"
+          grep -qx 'stage85_integrity=true' "$R"
+          grep -qx 'menu_first=true' "$R"
+          grep -qx 'launch_autoconnect=false' "$R"
+          grep -qx 'production_published=false' "$R"
+          grep -qx 'result=success' "$R"
+
+      - name: Verify Stage93 ticket-bound server build receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          R=server-candidate/ci-results/stage93-ticket-binding.txt
+          test -f "$R"
+          grep -qx 'run_id=32633191926' "$R"
+          grep -qx 'source_gate=success' "$R"
+          grep -qx 'core_build=success' "$R"
+          grep -qx 'artifact_payload=success' "$R"
+          grep -qx 'upload=success' "$R"
+          grep -qx 'protocol=3' "$R"
+          grep -qx 'ticket_build_binding=true' "$R"
+          grep -qx 'production_deployed=false' "$R"
+          grep -qx 'result=success' "$R"
+
+      - name: Verify hardened server consumes ticket-bound metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          N=server-candidate/hotfix/GgoLaunchTicketNetwork.java
+          test -f "$N"
+          grep -q 'private static final String PROTOCOL = "3"' "$N"
+          grep -q 'profile.buildBound()' "$N"
+          grep -q 'profile.matches(packet)' "$N"
+          grep -q 'ticket_build' "$N"
+          grep -q 'build_id' "$N"
+          grep -q 'core_sha256' "$N"
+          grep -q 'ui_sha256' "$N"
+          grep -q 'launcher build verification failed' "$N"
+          grep -q '/auth/game-ticket/consume' "$N"
+          grep -q 'X-GGO-Server-Key' "$N"
+
+      - name: Verify production remains fenced
+        shell: bash
+        run: |
+          set -euo pipefail
+          M=candidate/site/content/manifests/beta.json
+          test -f "$M"
+          grep -q 'stage68.jar' "$M"
+          grep -q 'stage69.jar' "$M"
+          ! grep -q 'stage85.jar' "$M"
+
+      - name: Publish Stage91 closed-beta-ready receipt
+        shell: bash
+        working-directory: candidate
+        run: |
+          set -euo pipefail
+          mkdir -p .ci/deploy
+          cat > .ci/deploy/stage91-closed-beta-ready.txt <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_id=${GITHUB_RUN_ID}
+          launcher_sha=$(git rev-parse HEAD)
+          server_sha=$(git -C ../server-candidate rev-parse HEAD)
+          stage89=success
+          stage94=success
+          stage92=success
+          stage93=success
+          ticket_ttl_seconds=180
+          server_ticket_binding=success
+          launcher_candidate_version=0.2.4
+          production_published=false
+          manual_beta_ready=true
+          result=success
+          EOF
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .ci/deploy/stage91-closed-beta-ready.txt
+          git commit -m "ci: record Stage91 closed beta readiness ${GITHUB_RUN_ID}" || exit 0
+          git fetch origin launcher/bootstrap-v0.1
+          git rebase origin/launcher/bootstrap-v0.1
+          git push origin HEAD:launcher/bootstrap-v0.1

@@ -1,0 +1,15 @@
+workflow=GunGloryOnline Launcher Packages
+run_id=32744261444
+run_attempt=1
+run_url=https://github.com/straimy/-/actions/runs/32744261444
+head_sha=867485197c5b2fa22b6563b90336d14e16599ba7
+build_status=success
+auth_status=failure
+website_status=success
+menu_first_packaging=true
+windows_artifact=GunGloryOnline-Launcher-Windows
+windows_installers=GunGloryOnline-Launcher-Windows.exe,GunGloryOnline-Launcher-Windows.msi,GunGloryOnline-Launcher-Windows-Portable.zip
+linux_artifact=GunGloryOnline-Launcher-Linux
+linux_installers=GunGloryOnline-Launcher-Linux.AppImage,GunGloryOnline-Launcher-Ubuntu-Debian.deb,GunGloryOnline-Launcher-Fedora-RHEL.rpm
+website_artifact=GunGloryOnline-Website
+result=failure

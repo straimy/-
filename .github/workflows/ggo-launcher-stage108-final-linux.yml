@@ -1,0 +1,161 @@
+# Stage108 final retrigger: runtime candidate is GREEN; generated lifecycle Rust is formatted before compile.
+name: GGO Launcher Stage108 Final Linux
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - launcher/bootstrap-v0.1
+    paths:
+      - '.github/workflows/ggo-launcher-stage108-final-linux.yml'
+      - 'launcher/hotfix/apply_unified_process_stage106.py'
+      - 'launcher/hotfix/apply_stage107_lifecycle_polish.py'
+      - 'launcher/src/**'
+      - 'launcher/src-tauri/src/**'
+      - 'launcher/src-tauri/Cargo.toml'
+      - 'launcher/package.json'
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: launcher
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+          fetch-depth: 0
+      - name: Install Linux prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install frontend dependencies
+        run: npm install
+      - name: Apply unified lifecycle base
+        run: python3 hotfix/apply_unified_process_stage106.py
+      - name: Apply lifecycle polish
+        id: patch
+        run: python3 hotfix/apply_stage107_lifecycle_polish.py
+      - name: Stage108 source gate
+        id: gate
+        run: |
+          set -euo pipefail
+          grep -Fq 'beta-stage108-candidate.json' src-tauri/src/core/bootstrap.rs
+          grep -Fq 'game_version: "v108-candidate"' src-tauri/src/core/bootstrap.rs
+          grep -Fq '"GGO_READY_FILE".to_string()' src-tauri/src/lib.rs
+          grep -Fq '"GGO_FULLSCREEN_AFTER_READY".to_string()' src-tauri/src/lib.rs
+          grep -Fq 'options.fullscreen = false;' src-tauri/src/lib.rs
+          grep -Fq 'process.exitCode===0?"Ready"' src/App.tsx
+          grep -Fq 'setAlwaysOnTop(true)' src/App.tsx
+          grep -Fq 'earlyWindowControl = false' src-tauri/src/runtime/minecraft_process.rs
+          grep -Fq 'ensure_forge_early_window_disabled(install_dir)?' src-tauri/src/runtime/minecraft_process.rs
+          grep -Fq 'version = "0.2.9"' src-tauri/Cargo.toml
+          grep -Fq '"version": "0.2.9"' src-tauri/tauri.conf.json
+          grep -Fq '"version": "0.2.9"' package.json
+      - name: Frontend build
+        id: frontend
+        run: npm run build
+      - name: Rust format/check/test
+        id: rust
+        run: |
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+          cargo check --manifest-path src-tauri/Cargo.toml
+          cargo test --manifest-path src-tauri/Cargo.toml
+      - name: Generate platform icons
+        run: npm run tauri icon src-tauri/icons/icon.png
+      - name: Build Stage108 AppImage
+        id: package
+        run: npm run tauri build -- --bundles appimage
+      - name: Verify Stage108 AppImage
+        id: verify
+        run: |
+          set -euo pipefail
+          APP="$(find src-tauri/target/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage' | head -n1)"
+          test -n "$APP" && test -f "$APP"
+          case "$(basename "$APP")" in *0.2.9*) ;; *) echo "unexpected launcher filename: $APP" >&2; exit 1;; esac
+          APP_ABS="$(realpath "$APP")"
+          test -x "$APP_ABS" || chmod +x "$APP_ABS"
+
+          # AppImage is a compressed filesystem; grepping the outer container is not a
+          # reliable proof that strings embedded in the Tauri executable are present.
+          # Extract it and verify the actual packaged executable/resources instead.
+          rm -rf /tmp/ggo-stage108-appimage
+          mkdir -p /tmp/ggo-stage108-appimage
+          (
+            cd /tmp/ggo-stage108-appimage
+            "$APP_ABS" --appimage-extract >/dev/null
+          )
+          test -d /tmp/ggo-stage108-appimage/squashfs-root
+          grep -aRFl --include='*' 'beta-stage108-candidate.json' /tmp/ggo-stage108-appimage/squashfs-root >/tmp/ggo-stage108-manifest-hit
+          grep -aRFl --include='*' 'v108-candidate' /tmp/ggo-stage108-appimage/squashfs-root >/tmp/ggo-stage108-version-hit
+          test -s /tmp/ggo-stage108-manifest-hit
+          test -s /tmp/ggo-stage108-version-hit
+          echo "Packaged Stage108 manifest marker: $(head -n1 /tmp/ggo-stage108-manifest-hit)"
+          echo "Packaged Stage108 version marker: $(head -n1 /tmp/ggo-stage108-version-hit)"
+
+          echo "sha256=$(sha256sum "$APP" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "bytes=$(stat -c%s "$APP")" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        id: upload
+        with:
+          name: GunGloryOnline-Linux-Stage108-Final-0.2.9
+          path: launcher/src-tauri/target/release/bundle/appimage/*.AppImage
+          if-no-files-found: error
+          retention-days: 30
+      - name: Publish Stage108 launcher receipt
+        if: always()
+        env:
+          PATCH: ${{ steps.patch.outcome }}
+          GATE: ${{ steps.gate.outcome }}
+          FRONTEND: ${{ steps.frontend.outcome }}
+          RUST: ${{ steps.rust.outcome }}
+          PACKAGE: ${{ steps.package.outcome }}
+          VERIFY: ${{ steps.verify.outcome }}
+          UPLOAD: ${{ steps.upload.outcome }}
+        working-directory: .
+        run: |
+          set -euo pipefail
+          result=failure
+          [ "$PATCH" = success ] && [ "$GATE" = success ] && [ "$FRONTEND" = success ] && [ "$RUST" = success ] && [ "$PACKAGE" = success ] && [ "$VERIFY" = success ] && [ "$UPLOAD" = success ] && result=success
+          git reset --hard HEAD
+          mkdir -p .ci/launcher
+          cat > .ci/launcher/stage108-final-linux.txt <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_id=${GITHUB_RUN_ID}
+          source_sha=${GITHUB_SHA}
+          launcher_version=0.2.9
+          game_version=v108-candidate
+          manifest=beta-stage108-candidate.json
+          unified_process=true
+          early_forge_window_disabled=true
+          fullscreen_deferred=true
+          launcher_startup_cover=true
+          exit_restores_play=true
+          appimage_sha256=${{ steps.verify.outputs.sha256 }}
+          appimage_bytes=${{ steps.verify.outputs.bytes }}
+          patch=$PATCH
+          source_gate=$GATE
+          frontend=$FRONTEND
+          rust=$RUST
+          package=$PACKAGE
+          verify=$VERIFY
+          upload=$UPLOAD
+          result=$result
+          EOF
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .ci/launcher/stage108-final-linux.txt
+          git commit -m "ci: record Stage108 launcher ${GITHUB_RUN_ID}" || exit 0
+          git fetch origin launcher/bootstrap-v0.1
+          git rebase origin/launcher/bootstrap-v0.1
+          git push origin HEAD:launcher/bootstrap-v0.1

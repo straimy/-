@@ -1,0 +1,17 @@
+workflow=GGO Launcher Linux Verify
+run_id=33333206394
+run_attempt=1
+run_url=https://github.com/straimy/-/actions/runs/33333206394
+source_sha=3a220ec88f468592ffc717a986b89b8be33876de
+stage111_patch=success
+deps=success
+install=success
+icons=success
+frontend=success
+rust_fmt=success
+rust_check=success
+runtime_tests=success
+package=success
+verify=success
+installers=GunGloryOnline-Launcher-Linux.AppImage,GunGloryOnline-Launcher-Ubuntu-Debian.deb,GunGloryOnline-Launcher-Fedora-RHEL.rpm
+result=success

@@ -1,0 +1,183 @@
+name: GGO Stage 89 Final Beta Preflight
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - launcher/bootstrap-v0.1
+    paths:
+      - '.github/workflows/ggo-stage89-final-beta-preflight.yml'
+      - '.ci/launcher/stage88-beta-package.txt'
+      - '.ci/deploy/stage85-beta-candidate.txt'
+      - 'scripts/ggo_security_repo_gate.py'
+      - 'site/content/manifests/beta.json'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  final-preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGE85_RUN: '32624078787'
+      STAGE85_ARTIFACT: GunGloryOnline-Stage85-Beta-Candidate
+      STAGE86_RUN: '32623500769'
+      STAGE86_ARTIFACT: GunGloryOnline-Stage86-Build-Policy-Check
+      STAGE88_RUN: '32626403877'
+      STAGE88_WINDOWS: GunGloryOnline-Launcher-0.2.4-Beta-Windows
+      STAGE88_LINUX: GunGloryOnline-Launcher-0.2.4-Beta-Linux
+      EXPECTED_CORE_SHA: 20436c304da3f891f1514fd0e0cf969f61020306d510e8f30353b66be36db403
+      EXPECTED_UI_SHA: 0e4f2e7e81e3f460b1d01d5f15bcc087b0d0adafbc1f6134f366f0d44c04af79
+      EXPECTED_RP_SHA: ec3c1e83d59195ba5a8fb2a90a0a41b7439f3b98f10970bfc9c359d0f7a22dae
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+          fetch-depth: 0
+
+      - name: Repository secret gate
+        id: secrets
+        run: python3 scripts/ggo_security_repo_gate.py
+
+      - name: Download Stage85 runtime
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.STAGE85_ARTIFACT }}
+          path: stage85-input
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.STAGE85_RUN }}
+
+      - name: Download Stage86 build policy
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.STAGE86_ARTIFACT }}
+          path: stage86-input
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.STAGE86_RUN }}
+
+      - name: Download Stage88 Windows launcher
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.STAGE88_WINDOWS }}
+          path: stage88/windows
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.STAGE88_RUN }}
+
+      - name: Download Stage88 Linux launcher
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.STAGE88_LINUX }}
+          path: stage88/linux
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.STAGE88_RUN }}
+
+      - name: Verify Stage85 runtime candidate
+        id: runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$(find stage85-input -type f -name SHA256SUMS -printf '%h\n' | head -n1)"
+          test -n "$ROOT"
+          (cd "$ROOT" && sha256sum -c SHA256SUMS)
+          CORE_C="$ROOT/client/mods/gungloryonline-core-runtime-v1-stage85.jar"
+          CORE_S="$ROOT/server/mods/gungloryonline-core-runtime-v1-stage85.jar"
+          UI="$ROOT/client/mods/gungloryonline-ui-runtime-v1-stage85.jar"
+          RP="$ROOT/client/resourcepacks/GunGloryOnline-Official.zip"
+          MAN="$ROOT/manifests/beta-stage85-candidate.json"
+          cmp "$CORE_C" "$CORE_S"
+          test "$(sha256sum "$CORE_C" | awk '{print $1}')" = "$EXPECTED_CORE_SHA"
+          test "$(sha256sum "$UI" | awk '{print $1}')" = "$EXPECTED_UI_SHA"
+          test "$(sha256sum "$RP" | awk '{print $1}')" = "$EXPECTED_RP_SHA"
+          grep -q '"betaRuntimeStage": 85' "$MAN"
+          grep -q '"production": false' "$MAN"
+          jar tf "$UI" | grep -q '^arena/client/shell/GgoFrontEndScreen.class$'
+          jar tf "$UI" | grep -q '^arena/client/shell/GgoTrainingScreen.class$'
+
+      - name: Verify Stage86 build policy
+        id: policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$(find stage86-input -type f -name SHA256SUMS -printf '%h\n' | head -n1)"
+          test -n "$ROOT"
+          (cd "$ROOT" && sha256sum -c SHA256SUMS)
+          ENV_FILE="$ROOT/stage85-build-policy.env.example"
+          grep -qx 'GGO_ALLOWED_CLIENT_BUILDS=runtime-stage85' "$ENV_FILE"
+          grep -qx "GGO_ALLOWED_CORE_SHA256=${EXPECTED_CORE_SHA}" "$ENV_FILE"
+          grep -qx "GGO_ALLOWED_UI_SHA256=${EXPECTED_UI_SHA}" "$ENV_FILE"
+          grep -qx 'GGO_ENFORCE_CLIENT_BUILD=0' "$ENV_FILE"
+
+      - name: Verify Stage88 launcher packages
+        id: launcher
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f .ci/launcher/stage88-beta-package.txt
+          grep -q '^launcher_candidate_version=0.2.4$' .ci/launcher/stage88-beta-package.txt
+          grep -q '^stage85_integrity=true$' .ci/launcher/stage88-beta-package.txt
+          grep -q '^menu_first=true$' .ci/launcher/stage88-beta-package.txt
+          grep -q '^launch_autoconnect=false$' .ci/launcher/stage88-beta-package.txt
+          grep -q '^platform_icons_generated=true$' .ci/launcher/stage88-beta-package.txt
+          grep -q '^result=success$' .ci/launcher/stage88-beta-package.txt
+          for root in stage88/windows stage88/linux; do
+            SUMS="$(find "$root" -type f -name SHA256SUMS | head -n1)"
+            test -n "$SUMS"
+            (cd "$(dirname "$SUMS")" && sha256sum -c SHA256SUMS)
+          done
+          find stage88/windows -type f \( -name '*.exe' -o -name '*.msi' \) | grep -q .
+          find stage88/linux -type f \( -name '*.AppImage' -o -name '*.deb' \) | grep -q .
+
+      - name: Verify production fence
+        id: production
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'stage68.jar' site/content/manifests/beta.json
+          grep -q 'stage69.jar' site/content/manifests/beta.json
+          ! grep -q 'stage85.jar' site/content/manifests/beta.json
+          git diff --exit-code -- site/content/manifests/beta.json
+
+      - name: Publish Stage89 receipt
+        if: always()
+        env:
+          SECRET_GATE: ${{ steps.secrets.outcome }}
+          RUNTIME: ${{ steps.runtime.outcome }}
+          POLICY: ${{ steps.policy.outcome }}
+          LAUNCHER: ${{ steps.launcher.outcome }}
+          PRODUCTION: ${{ steps.production.outcome }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          result=success
+          for v in "$SECRET_GATE" "$RUNTIME" "$POLICY" "$LAUNCHER" "$PRODUCTION"; do [ "$v" = success ] || result=failure; done
+          mkdir -p .ci/deploy
+          cat > .ci/deploy/stage89-final-beta-preflight.txt <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_id=${GITHUB_RUN_ID}
+          launcher_sha=$(git rev-parse HEAD)
+          stage85_run=${STAGE85_RUN}
+          stage86_run=${STAGE86_RUN}
+          stage88_run=${STAGE88_RUN}
+          secret_gate=$SECRET_GATE
+          runtime_candidate=$RUNTIME
+          build_policy=$POLICY
+          launcher_packages=$LAUNCHER
+          production_fence=$PRODUCTION
+          launcher_candidate_version=0.2.4
+          production_published=false
+          result=$result
+          EOF
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .ci/deploy/stage89-final-beta-preflight.txt
+          git commit -m "ci: record Stage89 final beta preflight ${GITHUB_RUN_ID}" || exit 0
+          git fetch origin launcher/bootstrap-v0.1
+          git rebase origin/launcher/bootstrap-v0.1
+          git push origin HEAD:launcher/bootstrap-v0.1

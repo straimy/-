@@ -1,0 +1,137 @@
+name: GGO Launcher Stage105 Candidate
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - launcher/bootstrap-v0.1
+    paths:
+      - '.github/workflows/ggo-launcher-stage105-candidate.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  linux-candidate:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 50
+    env:
+      GGO_CONTENT_BASE_URL: https://ggo.kvicloud.ru/content
+      GGO_SITE_URL: https://ggo.kvicloud.ru
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Tauri Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libfuse2 rpm
+
+      - name: Make isolated Stage105 bootstrap in build workspace
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          boot=Path('launcher/src-tauri/src/core/bootstrap.rs')
+          text=boot.read_text()
+          text=text.replace('Stage103 is the current closed-beta candidate', 'Stage105 isolated smoke candidate')
+          text=text.replace('beta-stage103-candidate.json', 'beta-stage105-candidate.json')
+          text=text.replace('game_version: "v103-candidate"', 'game_version: "v105-candidate"')
+          if 'beta-stage105-candidate.json' not in text or 'game_version: "v105-candidate"' not in text:
+              raise SystemExit('Stage105 bootstrap transform failed')
+          boot.write_text(text)
+
+          cargo=Path('launcher/src-tauri/Cargo.toml')
+          c=cargo.read_text()
+          c=c.replace('version = "0.2.7"', 'version = "0.2.8"', 1)
+          if 'version = "0.2.8"' not in c:
+              raise SystemExit('Stage105 candidate version transform failed')
+          cargo.write_text(c)
+          PY
+          grep -Fq 'beta-stage105-candidate.json' launcher/src-tauri/src/core/bootstrap.rs
+          grep -Fq 'game_version: "v105-candidate"' launcher/src-tauri/src/core/bootstrap.rs
+          grep -Fq 'pub struct GameProcessStatus' launcher/src-tauri/src/runtime/minecraft_launch.rs
+          grep -Fq 'child.wait()' launcher/src-tauri/src/runtime/minecraft_launch.rs
+          grep -Fq 'getCurrentWindow().hide()' launcher/src/App.tsx
+          grep -Fq 'window.show()' launcher/src/App.tsx
+
+      - name: Install frontend dependencies
+        working-directory: launcher
+        run: npm install --no-audit --no-fund
+
+      - name: Generate Linux icons
+        working-directory: launcher
+        run: npm run tauri icon src-tauri/icons/icon.png
+
+      - name: Frontend build
+        working-directory: launcher
+        run: npm run build
+
+      - name: Rust compile and tests
+        working-directory: launcher
+        run: |
+          cargo check --manifest-path src-tauri/Cargo.toml
+          cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Build Stage105 AppImage
+        working-directory: launcher
+        run: npm run tauri build -- --bundles appimage
+
+      - name: Stage candidate package
+        id: stage
+        run: |
+          set -euo pipefail
+          APPIMAGE="$(find launcher/src-tauri/target/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage' | head -n1)"
+          test -n "$APPIMAGE" && test -f "$APPIMAGE"
+          mkdir -p stage105-launcher
+          cp "$APPIMAGE" stage105-launcher/GunGloryOnline_0.2.8_stage105_amd64.AppImage
+          sha256sum stage105-launcher/GunGloryOnline_0.2.8_stage105_amd64.AppImage | tee stage105-launcher/SHA256SUMS.txt
+          echo "appimage_sha256=$(sha256sum stage105-launcher/GunGloryOnline_0.2.8_stage105_amd64.AppImage | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        id: upload
+        with:
+          name: GunGloryOnline-Linux-Stage105-Candidate-0.2.8
+          path: stage105-launcher/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish Stage105 candidate receipt
+        if: always()
+        env:
+          STAGE_OUTCOME: ${{ steps.stage.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+        run: |
+          set -euo pipefail
+          result=failure
+          [ "$STAGE_OUTCOME" = success ] && [ "$UPLOAD_OUTCOME" = success ] && result=success
+          git restore --staged --worktree .
+          mkdir -p .ci/launcher
+          cat > .ci/launcher/stage105-candidate.txt <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_id=${GITHUB_RUN_ID}
+          source_sha=${GITHUB_SHA}
+          launcher_version=0.2.8
+          game_version=v105-candidate
+          manifest=https://ggo.kvicloud.ru/content/manifests/beta-stage105-candidate.json
+          unified_lifecycle=true
+          appimage_sha256=${{ steps.stage.outputs.appimage_sha256 }}
+          stage=$STAGE_OUTCOME
+          upload=$UPLOAD_OUTCOME
+          result=$result
+          EOF
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .ci/launcher/stage105-candidate.txt
+          git commit -m "ci: record Stage105 launcher candidate ${GITHUB_RUN_ID}" || exit 0
+          git fetch origin launcher/bootstrap-v0.1
+          git rebase origin/launcher/bootstrap-v0.1
+          git push origin HEAD:launcher/bootstrap-v0.1

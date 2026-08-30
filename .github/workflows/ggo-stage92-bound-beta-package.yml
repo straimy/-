@@ -1,0 +1,201 @@
+name: GGO Stage 92 Ticket-Bound Beta Package
+# Final closed-beta launcher package; includes Stage90 ticket-bound build identity.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - launcher/bootstrap-v0.1
+    paths:
+      - '.github/workflows/ggo-stage92-bound-beta-package.yml'
+      - '.ci/security/stage90-ticket-build-binding.txt'
+      - 'launcher/hotfix/apply_menu_first_beta_stage76.py'
+      - 'launcher/hotfix/apply_client_integrity_stage84.py'
+      - 'launcher/hotfix/apply_ticket_binding_stage90.py'
+      - 'launcher/src/**'
+      - 'launcher/src-tauri/**'
+      - 'launcher/package.json'
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            bundle: appimage,deb
+            artifact: GunGloryOnline-Launcher-0.2.4-Beta-Bound-Linux
+          - os: windows-2022
+            bundle: nsis,msi
+            artifact: GunGloryOnline-Launcher-0.2.4-Beta-Bound-Windows
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: launcher
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Linux Tauri dependencies
+        if: runner.os == 'Linux'
+        working-directory: .
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libfuse2
+
+      - name: Install frontend dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Generate platform launcher icons
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run tauri -- icon src-tauri/icons/icon.png
+          test -s src-tauri/icons/icon.ico
+
+      - name: Apply final beta launcher chain
+        run: |
+          python3 hotfix/apply_menu_first_beta_stage76.py
+          python3 hotfix/apply_client_integrity_stage84.py
+          python3 hotfix/apply_ticket_binding_stage90.py
+
+      - name: Ticket-bound candidate gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q '"version": "0.2.4"' package.json
+          grep -q '^version = "0.2.4"' src-tauri/Cargo.toml
+          grep -q 'runtime-stage96' src-tauri/src/lib.rs
+          grep -q 'runtime-stage85' src-tauri/src/lib.rs
+          grep -q 'ggo_integrity_pair(&root)' src-tauri/src/lib.rs
+          test "$(grep -c 'let (build_id, core_sha256, ui_sha256) = ggo_integrity_pair(&root)?;' src-tauri/src/lib.rs)" -eq 1
+          grep -q '&build_id' src-tauri/src/lib.rs
+          grep -q '&core_sha256' src-tauri/src/lib.rs
+          grep -q '&ui_sha256' src-tauri/src/lib.rs
+          grep -q 'GGO_CLIENT_BUILD_ID' src-tauri/src/lib.rs
+          grep -q 'GGO_CORE_SHA256' src-tauri/src/lib.rs
+          grep -q 'GGO_UI_SHA256' src-tauri/src/lib.rs
+          grep -q 'GGO_GAME_TICKET_EXPIRES_AT' src-tauri/src/lib.rs
+          grep -q "build_id: &'a str" src-tauri/src/core/ggo_auth.rs
+          grep -q "core_sha256: &'a str" src-tauri/src/core/ggo_auth.rs
+          grep -q "ui_sha256: &'a str" src-tauri/src/core/ggo_auth.rs
+          grep -q 'setGameInstalled(plan.files.length===0)' src/App.tsx
+          ! grep -q 'setGameInstalled(plan.checkedFiles>0&&plan.files.length===0)' src/App.tsx
+          grep -q 'options.connect_server = false;' src-tauri/src/lib.rs
+          ! grep -q 'async fn launch_minecraft(' src-tauri/src/lib.rs
+          ! grep -q 'async fn preview_minecraft_launch(' src-tauri/src/lib.rs
+          grep -q 'https://ggo.kvicloud.ru/content' src-tauri/src/core/bootstrap.rs
+          grep -q 'beta-stage96-candidate.json' src-tauri/src/core/bootstrap.rs
+          grep -q 'game_version: "v96-candidate"' src-tauri/src/core/bootstrap.rs
+          grep -q 'Mozilla/5.0 (X11; Linux x86_64)' src-tauri/src/core/updater.rs
+          grep -q 'GunGloryOnline-Launcher/0.2.4' src-tauri/src/core/updater.rs
+          grep -q 'ACCEPT_LANGUAGE' src-tauri/src/core/updater.rs
+          test -s src-tauri/icons/icon.ico
+
+      - name: Frontend build
+        run: npm run build
+
+      - name: Rust format gate
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+
+      - name: Rust compile gate
+        run: cargo check --manifest-path src-tauri/Cargo.toml
+
+      - name: Runtime migration tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml runtime::ggo_remote_install::tests --lib
+
+      - name: Build ticket-bound beta package
+        run: npm run tauri build -- --bundles ${{ matrix.bundle }}
+
+      - name: Normalize Linux beta packages
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist-stage92
+          APPIMAGE="$(find src-tauri/target/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage' | head -n1)"
+          DEB="$(find src-tauri/target/release/bundle/deb -maxdepth 1 -type f -name '*.deb' | head -n1)"
+          test -n "$APPIMAGE" && test -f "$APPIMAGE" && test "$(stat -c%s "$APPIMAGE")" -gt 1048576
+          test -n "$DEB" && test -f "$DEB" && test "$(stat -c%s "$DEB")" -gt 1048576
+          cp "$APPIMAGE" dist-stage92/GunGloryOnline-Launcher-0.2.4-Beta-Bound.AppImage
+          cp "$DEB" dist-stage92/GunGloryOnline-Launcher-0.2.4-Beta-Bound.deb
+          (cd dist-stage92 && sha256sum * > SHA256SUMS)
+
+      - name: Normalize Windows beta packages
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force dist-stage92 | Out-Null
+          $nsis = Get-ChildItem src-tauri/target/release/bundle/nsis/*.exe | Select-Object -First 1
+          $msi = Get-ChildItem src-tauri/target/release/bundle/msi/*.msi | Select-Object -First 1
+          if (-not $nsis -or $nsis.Length -lt 1MB) { throw 'Stage92 NSIS missing or too small' }
+          if (-not $msi -or $msi.Length -lt 1MB) { throw 'Stage92 MSI missing or too small' }
+          Copy-Item $nsis.FullName dist-stage92/GunGloryOnline-Launcher-0.2.4-Beta-Bound-Windows.exe
+          Copy-Item $msi.FullName dist-stage92/GunGloryOnline-Launcher-0.2.4-Beta-Bound-Windows.msi
+          $hashes = Get-ChildItem dist-stage92/* | Get-FileHash -Algorithm SHA256
+          $lines = $hashes | ForEach-Object { "$($_.Hash.ToLower())  $([System.IO.Path]::GetFileName($_.Path))" }
+          Set-Content -Path dist-stage92/SHA256SUMS -Value $lines -Encoding ascii
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: launcher/dist-stage92/**
+          if-no-files-found: error
+          retention-days: 30
+
+  receipt:
+    if: always()
+    needs: [package]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+          fetch-depth: 0
+      - name: Publish Stage92 receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          result='${{ needs.package.result }}'
+          [ "$result" = success ] || result=failure
+          mkdir -p .ci/launcher
+          cat > .ci/launcher/stage92-bound-beta-package.txt <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_id=${GITHUB_RUN_ID}
+          launcher_sha=$(git rev-parse HEAD)
+          launcher_candidate_version=0.2.4
+          ticket_build_binding=true
+          stage96_integrity=true
+          stage85_integrity=true
+          remote_content_default=true
+          remote_candidate=v96-candidate
+          cloudflare_ua_compat=true
+          menu_first=true
+          launch_autoconnect=false
+          production_published=false
+          windows_artifact=GunGloryOnline-Launcher-0.2.4-Beta-Bound-Windows
+          linux_artifact=GunGloryOnline-Launcher-0.2.4-Beta-Bound-Linux
+          result=$result
+          EOF
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .ci/launcher/stage92-bound-beta-package.txt
+          git commit -m "ci: record Stage92 ticket-bound beta package ${GITHUB_RUN_ID}" || exit 0
+          git fetch origin launcher/bootstrap-v0.1
+          git rebase origin/launcher/bootstrap-v0.1
+          git push origin HEAD:launcher/bootstrap-v0.1

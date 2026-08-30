@@ -1,0 +1,41 @@
+name: GGO Repository Security Gate
+
+on:
+  push:
+    branches: ["launcher/bootstrap-v0.1"]
+    paths:
+      - "scripts/ggo_security_repo_gate.py"
+      - "services/ggo-auth/**"
+      - "launcher/**"
+      - "site/**"
+      - ".github/workflows/ggo-security-repo-gate.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  secret-gate:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+          fetch-depth: 0
+      - name: Reject tracked production secrets
+        run: python3 scripts/ggo_security_repo_gate.py
+      - name: Reject auth database artifacts
+        run: |
+          set -euo pipefail
+          if git ls-files | grep -E '(^|/)auth\.db$'; then
+            echo 'tracked auth.db is forbidden' >&2
+            exit 1
+          fi
+      - name: Reject private key material
+        run: |
+          set -euo pipefail
+          if git grep -Il -E -- '-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----' -- . ':!*.md' | grep -q .; then
+            echo 'tracked private key material is forbidden' >&2
+            exit 1
+          fi

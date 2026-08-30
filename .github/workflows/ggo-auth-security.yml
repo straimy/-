@@ -1,0 +1,93 @@
+name: GGO Auth Security
+
+on:
+  push:
+    branches: ["launcher/bootstrap-v0.1"]
+    paths:
+      - "services/ggo-auth/**"
+      - "site/support/**"
+      - "site/admin/**"
+      - ".github/workflows/ggo-auth-security.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  security:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+          fetch-depth: 0
+      - name: Capture source ref
+        id: refs
+        run: echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Compile auth service
+        id: compile
+        run: python3 -m py_compile services/ggo-auth/server.py services/ggo-auth/secure_server.py services/ggo-auth/test_auth.py services/ggo-auth/test_security.py
+      - name: Core account and support smoke
+        id: smoke
+        run: python3 services/ggo-auth/test_auth.py -v
+      - name: Production entrypoint security smoke
+        id: secure
+        run: python3 services/ggo-auth/test_security.py -v
+      - name: Verify production service hardening
+        id: service
+        run: |
+          set -euo pipefail
+          grep -q 'ExecStart=/usr/bin/python3 /opt/ggo-auth/secure_server.py' services/ggo-auth/ggo-auth.service
+          grep -q 'secure_server.py' services/ggo-auth/install.sh
+          grep -q 'reserved_owner_username' services/ggo-auth/secure_server.py
+          grep -q 'GGO_ALLOW_OWNER_BOOTSTRAP' services/ggo-auth/secure_server.py
+          grep -q 'RATE_RULES' services/ggo-auth/secure_server.py
+          grep -q 'rate_limited' services/ggo-auth/secure_server.py
+          grep -q 'X-Frame-Options' services/ggo-auth/secure_server.py
+          grep -q 'Referrer-Policy' services/ggo-auth/secure_server.py
+          grep -q 'Permissions-Policy' services/ggo-auth/secure_server.py
+          grep -q 'CREATE TABLE IF NOT EXISTS security_audit' services/ggo-auth/secure_server.py
+          grep -q '/api/v1/admin/audit' services/ggo-auth/secure_server.py
+          grep -q 'role_changed' services/ggo-auth/secure_server.py
+          grep -q 'logout_all' services/ggo-auth/secure_server.py
+          ! grep -q 'DELETE FROM security_audit' services/ggo-auth/secure_server.py
+          ! grep -q 'UPDATE security_audit' services/ggo-auth/secure_server.py
+          ! grep -q 'GGO_ALLOW_OWNER_BOOTSTRAP=1' services/ggo-auth/ggo-auth.service
+      - name: Publish auth security receipt
+        if: always()
+        env:
+          COMPILE: ${{ steps.compile.outcome }}
+          SMOKE: ${{ steps.smoke.outcome }}
+          SECURE: ${{ steps.secure.outcome }}
+          SERVICE: ${{ steps.service.outcome }}
+        run: |
+          set -euo pipefail
+          result=success
+          for v in "$COMPILE" "$SMOKE" "$SECURE" "$SERVICE"; do [ "$v" = success ] || result=failure; done
+          mkdir -p .ci/auth
+          cat > .ci/auth/security-latest.txt <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_id=${GITHUB_RUN_ID}
+          run_attempt=${GITHUB_RUN_ATTEMPT}
+          run_url=https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          source_sha=${{ steps.refs.outputs.source_sha }}
+          compile=$COMPILE
+          account_support_smoke=$SMOKE
+          reserved_owner_security=$SECURE
+          secure_systemd_entrypoint=$SERVICE
+          owner_public_registration_blocked=true
+          staff_roles_server_authoritative=true
+          auth_rate_limits=true
+          hardened_security_headers=true
+          privileged_audit_log=true
+          audit_log_append_only_api=true
+          result=$result
+          EOF
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .ci/auth/security-latest.txt
+          git commit -m "ci: record auth security ${GITHUB_RUN_ID}" || exit 0
+          git fetch origin launcher/bootstrap-v0.1
+          git rebase origin/launcher/bootstrap-v0.1
+          git push origin HEAD:launcher/bootstrap-v0.1

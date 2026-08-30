@@ -1,0 +1,172 @@
+name: GGO Stage 85 Beta Candidate
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - launcher/bootstrap-v0.1
+    paths:
+      - '.github/workflows/ggo-stage85-beta-candidate.yml'
+      - '.github/workflows/ggo-stage81-beta-chain-preflight.yml'
+      - '.github/workflows/ggo-launcher-stage84-integrity.yml'
+      - 'site/content/manifests/beta.json'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      STAGE83_RUN: '32617753872'
+      STAGE83_ARTIFACT: GunGloryOnline-Core-Stage83-Combat-Evidence
+      STAGE77_RUN: '32604880362'
+      STAGE77_ARTIFACT: GunGloryOnline-Runtime-Stage77-Training
+      EXPECTED_CORE_SHA: 20436c304da3f891f1514fd0e0cf969f61020306d510e8f30353b66be36db403
+      EXPECTED_UI_SHA: 0e4f2e7e81e3f460b1d01d5f15bcc087b0d0adafbc1f6134f366f0d44c04af79
+      EXPECTED_RP_SHA: ec3c1e83d59195ba5a8fb2a90a0a41b7439f3b98f10970bfc9c359d0f7a22dae
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+          fetch-depth: 0
+
+      - name: Capture exact ref
+        id: refs
+        run: echo "launcher_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Download verified Stage83 Core
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.STAGE83_ARTIFACT }}
+          path: stage83-input
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.STAGE83_RUN }}
+
+      - name: Download verified Stage77 UI and resource pack
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.STAGE77_ARTIFACT }}
+          path: stage77-input
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.STAGE77_RUN }}
+
+      - name: Assemble candidate payload
+        id: assemble
+        shell: bash
+        run: |
+          set -euo pipefail
+          CORE_CLIENT="$(find stage83-input -type f -path '*/client/mods/*' -name '*core*stage83*.jar' | head -n1)"
+          CORE_SERVER="$(find stage83-input -type f -path '*/server/mods/*' -name '*core*stage83*.jar' | head -n1)"
+          UI="$(find stage77-input -type f -path '*/client/mods/*' -name '*ui*stage77*.jar' | head -n1)"
+          RP="$(find stage77-input -type f -path '*/client/resourcepacks/*' -name 'GunGloryOnline-Official.zip' | head -n1)"
+          for f in "$CORE_CLIENT" "$CORE_SERVER" "$UI" "$RP"; do test -n "$f" && test -f "$f"; done
+          cmp "$CORE_CLIENT" "$CORE_SERVER"
+          test "$(sha256sum "$CORE_CLIENT" | awk '{print $1}')" = "$EXPECTED_CORE_SHA"
+          test "$(sha256sum "$UI" | awk '{print $1}')" = "$EXPECTED_UI_SHA"
+          test "$(sha256sum "$RP" | awk '{print $1}')" = "$EXPECTED_RP_SHA"
+          mkdir -p stage85/client/mods stage85/client/resourcepacks stage85/server/mods stage85/manifests
+          cp "$CORE_CLIENT" stage85/client/mods/gungloryonline-core-runtime-v1-stage85.jar
+          cp "$CORE_SERVER" stage85/server/mods/gungloryonline-core-runtime-v1-stage85.jar
+          cp "$UI" stage85/client/mods/gungloryonline-ui-runtime-v1-stage85.jar
+          cp "$RP" stage85/client/resourcepacks/GunGloryOnline-Official.zip
+          CORE_SIZE=$(stat -c%s "$CORE_CLIENT")
+          UI_SIZE=$(stat -c%s "$UI")
+          RP_SIZE=$(stat -c%s "$RP")
+          python3 - "$CORE_SIZE" "$UI_SIZE" "$RP_SIZE" <<'PY'
+          import json, sys
+          from pathlib import Path
+          core_size, ui_size, rp_size = map(int, sys.argv[1:])
+          prod = json.loads(Path('site/content/manifests/beta.json').read_text())
+          out = []
+          for item in prod['files']:
+              p = item['path']
+              if 'gungloryonline-core-runtime-v1-stage68.jar' in p or 'gungloryonline-ui-runtime-v1-stage69.jar' in p or p == 'resourcepacks/GunGloryOnline-Official.zip':
+                  continue
+              out.append(item)
+          base = 'https://ggo.kvicloud.ru/content/files/v85/'
+          out += [
+              {'path':'mods/gungloryonline-core-runtime-v1-stage85.jar','url':base+'gungloryonline-core-runtime-v1-stage85.jar','sha256':'20436c304da3f891f1514fd0e0cf969f61020306d510e8f30353b66be36db403','size':core_size,'required':True,'side':'client','version':'v85-candidate','kind':'mod'},
+              {'path':'mods/gungloryonline-ui-runtime-v1-stage85.jar','url':base+'gungloryonline-ui-runtime-v1-stage85.jar','sha256':'0e4f2e7e81e3f460b1d01d5f15bcc087b0d0adafbc1f6134f366f0d44c04af79','size':ui_size,'required':True,'side':'client','version':'v85-candidate','kind':'mod'},
+              {'path':'resourcepacks/GunGloryOnline-Official.zip','url':base+'GunGloryOnline-Official.zip','sha256':'ec3c1e83d59195ba5a8fb2a90a0a41b7439f3b98f10970bfc9c359d0f7a22dae','size':rp_size,'required':True,'side':'client','version':'v85-candidate','kind':'resourcepack'},
+          ]
+          candidate = dict(prod)
+          candidate['gameVersion'] = 'v85-candidate'
+          candidate['betaRuntimeStage'] = 85
+          candidate['production'] = False
+          candidate['files'] = out
+          Path('stage85/manifests/beta-stage85-candidate.json').write_text(json.dumps(candidate, indent=2, ensure_ascii=False)+'\n')
+          PY
+          (
+            cd stage85
+            sha256sum client/mods/* server/mods/* client/resourcepacks/* manifests/* > SHA256SUMS
+          )
+
+      - name: Verify candidate and production fence
+        id: gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmp stage85/client/mods/gungloryonline-core-runtime-v1-stage85.jar stage85/server/mods/gungloryonline-core-runtime-v1-stage85.jar
+          (cd stage85 && sha256sum -c SHA256SUMS)
+          grep -q '"betaRuntimeStage": 85' stage85/manifests/beta-stage85-candidate.json
+          grep -q 'gungloryonline-core-runtime-v1-stage85.jar' stage85/manifests/beta-stage85-candidate.json
+          grep -q 'gungloryonline-ui-runtime-v1-stage85.jar' stage85/manifests/beta-stage85-candidate.json
+          grep -q "$EXPECTED_CORE_SHA" stage85/manifests/beta-stage85-candidate.json
+          grep -q "$EXPECTED_UI_SHA" stage85/manifests/beta-stage85-candidate.json
+          grep -q "$EXPECTED_RP_SHA" stage85/manifests/beta-stage85-candidate.json
+          git diff --exit-code -- site/content/manifests/beta.json
+          grep -q 'stage68.jar' site/content/manifests/beta.json
+          grep -q 'stage69.jar' site/content/manifests/beta.json
+          ! grep -q 'stage85.jar' site/content/manifests/beta.json
+
+      - uses: actions/upload-artifact@v4
+        id: upload
+        if: success()
+        with:
+          name: GunGloryOnline-Stage85-Beta-Candidate
+          path: stage85/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish Stage85 receipt
+        if: always()
+        env:
+          ASSEMBLE_OUTCOME: ${{ steps.assemble.outcome }}
+          GATES_OUTCOME: ${{ steps.gates.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+        run: |
+          set -euo pipefail
+          result=success
+          for v in "$ASSEMBLE_OUTCOME" "$GATES_OUTCOME" "$UPLOAD_OUTCOME"; do [ "$v" = success ] || result=failure; done
+          mkdir -p .ci/deploy
+          cat > .ci/deploy/stage85-beta-candidate.txt <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_id=${GITHUB_RUN_ID}
+          run_attempt=${GITHUB_RUN_ATTEMPT}
+          run_url=https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          launcher_sha=${{ steps.refs.outputs.launcher_sha }}
+          stage83_run=${STAGE83_RUN}
+          stage77_run=${STAGE77_RUN}
+          assemble=$ASSEMBLE_OUTCOME
+          candidate_gates=$GATES_OUTCOME
+          upload=$UPLOAD_OUTCOME
+          core_sha256=${EXPECTED_CORE_SHA}
+          ui_sha256=${EXPECTED_UI_SHA}
+          resource_pack_sha256=${EXPECTED_RP_SHA}
+          client_server_core_identical=true
+          production_manifest_unchanged=true
+          production_deployed=false
+          result=$result
+          EOF
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .ci/deploy/stage85-beta-candidate.txt
+          git commit -m "ci: record Stage85 beta candidate ${GITHUB_RUN_ID}" || exit 0
+          git fetch origin launcher/bootstrap-v0.1
+          git rebase origin/launcher/bootstrap-v0.1
+          git push origin HEAD:launcher/bootstrap-v0.1

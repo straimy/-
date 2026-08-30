@@ -1,0 +1,107 @@
+name: GGO Stage98 Candidate CDN Payload
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - launcher/bootstrap-v0.1
+    paths:
+      - '.github/workflows/ggo-stage98-cdn-payload.yml'
+      - 'launcher/hotfix/prepare_stage98_manifest.py'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  assemble:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      SOURCE_CLIENT_RUN: '32702215329'
+      SOURCE_ARTIFACT: GunGloryOnline-Runtime-Stage98-Startup-Brand
+      CORE_SHA256: c3c580b456ad5bd17144188a557d6d50ce2d3c23eee5685f7fdf28b632c1f2a1
+      UI_SHA256: 26820615d73d27e38490d7dfd8412afbe7da77cd63701aaa028618aba01eb499
+      RP_SHA256: ec3c1e83d59195ba5a8fb2a90a0a41b7439f3b98f10970bfc9c359d0f7a22dae
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+          fetch-depth: 0
+
+      - name: Prepare exact Stage98 manifest
+        run: |
+          set -euo pipefail
+          python3 launcher/hotfix/prepare_stage98_manifest.py
+          python3 -m json.tool site/content/manifests/beta-stage98-candidate.json >/dev/null
+
+      - name: Download immutable GREEN Stage98 runtime
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.SOURCE_ARTIFACT }}
+          path: stage98-input
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_CLIENT_RUN }}
+
+      - name: Assemble CDN tree and verify hashes
+        id: assemble
+        run: |
+          set -euo pipefail
+          CORE="$(find stage98-input -type f -name 'gungloryonline-core-runtime-v1-stage98-startup-brand.jar' | head -n1)"
+          UI="$(find stage98-input -type f -name 'gungloryonline-ui-runtime-v1-stage98-startup-brand.jar' | head -n1)"
+          RP="$(find stage98-input -type f -name 'GunGloryOnline-Official.zip' | head -n1)"
+          test -f "$CORE" && test -f "$UI" && test -f "$RP"
+          test "$(sha256sum "$CORE" | awk '{print $1}')" = "$CORE_SHA256"
+          test "$(sha256sum "$UI" | awk '{print $1}')" = "$UI_SHA256"
+          test "$(sha256sum "$RP" | awk '{print $1}')" = "$RP_SHA256"
+          test "$(stat -c %s "$CORE")" = 462019
+          test "$(stat -c %s "$UI")" = 205432
+          test "$(stat -c %s "$RP")" = 12738980
+
+          rm -rf stage98-cdn && mkdir -p stage98-cdn/content/files/v98 stage98-cdn/content/manifests
+          cp "$CORE" stage98-cdn/content/files/v98/gungloryonline-core-runtime-v1-stage98-startup-brand.jar
+          cp "$UI" stage98-cdn/content/files/v98/gungloryonline-ui-runtime-v1-stage98-startup-brand.jar
+          cp "$RP" stage98-cdn/content/files/v98/GunGloryOnline-Official-stage98.zip
+          cp site/content/manifests/beta-stage98-candidate.json stage98-cdn/content/manifests/
+          (cd stage98-cdn && sha256sum content/files/v98/* content/manifests/beta-stage98-candidate.json > SHA256SUMS)
+
+      - uses: actions/upload-artifact@v4
+        id: upload
+        with:
+          name: GunGloryOnline-Stage98-CDN-Payload
+          path: stage98-cdn/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Commit manifest and immutable receipt
+        if: always()
+        env:
+          ASSEMBLE_OUTCOME: ${{ steps.assemble.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+        run: |
+          set -euo pipefail
+          result=failure
+          [ "$ASSEMBLE_OUTCOME" = success ] && [ "$UPLOAD_OUTCOME" = success ] && result=success
+          mkdir -p .ci/launcher
+          cat > .ci/launcher/stage98-cdn-payload.txt <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_id=${GITHUB_RUN_ID}
+          launcher_sha=$(git rev-parse HEAD)
+          source_client_run=${SOURCE_CLIENT_RUN}
+          build_id=runtime-stage98
+          core_sha256=${CORE_SHA256}
+          ui_sha256=${UI_SHA256}
+          resource_pack_sha256=${RP_SHA256}
+          assemble=${ASSEMBLE_OUTCOME}
+          upload=${UPLOAD_OUTCOME}
+          production_deployed=false
+          result=${result}
+          EOF
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add site/content/manifests/beta-stage98-candidate.json .ci/launcher/stage98-cdn-payload.txt
+          git commit -m "ci: record Stage98 CDN payload ${GITHUB_RUN_ID}" || exit 0
+          git fetch origin launcher/bootstrap-v0.1
+          git rebase origin/launcher/bootstrap-v0.1
+          git push origin HEAD:launcher/bootstrap-v0.1

@@ -1,0 +1,14 @@
+workflow=GGO Launcher Stage 88 Beta Package
+run_id=33308052870
+run_attempt=1
+run_url=https://github.com/straimy/-/actions/runs/33308052870
+launcher_sha=ed41f64ffdabcf68b37e2b693cd40509c7136517
+launcher_candidate_version=0.2.4
+stage85_integrity=true
+menu_first=true
+launch_autoconnect=false
+platform_icons_generated=true
+production_published=false
+windows_artifact=GunGloryOnline-Launcher-0.2.4-Beta-Windows
+linux_artifact=GunGloryOnline-Launcher-0.2.4-Beta-Linux
+result=failure

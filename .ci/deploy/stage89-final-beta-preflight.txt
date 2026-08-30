@@ -1,0 +1,14 @@
+workflow=GGO Stage 89 Final Beta Preflight
+run_id=32627086528
+launcher_sha=2b018530ad2e9168c8391a9ff2da54ce1e78ac6e
+stage85_run=32624078787
+stage86_run=32623500769
+stage88_run=32626403877
+secret_gate=success
+runtime_candidate=success
+build_policy=success
+launcher_packages=success
+production_fence=success
+launcher_candidate_version=0.2.4
+production_published=false
+result=success

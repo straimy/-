@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "gameVersion": "0.4.0-beta",
+  "runtime": "minecraft-forge",
+  "channel": "beta",
+  "files": [
+    {"path":"mods/gungloryonline-core-0.4.0-beta.jar","url":"https://downloads.example.invalid/ggo/0.4.0-beta/gungloryonline-core-0.4.0-beta.jar","sha256":"8ac6a6c82f6a11b23729f203a47be3b50ea0552c044b94ddcf61974538e100da","size":0,"required":true,"side":"client","version":"0.4.0-beta","kind":"mod"},
+    {"path":"mods/gungloryonline-ui-0.4.0-beta.jar","url":"https://downloads.example.invalid/ggo/0.4.0-beta/gungloryonline-ui-0.4.0-beta.jar","sha256":"a0cc02fcc084a0b273c9d9458d963f63679ad3969462745988d8c42fcc277708","size":0,"required":true,"side":"client","version":"0.4.0-beta","kind":"mod"},
+    {"path":"resourcepacks/GunGloryOnline-ResourcePack-1.20.1-v2-embeddium-fix.zip","url":"https://downloads.example.invalid/ggo/0.4.0-beta/GunGloryOnline-ResourcePack-1.20.1-v2-embeddium-fix.zip","sha256":"b8ad8782d3b1fc6b336c5debd934ae48caa6d430965e2958fdda22fef673637b","size":12737939,"required":true,"side":"client","version":"v2-embeddium-fix","kind":"resourcepack"}
+  ]
+}

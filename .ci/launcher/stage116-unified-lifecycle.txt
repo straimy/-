@@ -1,0 +1,11 @@
+workflow=GGO Launcher Stage116 Unified Lifecycle
+run_id=33333280035
+launcher_sha=99ea7cea57ba57bc5e835306126b9973f7f807b3
+launcher_version=0.2.15
+linux_windows_matrix=success
+unified_surface_supervisor=true
+java_child_owned=true
+launcher_hide_after_ggo_ready=true
+launcher_restore_after_engine_exit=true
+explicit_play_online=true
+result=success

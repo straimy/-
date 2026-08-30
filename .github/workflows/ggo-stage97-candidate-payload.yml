@@ -1,0 +1,120 @@
+name: GGO Stage97 Candidate CDN Payload
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - launcher/bootstrap-v0.1
+    paths:
+      - '.github/workflows/ggo-stage97-candidate-payload.yml'
+      - 'site/content/manifests/beta-stage97-candidate.json'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  assemble:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CLIENT_RUN: '32697877231'
+      CLIENT_ARTIFACT: GunGloryOnline-Runtime-Stage96-Client-Channel-Sync
+      CORE_SHA256: c3c580b456ad5bd17144188a557d6d50ce2d3c23eee5685f7fdf28b632c1f2a1
+      UI_SHA256: fed175cb342b9bc45e612ea724ace16ca325d7b02ebcaa76b13157f2f54bab1d
+      RP_SHA256: ec3c1e83d59195ba5a8fb2a90a0a41b7439f3b98f10970bfc9c359d0f7a22dae
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+          fetch-depth: 0
+
+      - name: Download immutable GREEN client runtime
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.CLIENT_ARTIFACT }}
+          path: stage97-input
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.CLIENT_RUN }}
+
+      - name: Verify and assemble Stage97 CDN layout
+        id: assemble
+        shell: bash
+        run: |
+          set -euo pipefail
+          CORE="$(find stage97-input -type f -name 'gungloryonline-core-runtime-v1-stage96-channel-sync.jar' | head -n1)"
+          UI="$(find stage97-input -type f -name 'gungloryonline-ui-runtime-v1-stage96.jar' | head -n1)"
+          RP="$(find stage97-input -type f -name 'GunGloryOnline-Official.zip' | head -n1)"
+          test -n "$CORE" && test -f "$CORE"
+          test -n "$UI" && test -f "$UI"
+          test -n "$RP" && test -f "$RP"
+          test "$(sha256sum "$CORE" | awk '{print $1}')" = "$CORE_SHA256"
+          test "$(sha256sum "$UI" | awk '{print $1}')" = "$UI_SHA256"
+          test "$(sha256sum "$RP" | awk '{print $1}')" = "$RP_SHA256"
+
+          rm -rf stage97-cdn
+          mkdir -p stage97-cdn/content/files/v97 stage97-cdn/content/manifests
+          cp "$CORE" stage97-cdn/content/files/v97/gungloryonline-core-runtime-v1-stage97-channel-sync.jar
+          cp "$UI" stage97-cdn/content/files/v97/gungloryonline-ui-runtime-v1-stage97.jar
+          cp "$RP" stage97-cdn/content/files/v97/GunGloryOnline-Official-stage97.zip
+          cp site/content/manifests/beta-stage97-candidate.json stage97-cdn/content/manifests/beta-stage97-candidate.json
+
+          python3 -m json.tool stage97-cdn/content/manifests/beta-stage97-candidate.json >/dev/null
+          grep -q '"gameVersion": "v97-candidate"' stage97-cdn/content/manifests/beta-stage97-candidate.json
+          grep -q "$CORE_SHA256" stage97-cdn/content/manifests/beta-stage97-candidate.json
+          grep -q "$UI_SHA256" stage97-cdn/content/manifests/beta-stage97-candidate.json
+          grep -q "$RP_SHA256" stage97-cdn/content/manifests/beta-stage97-candidate.json
+
+          (cd stage97-cdn && sha256sum \
+            content/files/v97/gungloryonline-core-runtime-v1-stage97-channel-sync.jar \
+            content/files/v97/gungloryonline-ui-runtime-v1-stage97.jar \
+            content/files/v97/GunGloryOnline-Official-stage97.zip \
+            content/manifests/beta-stage97-candidate.json > SHA256SUMS)
+          (cd stage97-cdn && sha256sum -c SHA256SUMS)
+
+          echo "core_sha256=$CORE_SHA256" >> "$GITHUB_OUTPUT"
+          echo "ui_sha256=$UI_SHA256" >> "$GITHUB_OUTPUT"
+          echo "rp_sha256=$RP_SHA256" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        id: upload
+        with:
+          name: GunGloryOnline-Stage97-CDN-Payload
+          path: stage97-cdn/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish Stage97 payload receipt
+        if: always()
+        env:
+          ASSEMBLE_OUTCOME: ${{ steps.assemble.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          result=success
+          [ "$ASSEMBLE_OUTCOME" = success ] || result=failure
+          [ "$UPLOAD_OUTCOME" = success ] || result=failure
+          mkdir -p .ci/launcher
+          cat > .ci/launcher/stage97-cdn-payload.txt <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_id=${GITHUB_RUN_ID}
+          launcher_sha=${GITHUB_SHA}
+          source_client_run=${CLIENT_RUN}
+          build_id=runtime-stage97
+          core_sha256=${CORE_SHA256}
+          ui_sha256=${UI_SHA256}
+          resource_pack_sha256=${RP_SHA256}
+          assemble=${ASSEMBLE_OUTCOME}
+          upload=${UPLOAD_OUTCOME}
+          production_deployed=false
+          result=${result}
+          EOF
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .ci/launcher/stage97-cdn-payload.txt
+          git commit -m "ci: record Stage97 CDN payload ${GITHUB_RUN_ID}" || exit 0
+          git fetch origin launcher/bootstrap-v0.1
+          git rebase origin/launcher/bootstrap-v0.1
+          git push origin HEAD:launcher/bootstrap-v0.1

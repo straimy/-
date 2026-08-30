@@ -1,0 +1,166 @@
+name: GGO Stage 74 Launcher Update Bundle
+
+on:
+  push:
+    branches: ["launcher/bootstrap-v0.1"]
+    paths:
+      - ".github/workflows/ggo-stage74-launcher-update-bundle.yml"
+      - "site/install-launcher.sh"
+      - "site/publish-launcher-update.sh"
+      - "site/deploy-stage74.sh"
+      - "site/install-site.sh"
+      - "launcher/src-tauri/**"
+  workflow_run:
+    workflows: ["GunGloryOnline Launcher Packages"]
+    types: [completed]
+    branches: ["launcher/bootstrap-v0.1"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  assemble:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Resolve latest successful launcher package run
+        id: source
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          row="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ggo-launcher-packages.yml --branch launcher/bootstrap-v0.1 --status success --limit 1 --json databaseId,headSha --jq '.[0] | [.databaseId,.headSha] | @tsv')"
+          test -n "$row"
+          IFS=$'\t' read -r run_id head_sha <<<"$row"
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+          fetch-depth: 0
+
+      - name: Download Windows packages
+        uses: actions/download-artifact@v4
+        with:
+          name: GunGloryOnline-Launcher-Windows
+          path: fresh/windows
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.source.outputs.run_id }}
+
+      - name: Download Linux packages
+        uses: actions/download-artifact@v4
+        with:
+          name: GunGloryOnline-Launcher-Linux
+          path: fresh/linux
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.source.outputs.run_id }}
+
+      - name: Assemble Stage 74
+        id: bundle
+        run: |
+          set -euo pipefail
+          version="$(python3 -c 'import json; print(json.load(open("launcher/src-tauri/tauri.conf.json"))["version"])')"
+          package_version="$(dpkg-deb -f fresh/linux/GunGloryOnline-Launcher-Ubuntu-Debian.deb Version)"
+          test "$package_version" = "$version"
+
+          rm -rf corrected
+          mkdir -p corrected/{packages,web/services,receipts}
+          cp fresh/windows/GunGloryOnline-Launcher-Windows.exe corrected/packages/
+          cp fresh/windows/GunGloryOnline-Launcher-Windows.msi corrected/packages/
+          cp fresh/windows/GunGloryOnline-Launcher-Windows-Portable.zip corrected/packages/
+          cp fresh/linux/GunGloryOnline-Launcher-Linux.AppImage corrected/packages/
+          cp fresh/linux/GunGloryOnline-Launcher-Ubuntu-Debian.deb corrected/packages/
+          cp fresh/linux/GunGloryOnline-Launcher-Fedora-RHEL.rpm corrected/packages/
+          cp -a site corrected/web/site
+          cp -a services/ggo-auth corrected/web/services/ggo-auth
+
+          chmod +x corrected/web/site/install-site.sh corrected/web/site/install-launcher.sh corrected/web/site/publish-launcher-update.sh corrected/web/site/deploy-stage74.sh
+          bash -n corrected/web/site/install-site.sh
+          bash -n corrected/web/site/install-launcher.sh
+          bash -n corrected/web/site/publish-launcher-update.sh
+          bash -n corrected/web/site/deploy-stage74.sh
+          grep -q 'latest-beta.json' corrected/web/site/install-launcher.sh
+          grep -q 'sha256sum' corrected/web/site/install-launcher.sh
+          grep -q 'latest-beta.json' corrected/web/site/publish-launcher-update.sh
+          grep -q 'install-launcher.sh' corrected/web/site/install-site.sh
+          grep -q 'Stage 74 launcher update deploy: GREEN' corrected/web/site/deploy-stage74.sh
+
+          cat > corrected/DEPLOY-STAGE74.md <<EOF
+          # GunGloryOnline Stage 74 — Launcher ${version} update channel
+
+          Server/game runtime is not replaced by this payload.
+
+          On the VDS, from the extracted \`corrected\` directory:
+
+          \`\`\`bash
+          sudo ./web/site/deploy-stage74.sh ./packages
+          \`\`\`
+
+          The helper derives the launcher version from the Ubuntu package, publishes it, verifies the public install script and validates the public update manifest.
+
+          Ubuntu clients can then update with:
+
+          \`\`\`bash
+          curl -fsSL https://ggo.kvicloud.ru/install-launcher.sh | bash
+          \`\`\`
+          EOF
+
+          printf 'launcher_package_run=%s\nlauncher_source_sha=%s\nstage74_source_sha=%s\nversion=%s\n' '${{ steps.source.outputs.run_id }}' '${{ steps.source.outputs.head_sha }}' "$GITHUB_SHA" "$version" > corrected/receipts/source.txt
+          (cd corrected && find . -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt)
+          zip -qr GunGloryOnline-Stage74-Launcher-Update-2026-08-22.zip corrected
+          unzip -tq GunGloryOnline-Stage74-Launcher-Update-2026-08-22.zip
+          sha256sum GunGloryOnline-Stage74-Launcher-Update-2026-08-22.zip > GunGloryOnline-Stage74-Launcher-Update-2026-08-22.zip.sha256
+          echo "bytes=$(stat -c%s GunGloryOnline-Stage74-Launcher-Update-2026-08-22.zip)" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(cut -d' ' -f1 GunGloryOnline-Stage74-Launcher-Update-2026-08-22.zip.sha256)" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Stage 74 bundle
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-Stage74-Launcher-Update-2026-08-22
+          path: |
+            GunGloryOnline-Stage74-Launcher-Update-2026-08-22.zip
+            GunGloryOnline-Stage74-Launcher-Update-2026-08-22.zip.sha256
+          compression-level: 0
+          retention-days: 30
+
+      - name: Publish immutable Stage 74 receipt
+        if: always()
+        env:
+          BUNDLE: ${{ steps.bundle.outcome }}
+          UPLOAD: ${{ steps.upload.outcome }}
+        run: |
+          set -euo pipefail
+          result=success
+          [ "$BUNDLE" = success ] || result=failure
+          [ "$UPLOAD" = success ] || result=failure
+          mkdir -p .ci/deploy
+          receipt=".ci/deploy/${GITHUB_RUN_ID}-stage74.txt"
+          cat > "$receipt" <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_id=${GITHUB_RUN_ID}
+          run_url=https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          stage74_source_sha=${GITHUB_SHA}
+          launcher_source_sha=${{ steps.source.outputs.head_sha }}
+          launcher_package_run=${{ steps.source.outputs.run_id }}
+          launcher_version=${{ steps.bundle.outputs.version }}
+          bundle=$BUNDLE
+          upload=$UPLOAD
+          bundle_bytes=${{ steps.bundle.outputs.bytes }}
+          bundle_sha256=${{ steps.bundle.outputs.sha256 }}
+          result=$result
+          EOF
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add "$receipt"
+          git commit -m "ci: record Stage 74 launcher update ${GITHUB_RUN_ID}" || exit 0
+          git fetch origin launcher/bootstrap-v0.1
+          git rebase origin/launcher/bootstrap-v0.1
+          git push origin HEAD:launcher/bootstrap-v0.1

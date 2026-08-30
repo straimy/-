@@ -1,0 +1,171 @@
+name: GGO Runtime Stage116 Unified Candidate
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - launcher/bootstrap-v0.1
+    paths:
+      - '.github/workflows/ggo-runtime-stage116-unified-candidate.yml'
+      - 'launcher/hotfix/build_stage116_manifest.py'
+      - 'site/content/manifests/beta-stage100-candidate.json'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  assemble:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGE115_RUN: '33312247946'
+      STAGE115_ARTIFACT: GunGloryOnline-Runtime-Stage115-Toggle-Transition
+      STAGE115_UI_SHA256: 673481cc2e0864c3a26710ec8c724f56711dad703c3c241e968eb1d6d87de7df
+      STAGE115_UI_BYTES: '216554'
+      CORE_SOURCE_URL: https://ggo.kvicloud.ru/content/files/v103/gungloryonline-core-runtime-v1-stage103-server-finalization.jar
+      CORE_SHA256: fe2f4a277fec6609ee5144d5a7e29c13cdb533091c9878eba5f213f1e2aba342
+      CORE_BYTES: '470314'
+      OST_RP_SHA256: b10b3228004b8d3068c93122c39e766df9778a1b277fef4a97d835c5ab0005ba
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+          fetch-depth: 0
+
+      - name: Download exact GREEN Stage115 UI
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.STAGE115_ARTIFACT }}
+          path: stage115-input
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.STAGE115_RUN }}
+
+      - name: Verify and stage Stage116 payload
+        id: payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          UI="$(find stage115-input -type f -name 'gungloryonline-ui-runtime-v1-stage115-toggle-transition.jar' | head -n1)"
+          test -n "$UI" && test -f "$UI"
+          test "$(sha256sum "$UI" | awk '{print $1}')" = "$STAGE115_UI_SHA256"
+          test "$(stat -c%s "$UI")" = "$STAGE115_UI_BYTES"
+
+          curl -fL --retry 3 "$CORE_SOURCE_URL" -o /tmp/ggo-stage103-core.jar
+          test "$(sha256sum /tmp/ggo-stage103-core.jar | awk '{print $1}')" = "$CORE_SHA256"
+          test "$(stat -c%s /tmp/ggo-stage103-core.jar)" = "$CORE_BYTES"
+
+          mkdir -p stage116-payload/content/files/v116 stage116-payload/content/manifests
+          cp /tmp/ggo-stage103-core.jar stage116-payload/content/files/v116/gungloryonline-core-runtime-v1-stage116-unified.jar
+          cp "$UI" stage116-payload/content/files/v116/gungloryonline-ui-runtime-v1-stage116-unified.jar
+          echo "core_sha256=$(sha256sum /tmp/ggo-stage103-core.jar | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "core_bytes=$(stat -c%s /tmp/ggo-stage103-core.jar)" >> "$GITHUB_OUTPUT"
+          echo "ui_sha256=$(sha256sum "$UI" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "ui_bytes=$(stat -c%s "$UI")" >> "$GITHUB_OUTPUT"
+
+      - name: Build exact Stage116 manifest
+        id: manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 launcher/hotfix/build_stage116_manifest.py
+          MANIFEST=site/content/manifests/beta-stage116-candidate.json
+          test -f "$MANIFEST"
+          cp "$MANIFEST" stage116-payload/content/manifests/beta-stage116-candidate.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          m=json.loads(Path('site/content/manifests/beta-stage116-candidate.json').read_text())
+          assert m['gameVersion']=='v116-candidate'
+          core=[e for e in m['files'] if e['path'].startswith('mods/gungloryonline-core-runtime')]
+          ui=[e for e in m['files'] if e['path'].startswith('mods/gungloryonline-ui-runtime')]
+          rp=[e for e in m['files'] if e['path']=='resourcepacks/GunGloryOnline-Official.zip']
+          assert len(core)==len(ui)==len(rp)==1
+          assert core[0]['sha256']=='fe2f4a277fec6609ee5144d5a7e29c13cdb533091c9878eba5f213f1e2aba342'
+          assert core[0]['size']==470314
+          assert ui[0]['sha256']=='673481cc2e0864c3a26710ec8c724f56711dad703c3c241e968eb1d6d87de7df'
+          assert ui[0]['size']==216554
+          assert rp[0]['sha256']=='b10b3228004b8d3068c93122c39e766df9778a1b277fef4a97d835c5ab0005ba'
+          assert '/v116/' in core[0]['url'] and '/v116/' in ui[0]['url']
+          PY
+          echo "manifest_sha256=$(sha256sum "$MANIFEST" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Write Stage116 deployment receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > stage116-payload/STAGE116-DEPLOYMENT.txt <<EOF
+          candidate=v116-candidate
+          build_id=runtime-stage116
+          production_deployed=false
+          core_source_url=$CORE_SOURCE_URL
+          core_upload_path=/content/files/v116/gungloryonline-core-runtime-v1-stage116-unified.jar
+          core_sha256=${{ steps.payload.outputs.core_sha256 }}
+          core_bytes=${{ steps.payload.outputs.core_bytes }}
+          ui_source_run=$STAGE115_RUN
+          ui_upload_path=/content/files/v116/gungloryonline-ui-runtime-v1-stage116-unified.jar
+          ui_sha256=${{ steps.payload.outputs.ui_sha256 }}
+          ui_bytes=${{ steps.payload.outputs.ui_bytes }}
+          manifest_upload_path=/content/manifests/beta-stage116-candidate.json
+          manifest_sha256=${{ steps.manifest.outputs.manifest_sha256 }}
+          official_ost_resource_pack_sha256=$OST_RP_SHA256
+          stage103_core_preserved=true
+          stage115_ui_preserved=true
+          vanilla_navigation_fenced=true
+          same_key_toggle=true
+          production_deployed=false
+          EOF
+          (cd stage116-payload && sha256sum content/files/v116/* content/manifests/* > SHA256SUMS)
+
+      - name: Upload Stage116 deployment kit
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-Stage116-Unified-Candidate-Deployment-Kit
+          path: stage116-payload/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish Stage116 candidate receipt
+        if: always()
+        env:
+          PAYLOAD_OUTCOME: ${{ steps.payload.outcome }}
+          MANIFEST_OUTCOME: ${{ steps.manifest.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          result=success
+          for value in "$PAYLOAD_OUTCOME" "$MANIFEST_OUTCOME" "$UPLOAD_OUTCOME"; do [ "$value" = success ] || result=failure; done
+          git fetch origin launcher/bootstrap-v0.1
+          git reset --hard origin/launcher/bootstrap-v0.1
+          mkdir -p .ci/runtime
+          cat > .ci/runtime/stage116-unified-candidate.txt <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_id=${GITHUB_RUN_ID}
+          launcher_sha=${GITHUB_SHA}
+          build_id=runtime-stage116
+          core_sha256=${{ steps.payload.outputs.core_sha256 }}
+          core_bytes=${{ steps.payload.outputs.core_bytes }}
+          ui_sha256=${{ steps.payload.outputs.ui_sha256 }}
+          ui_bytes=${{ steps.payload.outputs.ui_bytes }}
+          manifest_sha256=${{ steps.manifest.outputs.manifest_sha256 }}
+          official_ost_resource_pack_sha256=$OST_RP_SHA256
+          stage103_core_preserved=true
+          stage115_ui_preserved=true
+          matching_core_ui_stage=true
+          vanilla_navigation_fenced=true
+          same_key_toggle=true
+          production_deployed=false
+          payload_verify=$PAYLOAD_OUTCOME
+          manifest_build=$MANIFEST_OUTCOME
+          upload=$UPLOAD_OUTCOME
+          result=$result
+          EOF
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .ci/runtime/stage116-unified-candidate.txt
+          git commit -m "ci: record Stage116 unified candidate ${GITHUB_RUN_ID}" || exit 0
+          git push origin HEAD:launcher/bootstrap-v0.1

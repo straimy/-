@@ -1,0 +1,208 @@
+name: GunGloryOnline Launcher CI
+
+on:
+  push:
+    branches:
+      - main
+      - launcher/bootstrap-v0.1
+    paths:
+      - 'launcher/**'
+      - 'infra/vds/**'
+      - '.github/workflows/ggo-launcher-ci.yml'
+  pull_request:
+    paths:
+      - 'launcher/**'
+      - 'infra/vds/**'
+      - '.github/workflows/ggo-launcher-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ggo-launcher-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: launcher
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate VDS stack
+        id: vds
+        working-directory: infra/vds
+        run: |
+          set -euo pipefail
+          python3 -m py_compile publish_release.py publish_launcher_update.py build_full_bundle.py account-api/app.py
+          python3 build_full_bundle.py --help >/dev/null
+          bash -n bootstrap_ubuntu.sh deploy_all.sh backup_now.sh health_check.sh game-server/run.sh
+          GGO_SITE_HOST=ggo.kvicloud.ru \
+          GGO_UPDATES_HOST=updates.ggo.kvicloud.ru \
+          GGO_GAME_HOST=play.ggo.kvicloud.ru \
+          POSTGRES_PASSWORD=ci-only-password \
+          GGO_JWT_SECRET=ci-only-secret-012345678901234567890123456789 \
+          docker compose --profile backend --profile game -f docker-compose.yml config >/dev/null
+
+          tmp="$(mktemp -d)"
+          mkdir -p "$tmp/pkg/client/mods"
+          printf 'core' > "$tmp/pkg/client/mods/gungloryonline-core-ci.jar"
+          printf 'ui' > "$tmp/pkg/client/mods/gungloryonline-ui-ci.jar"
+          (cd "$tmp/pkg" && zip -qr "$tmp/ready.zip" client)
+          printf 'rp' > "$tmp/rp.zip"
+          printf 'server-core' > "$tmp/server-core.jar"
+          python3 build_full_bundle.py \
+            --ready-pack "$tmp/ready.zip" \
+            --resource-pack "$tmp/rp.zip" \
+            --server-core "$tmp/server-core.jar" \
+            --version ci \
+            --output "$tmp/GunGloryOnline-FULL-VDS.zip"
+          unzip -Z1 "$tmp/GunGloryOnline-FULL-VDS.zip" | grep -q 'GunGloryOnline-FULL-VDS/BUNDLE.json'
+          if unzip -Z1 "$tmp/GunGloryOnline-FULL-VDS.zip" | grep -qE '(^|/)\.env$'; then
+            echo 'FULL-VDS archive leaked .env' >&2
+            exit 1
+          fi
+          rm -rf "$tmp"
+
+      - name: Install Tauri Linux prerequisites
+        id: deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        id: install
+        run: npm install
+
+      - name: Apply canonical menu-first launcher contract
+        run: python3 hotfix/apply_menu_first_beta_stage76.py
+
+      - name: TypeScript and Vite build
+        id: frontend
+        run: npm run build
+
+      - name: Rust formatting gate
+        id: format
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+
+      - name: Rust check
+        id: rust_check
+        run: cargo check --manifest-path src-tauri/Cargo.toml
+
+      - name: Rust tests
+        id: rust_tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Publish immutable validation receipt
+        if: always() && github.event_name == 'push' && github.ref_name == 'launcher/bootstrap-v0.1'
+        working-directory: .
+        env:
+          VDS_OUTCOME: ${{ steps.vds.outcome }}
+          DEPS_OUTCOME: ${{ steps.deps.outcome }}
+          INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          FRONTEND_OUTCOME: ${{ steps.frontend.outcome }}
+          FORMAT_OUTCOME: ${{ steps.format.outcome }}
+          CHECK_OUTCOME: ${{ steps.rust_check.outcome }}
+          TEST_OUTCOME: ${{ steps.rust_tests.outcome }}
+        run: |
+          set -euo pipefail
+          result=success
+          for value in "$VDS_OUTCOME" "$DEPS_OUTCOME" "$INSTALL_OUTCOME" "$FRONTEND_OUTCOME" "$FORMAT_OUTCOME" "$CHECK_OUTCOME" "$TEST_OUTCOME"; do
+            if [ "$value" != success ]; then result=failure; fi
+          done
+          mkdir -p .ci/validate
+          receipt=".ci/validate/${GITHUB_RUN_ID}.txt"
+          cat > "$receipt" <<EOF
+          workflow=${{ github.workflow }}
+          run_id=${GITHUB_RUN_ID}
+          run_attempt=${GITHUB_RUN_ATTEMPT}
+          run_url=https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          source_sha=${GITHUB_SHA}
+          vds=$VDS_OUTCOME
+          deps=$DEPS_OUTCOME
+          install=$INSTALL_OUTCOME
+          frontend=$FRONTEND_OUTCOME
+          format=$FORMAT_OUTCOME
+          rust_check=$CHECK_OUTCOME
+          rust_tests=$TEST_OUTCOME
+          result=$result
+          EOF
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add "$receipt"
+          git commit -m "ci: record launcher validation ${GITHUB_RUN_ID}" || exit 0
+          git fetch origin "${GITHUB_REF_NAME}"
+          git rebase "origin/${GITHUB_REF_NAME}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+  package-test:
+    needs: validate
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            bundle: nsis
+            artifact: GunGloryOnline-Windows
+            path: launcher/src-tauri/target/release/bundle/nsis/*.exe
+          - os: ubuntu-22.04
+            bundle: appimage
+            artifact: GunGloryOnline-Linux
+            path: launcher/src-tauri/target/release/bundle/appimage/*.AppImage
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: launcher
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Linux prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        run: npm install
+
+      - name: Apply canonical menu-first launcher contract
+        run: python3 hotfix/apply_menu_first_beta_stage76.py
+
+      - name: Generate platform icons
+        run: npm run tauri icon src-tauri/icons/icon.png
+
+      - name: Build Tauri test bundle
+        env:
+          GGO_CONTENT_BASE_URL: ${{ vars.GGO_CONTENT_BASE_URL }}
+          GGO_SITE_URL: ${{ vars.GGO_SITE_URL }}
+        run: npm run tauri build -- --bundles ${{ matrix.bundle }}
+
+      - name: Upload test bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.path }}
+          if-no-files-found: error
+          retention-days: 14

@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="description" content="GunGloryOnline — standalone launcher, online operations and offline training." />
+  <title>GunGloryOnline</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/downloads.css" />
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <a class="brand" href="/">GUNGLORY<span>ONLINE</span></a>
+      <nav class="topnav">
+        <a href="#download">Download</a>
+        <a href="#account">Account</a>
+      </nav>
+      <span class="badge">BETA</span>
+    </header>
+
+    <section class="hero">
+      <div class="copy">
+        <span>GUNGLORY ONLINE</span>
+        <h1>One launcher.<br><em>Your whole game.</em></h1>
+        <p>Install GunGloryOnline once. The launcher downloads and updates the required runtime, Core/UI mods, resource pack and game content automatically.</p>
+
+        <section class="downloadPanel" id="download">
+          <div class="downloadHead">
+            <div><small>PUBLIC DOWNLOAD</small><strong id="downloadVersion">Launcher beta</strong></div>
+            <span id="downloadState">Checking latest build…</span>
+          </div>
+          <div class="downloadButtons">
+            <a id="downloadWindows" class="downloadButton primaryDownload" href="#" aria-disabled="true"><b>WINDOWS</b><small>64-bit installer</small></a>
+            <a id="downloadLinux" class="downloadButton" href="#" aria-disabled="true"><b>LINUX</b><small>64-bit AppImage</small></a>
+          </div>
+          <p>No registration required to download. GGO Account is optional for installation and becomes your persistent profile for progression, cosmetics and GGO skins.</p>
+        </section>
+
+        <div class="featureStrip">
+          <div><b>PLAY ONLINE</b><span>Server-authoritative PvP operations</span></div>
+          <div><b>TRAINING</b><span>Offline practice · no online rewards</span></div>
+          <div><b>AUTO UPDATE</b><span>Mods, RP and content managed by launcher</span></div>
+        </div>
+      </div>
+
+      <section class="card" id="account">
+        <div class="cardHeading"><small>GGO IDENTITY</small><strong>Account</strong><span>Optional for download</span></div>
+        <div id="activationBox" class="activation hidden">
+          <small>LAUNCHER SIGN-IN</small>
+          <strong id="activationCode">—</strong>
+          <p>Sign in below, then approve this launcher session.</p>
+        </div>
+
+        <div class="tabs" id="authTabs">
+          <button class="active" data-tab="login">Sign in</button>
+          <button data-tab="register">Create account</button>
+        </div>
+
+        <form id="loginForm" class="form">
+          <label>Email<input id="loginEmail" type="email" autocomplete="email" required /></label>
+          <label>Password<input id="loginPassword" type="password" autocomplete="current-password" required /></label>
+          <button class="primary" type="submit">SIGN IN</button>
+        </form>
+
+        <form id="registerForm" class="form hidden">
+          <label>Player name<input id="registerName" maxlength="16" pattern="[A-Za-z0-9_]{3,16}" autocomplete="nickname" required /></label>
+          <label>Email<input id="registerEmail" type="email" autocomplete="email" required /></label>
+          <label>Password<input id="registerPassword" type="password" minlength="10" maxlength="128" autocomplete="new-password" required /></label>
+          <button class="primary" type="submit">CREATE GGO ACCOUNT</button>
+        </form>
+
+        <div id="profilePanel" class="profile hidden">
+          <small>GGO PROFILE</small>
+          <h2 id="profileName">Player</h2>
+          <code id="profileId"></code>
+          <div class="skinRow">
+            <span>Skin source</span>
+            <div class="skinButtons">
+              <button data-skin="ggo">GGO</button>
+              <button data-skin="microsoft">Official</button>
+              <button data-skin="default">Default</button>
+            </div>
+            <label class="skinUpload">
+              <input id="skinFile" type="file" accept="image/png" />
+              <span>UPLOAD GGO SKIN · PNG 64×64</span>
+            </label>
+            <div id="skinPreview" class="skinPreview hidden"><img id="skinPreviewImage" alt="GGO skin texture"/><div><small>ACTIVE GGO ASSET</small><code id="skinHash"></code></div></div>
+          </div>
+          <button id="approveButton" class="primary hidden">APPROVE LAUNCHER</button>
+          <button id="logoutButton" class="secondary">SIGN OUT</button>
+        </div>
+
+        <p class="status" id="status">Ready.</p>
+      </section>
+    </section>
+
+    <footer>GunGloryOnline · Open development · Account passwords never enter the launcher.</footer>
+  </main>
+  <script src="/app.js" defer></script>
+</body>
+</html>

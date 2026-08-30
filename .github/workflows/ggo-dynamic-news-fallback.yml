@@ -1,0 +1,41 @@
+name: GGO Dynamic News Fallback
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - launcher/bootstrap-v0.1
+    paths:
+      - 'launcher/hotfix/apply_dynamic_news_fallback_v1.py'
+      - '.github/workflows/ggo-dynamic-news-fallback.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+          fetch-depth: 0
+      - name: Apply and validate patch
+        run: |
+          set -euo pipefail
+          python3 launcher/hotfix/apply_dynamic_news_fallback_v1.py
+          python3 launcher/hotfix/apply_dynamic_news_fallback_v1.py
+          grep -q 'strip_suffix("/api/v1/news")' launcher/src-tauri/src/lib.rs
+          grep -q '/content/api/news.json' launcher/src-tauri/src/lib.rs
+          grep -q "api('/api/v1/admin/news')" site/admin/admin.js
+      - name: Commit generated changes
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add launcher/src-tauri/src/lib.rs site/admin/admin.js
+          git commit -m "feat(launcher): use dynamic News with safe static fallback" || exit 0
+          git fetch origin launcher/bootstrap-v0.1
+          git rebase origin/launcher/bootstrap-v0.1
+          git push origin HEAD:launcher/bootstrap-v0.1

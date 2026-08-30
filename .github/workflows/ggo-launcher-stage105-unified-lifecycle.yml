@@ -1,0 +1,96 @@
+name: GGO Launcher Stage105 Unified Lifecycle
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - launcher/bootstrap-v0.1
+    paths:
+      - '.github/workflows/ggo-launcher-stage105-unified-lifecycle.yml'
+      - 'launcher/hotfix/apply_unified_lifecycle_stage105.py'
+      - 'launcher/src/App.tsx'
+      - 'launcher/src-tauri/src/lib.rs'
+      - 'launcher/src-tauri/src/runtime/minecraft_launch.rs'
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+          fetch-depth: 0
+
+      - name: Install Tauri Linux prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        working-directory: launcher
+        run: npm install --no-audit --no-fund
+
+      - name: Apply Stage105 lifecycle contract
+        run: python3 launcher/hotfix/apply_unified_lifecycle_stage105.py
+
+      - name: Verify unified lifecycle source contract
+        run: |
+          set -euo pipefail
+          PROCESS=launcher/src-tauri/src/runtime/minecraft_launch.rs
+          LIB=launcher/src-tauri/src/lib.rs
+          APP=launcher/src/App.tsx
+          grep -Fq 'pub struct GameProcessStatus' "$PROCESS"
+          grep -Fq 'std::thread::spawn(move ||' "$PROCESS"
+          grep -Fq 'child.wait()' "$PROCESS"
+          grep -Fq 'GunGloryOnline is already running' "$PROCESS"
+          grep -Fq 'fn game_process_status() -> GameProcessStatus' "$LIB"
+          grep -Fq 'game_process_status,' "$LIB"
+          grep -Fq 'getCurrentWindow().hide()' "$APP"
+          grep -Fq 'window.show()' "$APP"
+          grep -Fq 'window.setFocus()' "$APP"
+          grep -Fq 'invoke<GameProcessStatus>("game_process_status")' "$APP"
+
+      - name: Frontend build
+        working-directory: launcher
+        run: npm run build
+
+      - name: Rust compile gate
+        working-directory: launcher
+        run: cargo check --manifest-path src-tauri/Cargo.toml
+
+      - name: Publish Stage105 receipt
+        if: always()
+        run: |
+          set -euo pipefail
+          result='${{ job.status }}'
+          [ "$result" = success ] || result=failure
+          mkdir -p .ci/launcher
+          cat > .ci/launcher/stage105-unified-lifecycle.txt <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_id=${GITHUB_RUN_ID}
+          launcher_sha=$(git rev-parse HEAD)
+          child_owned=true
+          child_reaped=true
+          duplicate_launch_fenced=true
+          launcher_hides_during_game=true
+          launcher_restores_after_exit=true
+          crash_returns_to_launcher=true
+          result=$result
+          EOF
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .ci/launcher/stage105-unified-lifecycle.txt
+          git commit -m "ci: record Stage105 lifecycle ${GITHUB_RUN_ID}" || exit 0
+          git fetch origin launcher/bootstrap-v0.1
+          git rebase origin/launcher/bootstrap-v0.1
+          git push origin HEAD:launcher/bootstrap-v0.1

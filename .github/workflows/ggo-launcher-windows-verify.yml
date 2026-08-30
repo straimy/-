@@ -1,0 +1,142 @@
+name: GGO Launcher Windows Verify
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - launcher/bootstrap-v0.1
+    paths:
+      - 'launcher/**'
+      - '.github/workflows/ggo-launcher-windows-verify.yml'
+
+permissions:
+  contents: write
+
+# Dedicated Windows gate: installer formats, portable package and runtime tests
+# must all pass on a real Windows runner. Keep this independent from the package matrix receipt.
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: launcher
+    env:
+      GGO_CONTENT_BASE_URL: https://ggo.kvicloud.ru/content
+      GGO_SITE_URL: https://ggo.kvicloud.ru
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        id: install
+        run: npm install
+
+      - name: Generate Windows icons
+        id: icons
+        run: npm run tauri icon src-tauri/icons/icon.png
+
+      - name: Frontend type and build gate
+        id: frontend
+        run: npm run build
+
+      - name: Rust format gate
+        id: rust_fmt
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+
+      - name: Rust compile gate
+        id: rust_check
+        run: cargo check --manifest-path src-tauri/Cargo.toml
+
+      - name: Windows runtime unit tests
+        id: runtime_tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Build NSIS and MSI packages
+        id: package
+        run: npm run tauri build -- --bundles nsis,msi
+
+      - name: Verify Windows installers and portable package
+        id: verify
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $nsis = Get-ChildItem src-tauri/target/release/bundle/nsis/*.exe | Select-Object -First 1
+          $msi = Get-ChildItem src-tauri/target/release/bundle/msi/*.msi | Select-Object -First 1
+          $portable = Get-ChildItem src-tauri/target/release/*.exe | Where-Object { $_.Name -notmatch 'build|setup|installer' } | Sort-Object Length -Descending | Select-Object -First 1
+          if (-not $nsis) { throw 'NSIS .exe package not found' }
+          if (-not $msi) { throw 'MSI package not found' }
+          if (-not $portable) { throw 'Portable launcher executable not found' }
+          if ($nsis.Length -lt 1MB) { throw 'NSIS .exe package is unexpectedly small' }
+          if ($msi.Length -lt 1MB) { throw 'MSI package is unexpectedly small' }
+          if ($portable.Length -lt 1MB) { throw 'Portable launcher executable is unexpectedly small' }
+          New-Item -ItemType Directory -Force dist-package | Out-Null
+          Copy-Item $nsis.FullName dist-package/GunGloryOnline-Launcher-Windows.exe
+          Copy-Item $msi.FullName dist-package/GunGloryOnline-Launcher-Windows.msi
+          Copy-Item $portable.FullName dist-package/GunGloryOnline-Launcher-Portable.exe
+          Compress-Archive -Path dist-package/GunGloryOnline-Launcher-Portable.exe -DestinationPath dist-package/GunGloryOnline-Launcher-Windows-Portable.zip -Force
+          Remove-Item dist-package/GunGloryOnline-Launcher-Portable.exe
+          Get-FileHash dist-package/GunGloryOnline-Launcher-Windows.exe -Algorithm SHA256 | Format-List
+          Get-FileHash dist-package/GunGloryOnline-Launcher-Windows.msi -Algorithm SHA256 | Format-List
+          Get-FileHash dist-package/GunGloryOnline-Launcher-Windows-Portable.zip -Algorithm SHA256 | Format-List
+
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: GunGloryOnline-Launcher-Windows-Verified
+          path: launcher/dist-package/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish immutable Windows receipt
+        if: always()
+        shell: pwsh
+        env:
+          INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          ICONS_OUTCOME: ${{ steps.icons.outcome }}
+          FRONTEND_OUTCOME: ${{ steps.frontend.outcome }}
+          RUST_FMT_OUTCOME: ${{ steps.rust_fmt.outcome }}
+          RUST_CHECK_OUTCOME: ${{ steps.rust_check.outcome }}
+          RUNTIME_TESTS_OUTCOME: ${{ steps.runtime_tests.outcome }}
+          PACKAGE_OUTCOME: ${{ steps.package.outcome }}
+          VERIFY_OUTCOME: ${{ steps.verify.outcome }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $result = 'success'
+          foreach ($value in @($env:INSTALL_OUTCOME,$env:ICONS_OUTCOME,$env:FRONTEND_OUTCOME,$env:RUST_FMT_OUTCOME,$env:RUST_CHECK_OUTCOME,$env:RUNTIME_TESTS_OUTCOME,$env:PACKAGE_OUTCOME,$env:VERIFY_OUTCOME)) {
+            if ($value -ne 'success') { $result = 'failure' }
+          }
+          Set-Location ..
+          # Tauri/icon/npm can touch generated tracked files. Keep the receipt commit immutable and
+          # isolated so a successful Windows build cannot fail later only because rebase sees dirt.
+          git restore --staged --worktree .
+          New-Item -ItemType Directory -Force .ci/windows | Out-Null
+          $receipt = '.ci/windows/${{ github.run_id }}.txt'
+          @(
+            'workflow=${{ github.workflow }}',
+            'run_id=${{ github.run_id }}',
+            'run_attempt=${{ github.run_attempt }}',
+            'run_url=https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}',
+            'source_sha=${{ github.sha }}',
+            "install=$env:INSTALL_OUTCOME",
+            "icons=$env:ICONS_OUTCOME",
+            "frontend=$env:FRONTEND_OUTCOME",
+            "rust_fmt=$env:RUST_FMT_OUTCOME",
+            "rust_check=$env:RUST_CHECK_OUTCOME",
+            "runtime_tests=$env:RUNTIME_TESTS_OUTCOME",
+            "package=$env:PACKAGE_OUTCOME",
+            "verify=$env:VERIFY_OUTCOME",
+            'installers=GunGloryOnline-Launcher-Windows.exe,GunGloryOnline-Launcher-Windows.msi,GunGloryOnline-Launcher-Windows-Portable.zip',
+            "result=$result"
+          ) | Set-Content -Encoding utf8 $receipt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add $receipt
+          git commit -m 'ci: record Windows launcher run ${{ github.run_id }}'
+          if ($LASTEXITCODE -ne 0) { exit 0 }
+          git fetch origin '${{ github.ref_name }}'
+          git rebase 'origin/${{ github.ref_name }}'
+          git push origin 'HEAD:${{ github.ref_name }}'

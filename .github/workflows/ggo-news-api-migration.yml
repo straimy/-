@@ -1,0 +1,67 @@
+name: GGO News API Migration
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - launcher/bootstrap-v0.1
+    paths:
+      - 'services/ggo-auth/apply_news_api_v1.py'
+      - '.github/workflows/ggo-news-api-migration.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+          fetch-depth: 0
+
+      - name: Apply idempotent News API patch
+        run: |
+          set -euo pipefail
+          python3 services/ggo-auth/apply_news_api_v1.py
+          python3 services/ggo-auth/apply_news_api_v1.py
+          python3 -m py_compile services/ggo-auth/server.py
+          grep -q 'CREATE TABLE IF NOT EXISTS news_items' services/ggo-auth/server.py
+          grep -q 'path == "/api/v1/news"' services/ggo-auth/server.py
+          grep -q 'def require_owner' services/ggo-auth/server.py
+          grep -q 'def create_news' services/ggo-auth/server.py
+          grep -q 'def update_news' services/ggo-auth/server.py
+          grep -q 'def delete_news' services/ggo-auth/server.py
+
+      - name: Validate seed migration with temporary database
+        run: |
+          set -euo pipefail
+          TMPDB="$(mktemp)"
+          GGO_AUTH_DB="$TMPDB" GGO_NEWS_SEED_PATH="$PWD/site/content/api/news.json" python3 - <<'PY'
+          import os, sys
+          sys.path.insert(0, 'services/ggo-auth')
+          import server
+          server.init_db()
+          with server.connect() as db:
+              count = db.execute('SELECT COUNT(*) FROM news_items').fetchone()[0]
+              ids = {row[0] for row in db.execute('SELECT id FROM news_items')}
+          assert count >= 9, count
+          assert 'ggo-v01-alpha' in ids
+          assert 'ggo-v08-beta' in ids
+          assert 'ggo-v09-beta-runtime-migration' in ids
+          print(f'news_seed_count={count}')
+          PY
+          rm -f "$TMPDB"
+
+      - name: Commit migrated auth server
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add services/ggo-auth/server.py
+          git commit -m "feat(auth): add owner-managed dynamic News API" || exit 0
+          git fetch origin launcher/bootstrap-v0.1
+          git rebase origin/launcher/bootstrap-v0.1
+          git push origin HEAD:launcher/bootstrap-v0.1

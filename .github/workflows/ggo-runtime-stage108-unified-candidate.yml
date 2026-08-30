@@ -1,0 +1,168 @@
+name: GGO Runtime Stage108 Unified Candidate
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - launcher/bootstrap-v0.1
+    paths:
+      - '.github/workflows/ggo-runtime-stage108-unified-candidate.yml'
+      - 'launcher/hotfix/build_stage108_manifest.py'
+      - 'site/content/manifests/beta-stage100-candidate.json'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  assemble:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      STAGE107_RUN: '32802621507'
+      STAGE107_ARTIFACT: GunGloryOnline-Runtime-Stage107-Polish
+      STAGE107_UI_SHA256: a02c2d6506dce09985012e0d92781f31ffb46d61c4782b8077b17c7bdf3a120b
+      STAGE107_UI_BYTES: '212488'
+      CORE_SOURCE_URL: https://ggo.kvicloud.ru/content/files/v103/gungloryonline-core-runtime-v1-stage103-server-finalization.jar
+      CORE_SHA256: fe2f4a277fec6609ee5144d5a7e29c13cdb533091c9878eba5f213f1e2aba342
+      CORE_BYTES: '470314'
+      OST_RP_SHA256: b10b3228004b8d3068c93122c39e766df9778a1b277fef4a97d835c5ab0005ba
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+          fetch-depth: 0
+
+      - name: Download exact refreshed GREEN Stage107 UI
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.STAGE107_ARTIFACT }}
+          path: stage107-input
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.STAGE107_RUN }}
+
+      - name: Verify and stage Core/UI payload
+        id: payload
+        run: |
+          set -euo pipefail
+          UI="$(find stage107-input -type f -name 'gungloryonline-ui-runtime-v1-stage107-polish.jar' | head -n1)"
+          test -n "$UI" && test -f "$UI"
+          test "$(sha256sum "$UI" | awk '{print $1}')" = "$STAGE107_UI_SHA256"
+          test "$(stat -c%s "$UI")" = "$STAGE107_UI_BYTES"
+
+          curl -fL --retry 3 "$CORE_SOURCE_URL" -o /tmp/ggo-stage103-core.jar
+          test "$(sha256sum /tmp/ggo-stage103-core.jar | awk '{print $1}')" = "$CORE_SHA256"
+          test "$(stat -c%s /tmp/ggo-stage103-core.jar)" = "$CORE_BYTES"
+
+          # Fail closed against the two known regression inputs from the obsolete Stage108 attempt.
+          test "$CORE_SHA256" != 'c3c580b456ad5bd17144188a557d6d50ce2d3c23eee5685f7fdf28b632c1f2a1'
+          test "$STAGE107_UI_SHA256" != 'c1cf3d6d4f2145884d1562d7e6405dc741c092fd4eb9f134def79e0c798dc8aa'
+
+          mkdir -p stage108-payload/content/files/v108 stage108-payload/content/manifests
+          cp /tmp/ggo-stage103-core.jar stage108-payload/content/files/v108/gungloryonline-core-runtime-v1-stage108-unified.jar
+          cp "$UI" stage108-payload/content/files/v108/gungloryonline-ui-runtime-v1-stage108-unified.jar
+          echo "core_sha256=$(sha256sum /tmp/ggo-stage103-core.jar | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "core_bytes=$(stat -c%s /tmp/ggo-stage103-core.jar)" >> "$GITHUB_OUTPUT"
+          echo "ui_sha256=$(sha256sum "$UI" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "ui_bytes=$(stat -c%s "$UI")" >> "$GITHUB_OUTPUT"
+
+      - name: Build exact Stage108 manifest
+        id: manifest
+        run: |
+          set -euo pipefail
+          python3 launcher/hotfix/build_stage108_manifest.py
+          MANIFEST=site/content/manifests/beta-stage108-candidate.json
+          test -f "$MANIFEST"
+          cp "$MANIFEST" stage108-payload/content/manifests/beta-stage108-candidate.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          m=json.loads(Path('site/content/manifests/beta-stage108-candidate.json').read_text())
+          assert m['gameVersion']=='v108-candidate'
+          core=[e for e in m['files'] if e['path'].startswith('mods/gungloryonline-core-runtime')]
+          ui=[e for e in m['files'] if e['path'].startswith('mods/gungloryonline-ui-runtime')]
+          rp=[e for e in m['files'] if e['path']=='resourcepacks/GunGloryOnline-Official.zip']
+          assert len(core)==len(ui)==len(rp)==1
+          assert core[0]['sha256']=='fe2f4a277fec6609ee5144d5a7e29c13cdb533091c9878eba5f213f1e2aba342'
+          assert core[0]['size']==470314
+          assert ui[0]['sha256']=='a02c2d6506dce09985012e0d92781f31ffb46d61c4782b8077b17c7bdf3a120b'
+          assert ui[0]['size']==212488
+          assert rp[0]['sha256']=='b10b3228004b8d3068c93122c39e766df9778a1b277fef4a97d835c5ab0005ba'
+          assert '/v108/' in core[0]['url'] and '/v108/' in ui[0]['url']
+          PY
+          echo "manifest_sha256=$(sha256sum "$MANIFEST" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Write deployment receipt
+        run: |
+          set -euo pipefail
+          cat > stage108-payload/STAGE108-DEPLOYMENT.txt <<EOF
+          candidate=v108-candidate
+          build_id=runtime-stage108
+          production_deployed=false
+          core_source_url=$CORE_SOURCE_URL
+          core_upload_path=/content/files/v108/gungloryonline-core-runtime-v1-stage108-unified.jar
+          core_sha256=${{ steps.payload.outputs.core_sha256 }}
+          core_bytes=${{ steps.payload.outputs.core_bytes }}
+          ui_source_run=$STAGE107_RUN
+          ui_upload_path=/content/files/v108/gungloryonline-ui-runtime-v1-stage108-unified.jar
+          ui_sha256=${{ steps.payload.outputs.ui_sha256 }}
+          ui_bytes=${{ steps.payload.outputs.ui_bytes }}
+          manifest_upload_path=/content/manifests/beta-stage108-candidate.json
+          manifest_sha256=${{ steps.manifest.outputs.manifest_sha256 }}
+          official_ost_resource_pack_sha256=$OST_RP_SHA256
+          stage103_core_preserved=true
+          stage107_ui_refreshed=true
+          stage96_immutable=true
+          EOF
+          (cd stage108-payload && sha256sum content/files/v108/* content/manifests/* > SHA256SUMS)
+
+      - name: Upload Stage108 deployment kit
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: GunGloryOnline-Stage108-Unified-Candidate-Deployment-Kit
+          path: stage108-payload/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish Stage108 candidate receipt
+        if: always()
+        env:
+          PAYLOAD_OUTCOME: ${{ steps.payload.outcome }}
+          MANIFEST_OUTCOME: ${{ steps.manifest.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+        run: |
+          set -euo pipefail
+          result=success
+          for value in "$PAYLOAD_OUTCOME" "$MANIFEST_OUTCOME" "$UPLOAD_OUTCOME"; do [ "$value" = success ] || result=failure; done
+          git fetch origin launcher/bootstrap-v0.1
+          git reset --hard origin/launcher/bootstrap-v0.1
+          mkdir -p .ci/runtime
+          cat > .ci/runtime/stage108-unified-candidate.txt <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_id=${GITHUB_RUN_ID}
+          launcher_sha=${GITHUB_SHA}
+          build_id=runtime-stage108
+          core_sha256=${{ steps.payload.outputs.core_sha256 }}
+          core_bytes=${{ steps.payload.outputs.core_bytes }}
+          ui_sha256=${{ steps.payload.outputs.ui_sha256 }}
+          ui_bytes=${{ steps.payload.outputs.ui_bytes }}
+          manifest_sha256=${{ steps.manifest.outputs.manifest_sha256 }}
+          official_ost_resource_pack_sha256=$OST_RP_SHA256
+          stage103_core_preserved=true
+          refreshed_stage107_ui=true
+          matching_core_ui_stage=true
+          stage96_immutable=true
+          production_deployed=false
+          payload_verify=$PAYLOAD_OUTCOME
+          manifest_build=$MANIFEST_OUTCOME
+          upload=$UPLOAD_OUTCOME
+          result=$result
+          EOF
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .ci/runtime/stage108-unified-candidate.txt
+          git commit -m "ci: record Stage108 unified candidate ${GITHUB_RUN_ID}" || exit 0
+          git push origin HEAD:launcher/bootstrap-v0.1

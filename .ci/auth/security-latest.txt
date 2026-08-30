@@ -1,0 +1,16 @@
+workflow=GGO Auth Security
+run_id=33236830562
+run_attempt=1
+run_url=https://github.com/straimy/-/actions/runs/33236830562
+source_sha=6333a25afae46cfb0347c8cf8ff1c4eb179d0e3a
+compile=success
+account_support_smoke=success
+reserved_owner_security=success
+secure_systemd_entrypoint=success
+owner_public_registration_blocked=true
+staff_roles_server_authoritative=true
+auth_rate_limits=true
+hardened_security_headers=true
+privileged_audit_log=true
+audit_log_append_only_api=true
+result=success
