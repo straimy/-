@@ -1,8 +1,8 @@
 workflow=GGO Launcher Stage 76 Menu First
-run_id=33280305387
+run_id=33302881821
 run_attempt=1
-run_url=https://github.com/straimy/-/actions/runs/33280305387
-launcher_sha=29a7e4701729cce33c9ba53212559ac45bc72ff8
+run_url=https://github.com/straimy/-/actions/runs/33302881821
+launcher_sha=80e1e76054d76767149b9e0b4aa65a382f53ab6d
 patch=success
 trust_boundary_gates=failure
 web_build=skipped
