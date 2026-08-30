@@ -1,0 +1,13 @@
+workflow=GGO Runtime Stage114 Visual Contract
+run_id=33303350256
+client_sha=749e4eaa2af5c78869b80f450412c8bd03e1899d
+build_id=runtime-stage114
+ui_sha256=2f8a5db954b4d3d8ffe98e69ef53951b35ecf58af01f33379f0b7e0625304b23
+ui_bytes=215067
+first_party_buttons=true
+vanilla_navigation_fenced=true
+unified_surface_handshake=true
+engine_exit_to_launcher=true
+ui_build=success
+upload=success
+result=success
