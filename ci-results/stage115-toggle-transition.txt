@@ -1,0 +1,13 @@
+workflow=GGO Runtime Stage115 Toggle Transition
+run_id=33312073770
+client_sha=8ac344872a35722db67c949fb73f3d116d4cc949
+build_id=runtime-stage115
+ui_sha256=
+ui_bytes=
+same_key_toggle=true
+passive_join_menu=true
+receiving_level_precovered=true
+vanilla_navigation_fenced=true
+ui_build=failure
+upload=skipped
+result=failure
