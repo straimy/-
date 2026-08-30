@@ -44,8 +44,14 @@ if "GLFW.GLFW_KEY_M" not in hooks or "new GgoShellScreen(GgoShellScreen.Page.HOM
     raise SystemExit("Stage113 requires explicit local M -> GGO Hub")
 if 'Component.literal("PLAY ONLINE")' not in entry:
     raise SystemExit("Stage113 requires explicit PLAY ONLINE frontend")
-if "GGO_READY_FILE" not in bridge or "ggo.tmp" not in bridge:
-    raise SystemExit("Stage113 requires launcher/client unified-surface handshake")
+for required in [
+    "GGO_READY_FILE",
+    "Files.writeString",
+    '"ready\\n"',
+    "GgoLaunchTicketClient.isOfficialLaunch()",
+]:
+    if required not in bridge:
+        raise SystemExit(f"Stage113 unified-surface handshake missing: {required}")
 
 print("Applied GGO Stage113 unified shell/loading lock")
 print(" - MAIN route remains passive after server join")
