@@ -1,6 +1,6 @@
 workflow=GGO Launcher Stage112 Final Linux
-run_id=33302887860
-source_sha=e7000fbe0c51858ef5233e4018edd2eadc080bb0
+run_id=33308023867
+source_sha=d8f9511af45be45d57398b3bb1fad48deb7c43fe
 launcher_version=0.2.13
 game_version=v112-candidate
 manifest=beta-stage112-candidate.json
