@@ -37,13 +37,16 @@ public final class GgoProductionSurfaceFence {
     }
 
     /**
-     * Prevents the vanilla dirt/world-loading frame from ever reaching the user while preserving
-     * the original screen instance and its tick/lifecycle callbacks. Only rendering is cancelled.
+     * Prevents every normal world-entry loading surface from reaching the user while preserving
+     * the original screen object and lifecycle. Rendering is replaced in PRE, so even the first
+     * frame of GenericDirtMessageScreen / LevelLoadingScreen / ReceivingLevelScreen stays GGO-owned.
      */
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void coverVanillaTransition(ScreenEvent.Render.Pre event) {
         String name = event.getScreen().getClass().getName();
-        if (!(name.endsWith("GenericDirtMessageScreen") || name.endsWith("LevelLoadingScreen"))) return;
+        if (!(name.endsWith("GenericDirtMessageScreen")
+                || name.endsWith("LevelLoadingScreen")
+                || name.endsWith("ReceivingLevelScreen"))) return;
 
         Minecraft mc = Minecraft.getInstance();
         GuiGraphics g = event.getGuiGraphics();
