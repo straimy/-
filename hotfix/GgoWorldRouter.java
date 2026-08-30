@@ -32,20 +32,21 @@ import net.minecraftforge.fml.common.Mod;
  */
 @Mod.EventBusSubscriber(modid = "gunnerarena", bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class GgoWorldRouter {
-    public static final String VERSION = "GGO-WORLD-ROUTER-V1";
+    public static final String VERSION = "GGO-WORLD-ROUTER-V2";
     public static final String TRAINING = "training";
     public static final String HUB = "hub";
     public static final String BR_DROP = "br_drop";
     public static final String BR_MINI = "br_mini";
 
-    private record Target(String id, String title, ResourceKey<Level> dimension, int spawnRadius) {}
+    private record Target(String id, String title, ResourceKey<Level> dimension, Integer anchorX, Integer anchorZ, int spawnRadius) {}
     private static final Map<String, Target> TARGETS = new LinkedHashMap<>();
 
     static {
-        register(new Target(TRAINING, "Training", Level.OVERWORLD, 48));
-        register(new Target(HUB, "GGO Hub", key("hub"), 28));
-        register(new Target(BR_DROP, "Battle Royale • Drop Point", key("br_drop_point"), 160));
-        register(new Target(BR_MINI, "Battle Royale • Mini PUBG", key("br_mini_pubg"), 160));
+        register(new Target(TRAINING, "Training", Level.OVERWORLD, null, null, 48));
+        // Anchors come from the uploaded worlds' original level.dat SpawnX/SpawnZ.
+        register(new Target(HUB, "GGO Hub", key("hub"), -126, -177, 28));
+        register(new Target(BR_DROP, "Battle Royale • Drop Point", key("br_drop_point"), 28, -41, 160));
+        register(new Target(BR_MINI, "Battle Royale • Mini PUBG", key("br_mini_pubg"), 999, 1019, 160));
     }
 
     private GgoWorldRouter() {}
@@ -56,7 +57,6 @@ public final class GgoWorldRouter {
 
     @SubscribeEvent
     public static void commands(RegisterCommandsEvent event) {
-        // Staff/debug route. Player matchmaking should call this router internally, not expose arbitrary world travel.
         event.getDispatcher().register(
             Commands.literal("world").requires(s -> s.hasPermission(2))
                 .executes(ctx -> status(ctx.getSource().getServer(), ctx.getSource().getPlayerOrException()))
@@ -83,7 +83,10 @@ public final class GgoWorldRouter {
         if (target == null) return false;
         ServerLevel level = player.getServer() == null ? null : player.getServer().getLevel(target.dimension());
         if (level == null) return false;
-        BlockPos pos = findSafeSurface(level, target.spawnRadius(), player.getUUID().getLeastSignificantBits() ^ level.getGameTime());
+        BlockPos origin = target.anchorX() == null || target.anchorZ() == null
+            ? level.getSharedSpawnPos()
+            : new BlockPos(target.anchorX(), level.getMinBuildHeight() + 2, target.anchorZ());
+        BlockPos pos = findSafeSurface(level, origin, target.spawnRadius(), player.getUUID().getLeastSignificantBits() ^ level.getGameTime());
         player.teleportTo(level, pos.getX() + 0.5D, pos.getY(), pos.getZ() + 0.5D, player.getYRot(), 0.0F);
         player.fallDistance = 0.0F;
         return true;
@@ -116,9 +119,8 @@ public final class GgoWorldRouter {
         return Command.SINGLE_SUCCESS;
     }
 
-    /** Finds a safe randomized surface position without ever spawning the player underground or inside a block. */
-    public static BlockPos findSafeSurface(ServerLevel level, int radius, long seed) {
-        BlockPos origin = level.getSharedSpawnPos();
+    /** Finds a safe randomized surface position around the map's own anchor. */
+    public static BlockPos findSafeSurface(ServerLevel level, BlockPos origin, int radius, long seed) {
         Random random = new Random(seed);
         int effectiveRadius = Math.max(0, radius);
         for (int attempt = 0; attempt < 96; attempt++) {
