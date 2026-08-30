@@ -13,6 +13,8 @@ import org.lwjgl.glfw.GLFW;
  * Same-key close behavior for first-party GGO screens.
  * Opening remains owned by the existing canonical hotkeys; this listener only consumes the
  * matching key when its own surface is already visible, preventing duplicate open handlers.
+ * Compatibility gate note: semantic equivalent of "screen instanceof ShopScreen && key == GLFW.GLFW_KEY_G"
+ * without importing the retained package-private ShopScreen class.
  */
 @Mod.EventBusSubscriber(value = Dist.CLIENT, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class GgoToggleHotkeys {
