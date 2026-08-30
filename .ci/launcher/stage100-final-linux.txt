@@ -1,6 +1,6 @@
 workflow=GGO Launcher Stage100 Final Linux
-run_id=33308023853
-source_sha=d8f9511af45be45d57398b3bb1fad48deb7c43fe
+run_id=33308052896
+source_sha=17850e45533ed49cfa4a88e5a064042c0b74d058
 launcher_version=0.2.6
 game_version=v100-candidate
 manifest=beta-stage100-candidate.json
