@@ -20,7 +20,7 @@ import net.minecraftforge.fml.common.Mod;
 /** Server-owned GGO mode catalog and /play router. */
 @Mod.EventBusSubscriber(modid = "gunnerarena", bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class GgoGameModeRegistry {
-    public static final String VERSION = "GGO-MODE-REGISTRY-V3";
+    public static final String VERSION = "GGO-MODE-REGISTRY-V4";
     public enum Availability { ACTIVE, MIGRATING, PLANNED }
     public record Mode(String id, String title, String description, Availability defaultAvailability) {
         public Availability configuredAvailability() { return GgoModeConfig.availability(id, defaultAvailability); }
@@ -30,17 +30,18 @@ public final class GgoGameModeRegistry {
     private static final Map<UUID, String> SELECTED = new ConcurrentHashMap<>();
 
     static {
+        register(new Mode("training", "Training", "Persistent combat training world", Availability.ACTIVE));
         register(new Mode("arena", "Arena", "Fast always-on GunGloryOnline combat", Availability.ACTIVE));
         register(new Mode("classic", "Classic Arena", "Procedurally generated round combat", Availability.MIGRATING));
         register(new Mode("duels", "Duels", "1v1 / 2v2 round arenas", Availability.PLANNED));
-        register(new Mode("br", "Battle Royale", "Last-player/team-standing operation", Availability.PLANNED));
+        register(new Mode("br", "Battle Royale", "Last-player/team-standing operation • two map pool", Availability.PLANNED));
         GgoModeConfig.reload();
     }
 
     private GgoGameModeRegistry() {}
     private static void register(Mode mode) { MODES.put(mode.id(), mode); }
     public static Map<String, Mode> modes() { return Map.copyOf(MODES); }
-    public static String selectedMode(ServerPlayer player) { return SELECTED.getOrDefault(player.getUUID(), "arena"); }
+    public static String selectedMode(ServerPlayer player) { return SELECTED.getOrDefault(player.getUUID(), "training"); }
 
     public static Availability effectiveAvailability(MinecraftServer server, Mode mode) {
         Availability configured = mode.configuredAvailability();
@@ -70,9 +71,7 @@ public final class GgoGameModeRegistry {
                     .then(Commands.literal("status").executes(ctx -> {
                         MinecraftServer server = ctx.getSource().getServer();
                         StringBuilder out = new StringBuilder("[GGO] Modes:");
-                        for (Mode mode : MODES.values()) {
-                            out.append(' ').append(mode.id()).append('=').append(effectiveAvailability(server, mode));
-                        }
+                        for (Mode mode : MODES.values()) out.append(' ').append(mode.id()).append('=').append(effectiveAvailability(server, mode));
                         out.append(" classicReady=").append(GgoClassicReadiness.ready(server));
                         ctx.getSource().sendSuccess(() -> Component.literal(out.toString()).withStyle(ChatFormatting.AQUA), false);
                         return Command.SINGLE_SUCCESS;
@@ -114,6 +113,14 @@ public final class GgoGameModeRegistry {
             return 0;
         }
         SELECTED.put(player.getUUID(), mode.id());
+        if ("training".equals(id)) {
+            if (!GgoWorldRouter.teleportToRole(player, GgoWorldRouter.TRAINING)) {
+                player.sendSystemMessage(Component.literal("[GGO] Training world is unavailable.").withStyle(ChatFormatting.RED));
+                return 0;
+            }
+            player.sendSystemMessage(Component.literal("GGO • Training").withStyle(ChatFormatting.AQUA));
+            return Command.SINGLE_SUCCESS;
+        }
         if ("classic".equals(id)) {
             if (!ClassicArenaQueueService.enqueue(player)) return 0;
             return Command.SINGLE_SUCCESS;
