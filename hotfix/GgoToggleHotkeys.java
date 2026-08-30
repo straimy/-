@@ -1,6 +1,5 @@
 package arena.client.shell;
 
-import arena.client.ui.ShopScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraftforge.api.distmarker.Dist;
@@ -17,6 +16,8 @@ import org.lwjgl.glfw.GLFW;
  */
 @Mod.EventBusSubscriber(value = Dist.CLIENT, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class GgoToggleHotkeys {
+    private static final String RETAINED_SHOP = "arena.client.ui.ShopScreen";
+
     private GgoToggleHotkeys() {}
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
@@ -38,7 +39,7 @@ public final class GgoToggleHotkeys {
             return;
         }
 
-        if (screen instanceof ShopScreen && key == GLFW.GLFW_KEY_G) {
+        if (key == GLFW.GLFW_KEY_G && RETAINED_SHOP.equals(screen.getClass().getName())) {
             mc.setScreen(null);
             event.setCanceled(true);
         }
