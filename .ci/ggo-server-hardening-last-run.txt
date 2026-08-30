@@ -1,5 +1,5 @@
-run_id=32340320351
+run_id=33334908524
 run_attempt=1
-head_sha=9dfa059560a21b6058f35ebca464b627ba6f5962
-job_status=success
+head_sha=c84157eacd049158da9786a2bb41469ef5c0685c
+job_status=failure
 artifact=GunGloryOnline-v40-server-hardening-v1
