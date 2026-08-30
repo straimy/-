@@ -37,11 +37,11 @@ public final class GgoProductionSurfaceFence {
     }
 
     /**
-     * Covers non-interactive vanilla transition screens after they render. We do not replace the
-     * screen instance, so the underlying world/reload lifecycle and callbacks keep running.
+     * Prevents the vanilla dirt/world-loading frame from ever reaching the user while preserving
+     * the original screen instance and its tick/lifecycle callbacks. Only rendering is cancelled.
      */
-    @SubscribeEvent(priority = EventPriority.LOWEST)
-    public static void coverVanillaTransition(ScreenEvent.Render.Post event) {
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void coverVanillaTransition(ScreenEvent.Render.Pre event) {
         String name = event.getScreen().getClass().getName();
         if (!(name.endsWith("GenericDirtMessageScreen") || name.endsWith("LevelLoadingScreen"))) return;
 
@@ -55,6 +55,8 @@ public final class GgoProductionSurfaceFence {
         int y = h / 2 + 34;
         int fill = (int) ((barW - 2) * (phase + 1) / 16L);
 
+        g.pose().pushPose();
+        g.pose().last().pose().identity();
         g.fill(0, 0, w, h, 0xFF07090D);
         g.fill(0, 0, w, 3, 0xFFC83240);
         g.drawCenteredString(mc.font, "GUN GLORY ONLINE", w / 2, h / 2 - 34, 0xFFF1F3F6);
@@ -62,5 +64,7 @@ public final class GgoProductionSurfaceFence {
         g.drawCenteredString(mc.font, "Preparing GGO runtime...", w / 2, h / 2 + 10, 0xFF7C8796);
         g.fill(x, y, x + barW, y + 5, 0xFF202733);
         g.fill(x + 1, y + 1, x + 1 + fill, y + 4, 0xFFC73A47);
+        g.pose().popPose();
+        event.setCanceled(true);
     }
 }
