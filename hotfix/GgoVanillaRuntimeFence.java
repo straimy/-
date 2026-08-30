@@ -18,11 +18,12 @@ import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
 /**
- * Production UX fence for raw engine screens.
+ * Production UX firewall for raw engine screens.
  *
- * The fence is deliberately active only for an official GGO launcher session. Developers who
- * start the client outside the launcher retain vanilla navigation for diagnostics, while normal
- * players can never fall through from GGO into Minecraft's title/options/world/server surfaces.
+ * It is deliberately active only for an official launcher-owned GGO process. Development launches
+ * keep the normal engine navigation for diagnostics. In production, Minecraft/Forge remains an
+ * implementation detail: title/world/server browsers, Realms, Forge mod lists, resource-pack
+ * selectors and the whole vanilla options family cannot become player-facing surfaces.
  */
 @Mod.EventBusSubscriber(value = Dist.CLIENT, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class GgoVanillaRuntimeFence {
@@ -61,29 +62,53 @@ public final class GgoVanillaRuntimeFence {
             return;
         }
 
-        if (screen instanceof OptionsScreen) {
+        String screenClass = screen.getClass().getName();
+
+        // OptionsScreen is only the top-level door. Vanilla can also open video/audio/controls,
+        // accessibility, language, telemetry and resource-pack children directly. Keep the whole
+        // family behind first-party GGO Settings instead of whack-a-mole redirects per button.
+        if (screen instanceof OptionsScreen || isEngineSettingsSurface(screenClass)) {
             event.setNewScreen(new GgoSettingsScreen(
                 mc.player != null ? new GgoShellScreen(GgoShellScreen.Page.PAUSE) : new GgoFrontEndScreen()
             ));
             return;
         }
 
-        // Official GGO has no public vanilla title, local-world browser or arbitrary server list.
-        // The Java/Forge client remains an internal engine implementation only.
+        // Official GGO has no public Minecraft title, local-world browser, arbitrary server list,
+        // Realms browser or Forge Mods screen. These classes may still exist in the engine, but
+        // an official launcher session can never navigate to them.
         if (screen instanceof TitleScreen
                 || screen instanceof SelectWorldScreen
-                || screen instanceof JoinMultiplayerScreen) {
+                || screen instanceof JoinMultiplayerScreen
+                || isForbiddenNavigationSurface(screenClass)) {
             event.setNewScreen(new GgoFrontEndScreen());
             return;
         }
 
         // InventoryScreen already has its own GGO redirect in the shell hooks. Other vanilla
         // container screens should not leak crafting/furnace/chest UX into normal GGO play.
+        // Creative remains an explicit exception for OP-only /admin 1 builders.
         if (screen instanceof AbstractContainerScreen<?> && !(screen instanceof InventoryScreen)
                 && !(screen instanceof CreativeModeInventoryScreen)
-                && screen.getClass().getName().startsWith("net.minecraft.client.gui.screens.inventory.")) {
+                && screenClass.startsWith("net.minecraft.client.gui.screens.inventory.")) {
             if (mc.player != null && mc.gameMode != null && mc.gameMode.getPlayerMode().isCreative()) return;
             event.setNewScreen(new GgoShellScreen(GgoShellScreen.Page.INVENTORY));
         }
+    }
+
+    private static boolean isEngineSettingsSurface(String className) {
+        return className.startsWith("net.minecraft.client.gui.screens.options.")
+                || className.equals("net.minecraft.client.gui.screens.LanguageSelectScreen")
+                || className.equals("net.minecraft.client.gui.screens.PackSelectionScreen")
+                || className.startsWith("net.minecraft.client.gui.screens.telemetry.")
+                || className.equals("net.minecraft.client.gui.screens.CreditsAndAttributionScreen");
+    }
+
+    private static boolean isForbiddenNavigationSurface(String className) {
+        return className.startsWith("net.minecraft.client.gui.screens.worldselection.")
+                || className.startsWith("net.minecraft.client.gui.screens.multiplayer.")
+                || className.startsWith("net.minecraft.client.gui.screens.realms.")
+                || className.equals("net.minecraftforge.client.gui.ModListScreen")
+                || className.startsWith("net.minecraftforge.client.gui.ModListScreen$");
     }
 }
