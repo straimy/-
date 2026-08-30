@@ -1,0 +1,154 @@
+name: GGO Launcher Stage116 Unified Lifecycle
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - launcher/bootstrap-v0.1
+    paths:
+      - '.github/workflows/ggo-launcher-stage116-lifecycle.yml'
+      - 'launcher/**'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            bundle: appimage
+            artifact: GunGloryOnline-Stage116-Launcher-Linux
+          - os: windows-2022
+            bundle: nsis
+            artifact: GunGloryOnline-Stage116-Launcher-Windows
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: launcher
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Linux Tauri dependencies
+        if: runner.os == 'Linux'
+        working-directory: .
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libfuse2
+
+      - name: Install frontend dependencies
+        run: npm install
+
+      - name: Apply canonical unified lifecycle
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 hotfix/apply_menu_first_beta_stage76.py
+          python3 hotfix/apply_stage111_resilient_install.py
+
+      - name: Verify one-application lifecycle contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'unified_surface::supervise(app, ready_file)' src-tauri/src/lib.rs
+          grep -Fq 'child.wait()' src-tauri/src/runtime/minecraft_launch.rs
+          grep -Fq 'game_process_status()' src-tauri/src/runtime/unified_surface.rs
+          grep -Fq 'window.hide()' src-tauri/src/runtime/unified_surface.rs
+          grep -Fq 'window.show()' src-tauri/src/runtime/unified_surface.rs
+          grep -Fq 'window.set_focus()' src-tauri/src/runtime/unified_surface.rs
+          grep -Fq 'options.connect_server = false;' src-tauri/src/lib.rs
+          grep -Fq 'GGO_GAME_TICKET_EXPIRES_AT' src-tauri/src/lib.rs
+          ! grep -Fq 'async fn launch_minecraft(' src-tauri/src/lib.rs
+          ! grep -Fq 'async fn preview_minecraft_launch(' src-tauri/src/lib.rs
+          test "$(grep -o 'setClientRunning(true);' src/App.tsx | wc -l)" -eq 1
+
+      - name: Generate icons
+        run: npm run tauri icon src-tauri/icons/icon.png
+      - name: Frontend build
+        run: npm run build
+      - name: Rust format
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+      - name: Rust compile
+        run: cargo check --manifest-path src-tauri/Cargo.toml
+      - name: Rust tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+      - name: Build package
+        run: npm run tauri build -- --bundles ${{ matrix.bundle }}
+
+      - name: Normalize Linux AppImage
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p stage116-launcher
+          file="$(find src-tauri/target/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage' | head -n1)"
+          test -n "$file" && test -f "$file"
+          test "$(stat -c%s "$file")" -gt 1048576
+          cp "$file" stage116-launcher/GunGloryOnline_Stage116_amd64.AppImage
+          sha256sum stage116-launcher/* > stage116-launcher/SHA256SUMS.txt
+
+      - name: Normalize Windows NSIS
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force stage116-launcher | Out-Null
+          $file = Get-ChildItem src-tauri/target/release/bundle/nsis/*.exe | Select-Object -First 1
+          if (-not $file) { throw 'NSIS package not found' }
+          if ($file.Length -lt 1MB) { throw 'NSIS package is unexpectedly small' }
+          Copy-Item $file.FullName stage116-launcher/GunGloryOnline_Stage116_Setup.exe
+          Get-FileHash stage116-launcher/GunGloryOnline_Stage116_Setup.exe -Algorithm SHA256 | Format-List | Out-File stage116-launcher/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        id: upload
+        with:
+          name: ${{ matrix.artifact }}
+          path: launcher/stage116-launcher/**
+          if-no-files-found: error
+          retention-days: 30
+
+  receipt:
+    if: always()
+    needs: [build]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: launcher/bootstrap-v0.1
+          fetch-depth: 0
+      - name: Publish Stage116 launcher lifecycle receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          result='${{ needs.build.result }}'
+          git fetch origin launcher/bootstrap-v0.1
+          git reset --hard origin/launcher/bootstrap-v0.1
+          mkdir -p .ci/launcher
+          cat > .ci/launcher/stage116-unified-lifecycle.txt <<EOF
+          workflow=${GITHUB_WORKFLOW}
+          run_id=${GITHUB_RUN_ID}
+          launcher_sha=${GITHUB_SHA}
+          launcher_version=0.2.15
+          linux_windows_matrix=$result
+          unified_surface_supervisor=true
+          java_child_owned=true
+          launcher_hide_after_ggo_ready=true
+          launcher_restore_after_engine_exit=true
+          explicit_play_online=true
+          result=$result
+          EOF
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .ci/launcher/stage116-unified-lifecycle.txt
+          git commit -m "ci: record Stage116 launcher lifecycle ${GITHUB_RUN_ID}" || exit 0
+          git push origin HEAD:launcher/bootstrap-v0.1
