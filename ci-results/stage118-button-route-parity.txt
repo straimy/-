@@ -1,0 +1,15 @@
+workflow=GGO Runtime Stage118 Button Route Parity
+run_id=33371062618
+client_sha=83f7e242f71510d1c4ee5f22ffc05a6474d667b3
+build_id=runtime-stage118
+ui_sha256=
+ui_bytes=
+button_hotkey_route_parity=true
+training_button_live=true
+battle_royale_button_browseable=true
+events_button_browseable=true
+retained_shop_profile_skills=true
+stage117_engine_firewall_preserved=true
+ui_build=failure
+upload=skipped
+result=failure
