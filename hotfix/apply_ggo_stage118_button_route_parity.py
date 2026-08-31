@@ -58,19 +58,26 @@ shell = shell.replace('b -> GgoLegacyUiBridge.openSkills()', 'b -> GgoRouteContr
 shell = shell.replace('b -> runClientCommand("friends")', 'b -> GgoRouteController.friends()')
 shell = shell.replace('b -> runClientCommand("clan")', 'b -> GgoRouteController.clans()')
 
-# Canonical hotkeys now call exactly the same routes as buttons.
+# Canonical hotkeys now call exactly the same routes as buttons. M/N/J/G are direct gameplay key
+# routes. E and ESC are engine-open interceptions, so they use the controller's screen factory.
 for page, method in [
     ("HOME", "hub"),
-    ("INVENTORY", "loadout"),
     ("MAP", "navigation"),
     ("ACTIVITIES", "activities"),
-    ("PAUSE", "pause"),
 ]:
     hooks = hooks.replace(
         f'mc.setScreen(new GgoShellScreen(GgoShellScreen.Page.{page}));',
         f'GgoRouteController.{method}();',
     )
 hooks = hooks.replace('GgoLegacyUiBridge.openShop();', 'GgoRouteController.store();')
+hooks = hooks.replace(
+    'event.setNewScreen(new GgoShellScreen(GgoShellScreen.Page.INVENTORY));',
+    'event.setNewScreen(GgoRouteController.screen(GgoShellScreen.Page.INVENTORY));',
+)
+hooks = hooks.replace(
+    'event.setNewScreen(new GgoShellScreen(GgoShellScreen.Page.PAUSE));',
+    'event.setNewScreen(GgoRouteController.screen(GgoShellScreen.Page.PAUSE));',
+)
 
 SHELL.write_text(shell, encoding="utf-8")
 HOOKS.write_text(hooks, encoding="utf-8")
@@ -80,7 +87,7 @@ hooks = HOOKS.read_text(encoding="utf-8")
 router = ROUTER.read_text(encoding="utf-8")
 
 checks = {
-    "router copied": "public final class GgoRouteController" in router,
+    "router copied": "public final class GgoRouteController" in router and "public static GgoShellScreen screen" in router,
     "top nav router": "button -> GgoRouteController.open(target)" in shell,
     "training button": "GgoRouteController.training()" in shell,
     "BR button interactive": "BATTLE ROYALE · PREPARING" in shell and "GgoRouteController.battleRoyale()" in shell and "br.active = false" not in shell,
@@ -89,7 +96,8 @@ checks = {
     "profile button router": "GgoRouteController.profile()" in shell,
     "skills button router": "GgoRouteController.skills()" in shell,
     "M keyboard parity": "GgoRouteController.hub();" in hooks,
-    "E keyboard parity": "GgoRouteController.loadout();" in hooks,
+    "E keyboard parity": "GgoRouteController.screen(GgoShellScreen.Page.INVENTORY)" in hooks,
+    "ESC keyboard parity": "GgoRouteController.screen(GgoShellScreen.Page.PAUSE)" in hooks,
     "N keyboard parity": "GgoRouteController.navigation();" in hooks,
     "J keyboard parity": "GgoRouteController.activities();" in hooks,
     "G keyboard parity": "GgoRouteController.store();" in hooks,
@@ -100,7 +108,7 @@ for label, ok in checks.items():
         raise SystemExit(f"Stage118 route parity failed: {label}")
 
 print("Applied GGO Stage118 button/hotkey route parity")
-print(" - M/E/N/J/G and visible GGO buttons share one navigation controller")
+print(" - M/E/N/J/G/ESC and visible GGO buttons share one navigation controller")
 print(" - Training remains the real playable activity")
 print(" - Battle Royale button is interactive but stays PREPARING until the authoritative map stage")
 print(" - Events opens the first-party Season/Events surface")
