@@ -7,15 +7,20 @@ import net.minecraft.client.gui.screens.Screen;
 /**
  * Canonical first-party navigation controller.
  *
- * Every visible GGO button and every gameplay hotkey must enter through this class so the two
- * interaction paths can never drift into different screens. No method here opens a vanilla
- * Minecraft/Forge navigation surface.
+ * Every visible GGO button, gameplay hotkey and intercepted engine screen enters through this
+ * class so the interaction paths cannot drift into different surfaces. No method here opens a
+ * vanilla Minecraft/Forge navigation surface.
  */
 public final class GgoRouteController {
     private GgoRouteController() {}
 
+    /** Factory used by ScreenEvent.Opening replacements (E inventory / ESC pause). */
+    public static GgoShellScreen screen(GgoShellScreen.Page page) {
+        return new GgoShellScreen(page);
+    }
+
     public static void open(GgoShellScreen.Page page) {
-        Minecraft.getInstance().setScreen(new GgoShellScreen(page));
+        Minecraft.getInstance().setScreen(screen(page));
     }
 
     public static void hub() { open(GgoShellScreen.Page.HOME); }
