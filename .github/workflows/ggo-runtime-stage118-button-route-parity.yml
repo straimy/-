@@ -74,7 +74,9 @@ jobs:
 
           SHELL=ga-build/client-ui/src/main/java/arena/client/shell
           grep -Fq 'GgoRouteController.hub();' "$SHELL/GgoShellHooks.java"
-          grep -Fq 'GgoRouteController.loadout();' "$SHELL/GgoShellHooks.java"
+          grep -Fq 'GgoRouteController.screen(GgoShellScreen.Page.INVENTORY)' "$SHELL/GgoShellHooks.java"
+          grep -Fq 'GgoRouteController.screen(GgoShellScreen.Page.PAUSE)' "$SHELL/GgoShellHooks.java"
+          grep -Fq 'GgoRouteController.navigation();' "$SHELL/GgoShellHooks.java"
           grep -Fq 'GgoRouteController.activities();' "$SHELL/GgoShellHooks.java"
           grep -Fq 'GgoRouteController.store();' "$SHELL/GgoShellHooks.java"
           grep -Fq 'button -> GgoRouteController.open(target)' "$SHELL/GgoShellScreen.java"
@@ -131,6 +133,7 @@ jobs:
           ui_sha256=${{ steps.ui.outputs.sha256 }}
           ui_bytes=${{ steps.ui.outputs.bytes }}
           button_hotkey_route_parity=true
+          engine_inventory_pause_route_parity=true
           training_button_live=true
           battle_royale_button_browseable=true
           events_button_browseable=true
