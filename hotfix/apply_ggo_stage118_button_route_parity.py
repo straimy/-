@@ -30,20 +30,25 @@ shell = shell.replace(
     'b -> GgoRouteController.settings(this)',
 )
 
-# Activity buttons: real Training action, browseable BR/Events surfaces. BR remains explicitly not
-# launchable until its map/runtime stage exists, but the control is no longer a dead widget.
-shell = shell.replace(
-    'Button.builder(Component.literal("TRAINING"), b -> runClientCommand("play"))',
-    'Button.builder(Component.literal("TRAINING"), b -> GgoRouteController.training())',
-)
-shell = shell.replace(
-    'Button br = Button.builder(Component.literal("BATTLE ROYALE — SOON"), b -> {}).bounds(x + w + 16, y, w, 28).build(); br.active = false; addRenderableWidget(br);',
-    'Button br = Button.builder(Component.literal("BATTLE ROYALE · PREPARING"), b -> GgoRouteController.battleRoyale()).bounds(x + w + 16, y, w, 28).build(); addRenderableWidget(br);',
-)
-shell = shell.replace(
-    'Button events = Button.builder(Component.literal("EVENTS — SOON"), b -> open(Page.SEASON)).bounds(x + (w + 16) * 2, y, w, 28).build(); events.active = false; addRenderableWidget(events);',
-    'Button events = Button.builder(Component.literal("EVENTS"), b -> GgoRouteController.events()).bounds(x + (w + 16) * 2, y, w, 28).build(); addRenderableWidget(events);',
-)
+# Stage114 migrates vanilla Button -> GgoButton, so accept either representation. This patch runs
+# after Stage114 and must therefore primarily rewrite the first-party widget form.
+for widget in ["GgoButton", "Button"]:
+    shell = shell.replace(
+        f'{widget}.builder(Component.literal("TRAINING"), b -> runClientCommand("play"))',
+        f'{widget}.builder(Component.literal("TRAINING"), b -> GgoRouteController.training())',
+    )
+    shell = shell.replace(
+        f'{widget} br = {widget}.builder(Component.literal("BATTLE ROYALE — SOON"), b -> {{}}).bounds(x + w + 16, y, w, 28).build(); br.active = false; addRenderableWidget(br);',
+        f'{widget} br = {widget}.builder(Component.literal("BATTLE ROYALE · PREPARING"), b -> GgoRouteController.battleRoyale()).bounds(x + w + 16, y, w, 28).build(); addRenderableWidget(br);',
+    )
+    shell = shell.replace(
+        f'{widget} events = {widget}.builder(Component.literal("EVENTS — SOON"), b -> GgoRouteController.open(Page.SEASON)).bounds(x + (w + 16) * 2, y, w, 28).build(); events.active = false; addRenderableWidget(events);',
+        f'{widget} events = {widget}.builder(Component.literal("EVENTS"), b -> GgoRouteController.events()).bounds(x + (w + 16) * 2, y, w, 28).build(); addRenderableWidget(events);',
+    )
+    shell = shell.replace(
+        f'{widget} events = {widget}.builder(Component.literal("EVENTS — SOON"), b -> open(Page.SEASON)).bounds(x + (w + 16) * 2, y, w, 28).build(); events.active = false; addRenderableWidget(events);',
+        f'{widget} events = {widget}.builder(Component.literal("EVENTS"), b -> GgoRouteController.events()).bounds(x + (w + 16) * 2, y, w, 28).build(); addRenderableWidget(events);',
+    )
 
 # Retained real data screens also enter via the same router, rather than each button knowing the
 # legacy bridge implementation.
@@ -78,8 +83,8 @@ checks = {
     "router copied": "public final class GgoRouteController" in router,
     "top nav router": "button -> GgoRouteController.open(target)" in shell,
     "training button": "GgoRouteController.training()" in shell,
-    "BR button interactive": "BATTLE ROYALE · PREPARING" in shell and "GgoRouteController.battleRoyale()" in shell,
-    "events button interactive": 'Component.literal("EVENTS")' in shell and "GgoRouteController.events()" in shell,
+    "BR button interactive": "BATTLE ROYALE · PREPARING" in shell and "GgoRouteController.battleRoyale()" in shell and "br.active = false" not in shell,
+    "events button interactive": 'Component.literal("EVENTS")' in shell and "GgoRouteController.events()" in shell and "events.active = false" not in shell,
     "store button router": "GgoRouteController.store()" in shell,
     "profile button router": "GgoRouteController.profile()" in shell,
     "skills button router": "GgoRouteController.skills()" in shell,
